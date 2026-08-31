@@ -1,0 +1,64 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build outputs
+dist
+build
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+!.env.example
+!.env.docker
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+coverage
+.nyc_output
+
+# Docker
+docker-compose.override.yml
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Prisma
+prisma/migrations/**/migration_lock.toml
+
+# Opencode toolchain (regenerable)
+.opencode/node_modules
+.opencode/package-lock.json
+.opencode/bun.lock
+
+# Vite / Prisma caches (regenerables)
+.vite
+.prisma
+.pnpm-store
+node_modules/.cache
+apps/*/node_modules/.cache
+node_modules/.prisma
+node_modules/.bin/.cache
+
+# SQLite database
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Compressed archives
+*.zip
+*.tar.gz

@@ -1,0 +1,28 @@
+{
+  "name": "master-data-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Master Data & Homologación de Artículos — Plataforma de gestión y homologación de artículos de múltiples empresas/instancias de Profit Plus 2K8",
+  "scripts": {
+    "dev": "pnpm --parallel -r run dev",
+    "build": "pnpm --parallel -r run build",
+    "lint": "pnpm --parallel -r run lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "test": "pnpm --parallel -r run test",
+    "test:e2e": "pnpm --filter @master-data/api run test:e2e",
+    "db:generate": "pnpm --filter @master-data/api run db:generate",
+    "db:push": "pnpm --filter @master-data/api run db:push",
+    "db:migrate": "pnpm --filter @master-data/api run db:migrate",
+    "db:seed": "pnpm --filter @master-data/api run db:seed",
+    "db:studio": "pnpm --filter @master-data/api run db:studio",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.15.4"
+}

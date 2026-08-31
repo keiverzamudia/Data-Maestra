@@ -1,0 +1,386 @@
+// Prisma schema for SQLite (development only)
+// Production will use SQL Server
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// MDM SCHEMA — SQLite Development Version
+// =============================================================================
+// Differences from PostgreSQL production:
+// - No enums (use String instead)
+// - No @db.Uuid, @db.VarChar, @db.Text, @db.Inet, @db.Decimal
+// - No GIN indexes
+// - No partial unique indexes
+// - JSON stored as String (SQLite doesn't have native JSON type)
+// - request_number uses UUID-based generation instead of autoincrement
+// =============================================================================
+
+// --- Companies ---
+
+model Company {
+  id        String   @id @default(uuid())
+  name      String
+  code      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  departments  Department[]
+  requests     Request[]
+  userRoles    UserRole[]
+  auditEvents  AuditEvent[]  @relation("ActorCompany")
+
+  @@map("companies")
+}
+
+// --- Users & Auth ---
+
+model User {
+  id          String   @id @default(uuid())
+  username    String   @unique
+  displayName String   @map("display_name")
+  email       String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  userRoles       UserRole[]
+  auditEvents     AuditEvent[]
+  workflowTasks   WorkflowTask[]  @relation("AssignedTo")
+  workflowHistory WorkflowHistory[]
+  requests        Request[]
+  createdMasterItems MasterItem[]
+  approvals       Approval[]
+
+  @@map("users")
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  description String?
+
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  description String?
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model UserRole {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  roleId    String    @map("role_id")
+  companyId String    @map("company_id")
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @default(now()) @map("updated_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role    Role    @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@unique([userId, roleId, companyId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  roleId       String @map("role_id")
+  permissionId String @map("permission_id")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// --- Departments ---
+
+model Department {
+  id          String    @id @default(uuid())
+  companyId   String    @map("company_id")
+  name        String
+  code        String
+  managerId   String?   @map("manager_id")
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @default(now()) @map("updated_at")
+
+  company  Company   @relation(fields: [companyId], references: [id])
+  requests Request[]
+
+  @@unique([companyId, code])
+  @@map("departments")
+}
+
+// --- Catalog ---
+
+model CatalogGroup {
+  id     String  @id @default(uuid())
+  code   String  @unique
+  name   String
+  active Boolean @default(true)
+
+  subgroups   CatalogSubgroup[]
+  masterItems MasterItem[]
+
+  @@map("catalog_groups")
+}
+
+model CatalogSubgroup {
+  id      String  @id @default(uuid())
+  groupId String  @map("group_id")
+  code    String
+  name    String
+  active  Boolean @default(true)
+
+  group       CatalogGroup     @relation(fields: [groupId], references: [id])
+  categories  CatalogCategory[]
+  masterItems MasterItem[]
+
+  @@unique([groupId, code])
+  @@map("catalog_subgroups")
+}
+
+model CatalogCategory {
+  id         String  @id @default(uuid())
+  subgroupId String  @map("subgroup_id")
+  code       String
+  name       String
+  active     Boolean @default(true)
+
+  subgroup    CatalogSubgroup @relation(fields: [subgroupId], references: [id])
+  masterItems MasterItem[]
+
+  @@unique([subgroupId, code])
+  @@map("catalog_categories")
+}
+
+model Brand {
+  id             String   @id @default(uuid())
+  name           String
+  normalizedName String   @map("normalized_name") @unique
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  masterItems MasterItem[]
+
+  @@map("brands")
+}
+
+model UnitOfMeasure {
+  id     String  @id @default(uuid())
+  code   String  @unique
+  name   String
+  active Boolean @default(true)
+
+  masterItems MasterItem[]
+
+  @@map("units_of_measure")
+}
+
+// --- Master Items ---
+
+model MasterItem {
+  id                    String   @id @default(uuid())
+  masterCode            String   @map("master_code") @unique
+  masterDescription     String   @map("master_description")
+  normalizedDescription String   @map("normalized_description")
+  status                String   @default("PENDING_REVIEW")
+  groupId               String?  @map("group_id")
+  subgroupId            String?  @map("subgroup_id")
+  categoryId            String?  @map("category_id")
+  brandId               String?  @map("brand_id")
+  unitId                String?  @map("unit_id")
+  manufacturer          String?
+  model                 String?
+  partNumber            String?  @map("part_number")
+  application           String?
+  attributes            String   @default("{}")
+  createdBy             String?  @map("created_by")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @default(now()) @map("updated_at")
+
+  group      CatalogGroup?     @relation(fields: [groupId], references: [id])
+  subgroup   CatalogSubgroup?  @relation(fields: [subgroupId], references: [id])
+  category   CatalogCategory?  @relation(fields: [categoryId], references: [id])
+  brand      Brand?            @relation(fields: [brandId], references: [id])
+  unit       UnitOfMeasure?    @relation(fields: [unitId], references: [id])
+  createdByUser User?          @relation(fields: [createdBy], references: [id])
+
+  @@index([status])
+  @@map("master_items")
+}
+
+// --- Requests ---
+
+model Request {
+  id                    String   @id @default(uuid())
+  requestNumber         String   @unique @map("request_number")
+  companyId             String   @map("company_id")
+  departmentId          String   @map("department_id")
+  requesterId           String   @map("requester_id")
+  requestedDescription  String   @map("requested_description")
+  purpose               String
+  referencePhotoUri     String?  @map("reference_photo_uri")
+  status                String   @default("DRAFT")
+  priority              Int      @default(0)
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @default(now()) @map("updated_at")
+
+  company    Company    @relation(fields: [companyId], references: [id])
+  department Department @relation(fields: [departmentId], references: [id])
+  requester  User       @relation(fields: [requesterId], references: [id])
+
+  requestData          RequestData?
+  workflowInstance     WorkflowInstance?
+  approvals            Approval[]
+  accountingCodes      RequestAccountingCode[]
+
+  @@index([status])
+  @@index([companyId])
+  @@index([requesterId])
+  @@index([createdAt])
+  @@map("requests")
+}
+
+model RequestData {
+  id               String  @id @default(uuid())
+  requestId        String  @map("request_id") @unique
+  groupId          String? @map("group_id")
+  subgroupId       String? @map("subgroup_id")
+  categoryId       String? @map("category_id")
+  brandId          String? @map("brand_id")
+  unitId           String? @map("unit_id")
+  manufacturer     String?
+  model            String?
+  partNumber       String? @map("part_number")
+  application      String?
+  masterCode       String? @map("master_code")
+
+  request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@map("request_data")
+}
+
+model RequestAccountingCode {
+  id          String  @id @default(uuid())
+  requestId   String  @map("request_id")
+  code        String
+  description String
+
+  request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@map("request_accounting_codes")
+}
+
+// --- Workflow ---
+
+model WorkflowInstance {
+  id              String    @id @default(uuid())
+  requestId       String    @map("request_id") @unique
+  currentStepCode String    @map("current_step_code")
+  version         Int       @default(1)
+  startedAt       DateTime  @default(now()) @map("started_at")
+  updatedAt       DateTime  @default(now()) @map("updated_at")
+  completedAt     DateTime? @map("completed_at")
+
+  request  Request          @relation(fields: [requestId], references: [id])
+  tasks    WorkflowTask[]
+  history  WorkflowHistory[]
+
+  @@map("workflow_instances")
+}
+
+model WorkflowTask {
+  id          String    @id @default(uuid())
+  instanceId  String    @map("instance_id")
+  stepCode    String    @map("step_code")
+  assignedTo  String?   @map("assigned_to")
+  status      String    @default("PENDING")
+  dueAt       DateTime? @map("due_at")
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  instance       WorkflowInstance @relation(fields: [instanceId], references: [id])
+  assignedToUser User?            @relation("AssignedTo", fields: [assignedTo], references: [id])
+
+  @@unique([instanceId, stepCode])
+  @@map("workflow_tasks")
+}
+
+model WorkflowHistory {
+  id          String   @id @default(uuid())
+  instanceId  String   @map("instance_id")
+  fromStep    String?  @map("from_step")
+  toStep      String?  @map("to_step")
+  action      String
+  actorId     String   @map("actor_id")
+  comment     String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  instance WorkflowInstance @relation(fields: [instanceId], references: [id])
+  actor    User             @relation(fields: [actorId], references: [id])
+
+  @@map("workflow_history")
+}
+
+model Approval {
+  id          String   @id @default(uuid())
+  requestId   String   @map("request_id")
+  stepCode    String   @map("step_code")
+  actorId     String   @map("actor_id")
+  action      String
+  fromStatus  String   @map("from_status")
+  toStatus    String   @map("to_status")
+  comment     String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  request Request @relation(fields: [requestId], references: [id])
+  actor   User    @relation(fields: [actorId], references: [id])
+
+  @@map("approvals")
+}
+
+// --- Audit ---
+
+model AuditEvent {
+  id              String   @id @default(uuid())
+  correlationId   String   @map("correlation_id")
+  requestId       String?  @map("request_id")
+  actorId         String?  @map("actor_id")
+  actorCompanyId  String?  @map("actor_company_id")
+  entityType      String   @map("entity_type")
+  entityId        String   @map("entity_id")
+  action          String
+  beforeData      String?  @map("before_data")
+  afterData       String?  @map("after_data")
+  metadata        String   @default("{}")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  actor         User?    @relation(fields: [actorId], references: [id])
+  actorCompany  Company? @relation("ActorCompany", fields: [actorCompanyId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@index([createdAt])
+  @@map("audit_events")
+}
