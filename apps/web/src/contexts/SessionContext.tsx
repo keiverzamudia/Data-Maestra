@@ -44,10 +44,22 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [loading, setLoading] = React.useState(false);
 
   React.useEffect(() => {
-    fetch('/api/v1/auth/session')
-      .then(r => r.json())
-      .then(data => setSession(data))
-      .catch(() => {});
+    let cancelled = false;
+    async function loadSession() {
+      for (let attempt = 0; attempt < 5; attempt++) {
+        try {
+          const res = await fetch('/api/v1/auth/session');
+          if (!cancelled && res.ok) {
+            const data = await res.json();
+            setSession(data);
+            return;
+          }
+        } catch {}
+        await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+      }
+    }
+    loadSession();
+    return () => { cancelled = true; };
   }, []);
 
   const switchUser = React.useCallback(async (userId: string) => {

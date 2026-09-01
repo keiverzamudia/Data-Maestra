@@ -7,6 +7,7 @@ import {
   Query,
   UploadedFile,
   UseInterceptors,
+  UseGuards,
   HttpCode,
   HttpStatus,
   BadRequestException,
@@ -16,6 +17,8 @@ import { ApiTags, ApiOperation, ApiQuery, ApiConsumes } from '@nestjs/swagger';
 import { join } from 'path';
 import { RequestsService } from './requests.service';
 import { AuthService } from '../auth/auth.service';
+import { RbacGuard } from '../auth/rbac.guard';
+import { RequirePermission } from '../auth/require-permission.decorator';
 import { CreateRequestDto } from './dto/create-request.dto';
 import { ClassifyRequestDto } from './dto/classify-request.dto';
 import { ApprovalDto } from './dto/approval.dto';
@@ -25,6 +28,7 @@ const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
 
 @ApiTags('Requests')
 @Controller('requests')
+@UseGuards(RbacGuard)
 export class RequestsController {
   constructor(
     private readonly requestsService: RequestsService,
@@ -32,6 +36,7 @@ export class RequestsController {
   ) {}
 
   @Post()
+  @RequirePermission('REQUEST.CREATE')
   @ApiOperation({ summary: 'Create a new request' })
   create(@Body() dto: CreateRequestDto) {
     const session = this.authService.getSession();
@@ -44,6 +49,7 @@ export class RequestsController {
   }
 
   @Get()
+  @RequirePermission('REQUEST.VIEW')
   @ApiOperation({ summary: 'List requests' })
   @ApiQuery({ name: 'companyId', required: false })
   @ApiQuery({ name: 'status', required: false })
@@ -57,6 +63,7 @@ export class RequestsController {
   }
 
   @Get(':id')
+  @RequirePermission('REQUEST.VIEW')
   @ApiOperation({ summary: 'Get request by ID' })
   findOne(@Param('id') id: string) {
     return this.requestsService.findOne(id);
@@ -64,6 +71,7 @@ export class RequestsController {
 
   @Post(':id/submit')
   @HttpCode(HttpStatus.OK)
+  @RequirePermission('REQUEST.CREATE')
   @ApiOperation({ summary: 'Submit request for approval' })
   submit(@Param('id') id: string) {
     const session = this.authService.getSession();
@@ -72,6 +80,7 @@ export class RequestsController {
 
   @Post(':id/approve')
   @HttpCode(HttpStatus.OK)
+  @RequirePermission('MANAGER.APPROVE')
   @ApiOperation({ summary: 'Approve, reject or return request' })
   approve(@Param('id') id: string, @Body() dto: ApprovalDto) {
     const session = this.authService.getSession();
@@ -80,6 +89,7 @@ export class RequestsController {
 
   @Post(':id/classify')
   @HttpCode(HttpStatus.OK)
+  @RequirePermission('WAREHOUSE.CLASSIFY')
   @ApiOperation({ summary: 'Save warehouse classification' })
   classify(@Param('id') id: string, @Body() dto: ClassifyRequestDto) {
     const session = this.authService.getSession();
@@ -88,6 +98,7 @@ export class RequestsController {
 
   @Post(':id/photo')
   @HttpCode(HttpStatus.OK)
+  @RequirePermission('REQUEST.CREATE')
   @ApiOperation({ summary: 'Upload reference photo' })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('photo', { dest: join(process.cwd(), 'uploads', 'requests') }))
@@ -111,6 +122,7 @@ export class RequestsController {
   }
 
   @Get(':id/history')
+  @RequirePermission('REQUEST.VIEW')
   @ApiOperation({ summary: 'Get workflow history' })
   getHistory(@Param('id') id: string) {
     return this.requestsService.getHistory(id);

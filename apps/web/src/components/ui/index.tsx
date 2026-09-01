@@ -40,3 +40,4 @@ export const SearchInput:React.FC<{value:string; onChange:(v:string)=>void; plac
   <input className="input" placeholder={placeholder||'Buscar...'} value={value} onChange={e=>onChange(e.target.value)} />
 );
 export const FilterBar:React.FC<{children:React.ReactNode}> = ({children})=><div className="filterbar">{children}</div>;
+export { ImageLightbox } from './ImageLightbox';

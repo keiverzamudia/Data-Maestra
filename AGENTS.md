@@ -167,7 +167,87 @@ Sí se permite crear:
 - ejemplos no ejecutables;
 - tests de validación del esquema si son necesarios.
 
-## 12. Regla para OpenCode
+## 12. API RUNTIME — DO NOT MANAGE FROM AGENT
+
+OpenCode **NO** debe iniciar, detener, reiniciar ni reconstruir la API automaticamente durante una tarea normal.
+
+OpenCode **NO** debe ejecutar:
+- `node apps/api/dist/main.js`
+- `pnpm --filter @master-data/api dev`
+- `nest start`
+- `nest start --watch`
+- `Start-Process ... node ...`
+- `Start-Process ... -NoNewWindow`
+- `taskkill /IM node.exe`
+- `Stop-Process` sobre procesos Node sin identificacion precisa
+- Cualquier comando inline para administrar el ciclo de vida de la API
+
+### Estado normal
+
+La API debe considerarse un servicio externo al agente.
+
+Antes de realizar pruebas que necesiten backend, OpenCode solamente debe verificar:
+
+```
+GET http://localhost:3001/api/v1/health
+```
+
+Si devuelve HTTP 200:
+- **CONTINUAR INMEDIATAMENTE**
+- NO reiniciar la API
+- NO reconstruir la API
+- NO detener la API
+- NO ejecutar ningun proceso Node
+
+### Si health falla
+
+Si `http://localhost:3001/api/v1/health` NO devuelve HTTP 200:
+
+- NO intentar solucionar automaticamente el problema iniciando Node
+- NO ejecutar Start-Process
+- NO ejecutar comandos background
+- NO intentar matar procesos Node
+- Detener la tarea y reportar:
+
+```
+API NO DISPONIBLE.
+
+Ejecute manualmente:
+.\scripts\api-restart.ps1
+
+Cuando el health responda HTTP 200, indique a OpenCode que continune.
+```
+
+### Verificacion rapida
+
+Desues de cualquier cambio de codigo que afecte el backend:
+1. Verificar `GET http://localhost:3001/api/v1/health`
+2. Si responde 200, continuar
+3. Si no responde, reportar y esperar
+
+### Importante
+
+El agente **NUNCA** debe esperar un proceso de servidor.
+El agente **SOLO** puede ejecutar comprobaciones HTTP que terminen.
+El servidor debe ser iniciado por el usuario o por un mecanismo externo al agente.
+El objetivo de esta regla es evitar que una herramienta shell/background mantenga bloqueado el ciclo de razonamiento de OpenCode.
+
+### Scripts disponibles (para uso del USUARIO, no del agente)
+
+| Script | Uso |
+|---|---|
+| `scripts/api-restart.ps1` | Build + Stop + Start + Health |
+| `scripts/api-start.ps1` | Solo iniciar API desacoplada |
+| `scripts/api-stop.ps1` | Solo detener API en puerto 3001 |
+| `scripts/api-health.ps1` | Solo verificar health |
+
+### Debugging
+
+Logs de la API:
+- `apps/api/api.log` — stdout
+- `apps/api/api.err.log` — stderr
+
+## 13. Regla para OpenCode
 
 Antes de modificar archivos:
 1. leer AGENTS.md;

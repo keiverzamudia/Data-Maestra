@@ -25,6 +25,7 @@ export interface Request {
   // classification
   groupId?: string; subgroupId?: string; categoryId?: string; unitId?: string; brandId?: string;
   manufacturer?: string; model?: string; partNumber?: string; application?: string;
+  masterCode?: string;
   notes?: string; attributes?: Record<string,string>;
   accountingCodes?: { code: string; description: string }[];
   createdAt: string; updatedAt: string;

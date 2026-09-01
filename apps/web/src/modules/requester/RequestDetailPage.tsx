@@ -19,7 +19,7 @@ export const RequestDetailPage: React.FC = () => {
   return (
     <div className="stack">
       <PageHeader
-        title={`Solicitud REQ-${request.requestNumber}`}
+        title={`Solicitud ${request.requestNumber}`}
         action={<Button variant="secondary" onClick={() => navigate(-1)}>Volver</Button>}
       />
       <RequestDetail request={request} />

@@ -3,6 +3,7 @@ import type { Request } from '../../types';
 import { groups, subgroups, categories, brands, units } from '../../mock/catalog';
 import { users, departments } from '../../mock/companies';
 import { WorkflowTimeline } from './WorkflowTimeline';
+import { ImageLightbox } from '../ui';
 
 function findName(list: { id: string; name: string }[], id?: string) {
   return list.find(x => x.id === id)?.name || '—';
@@ -12,6 +13,7 @@ export const RequestDetail: React.FC<{ request: Request; showWorkflow?: boolean 
   const requester = users.find(u => u.id === request.requesterId);
   const dept = departments.find(d => d.id === request.departmentId);
   const manager = dept?.managerId ? users.find(u => u.id === dept.managerId) : null;
+  const [lightboxOpen, setLightboxOpen] = React.useState(false);
 
   return (
     <div className="stack">
@@ -37,8 +39,10 @@ export const RequestDetail: React.FC<{ request: Request; showWorkflow?: boolean 
             <img
               src={`/api/v1/uploads/${request.referencePhotoUri}`}
               alt="Imagen referencial"
-              onClick={() => window.open(`/api/v1/uploads/${request.referencePhotoUri}`, '_blank')}
-              style={{ maxWidth: '100%', maxHeight: 250, borderRadius: 8, cursor: 'zoom-in', border: '1px solid var(--border)' }}
+              onClick={() => setLightboxOpen(true)}
+              style={{ maxWidth: '100%', maxHeight: 250, borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border)' }}
+              onMouseEnter={e => (e.currentTarget.style.opacity = '0.85')}
+              onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
             />
           </div>
         )}
@@ -68,6 +72,16 @@ export const RequestDetail: React.FC<{ request: Request; showWorkflow?: boolean 
         <span>Actualizado: {new Date(request.updatedAt).toLocaleString('es-VE')}</span>
         <span>N° {request.requestNumber}</span>
       </div>
+
+      {request.referencePhotoUri && (
+        <ImageLightbox
+          src={`/api/v1/uploads/${request.referencePhotoUri}`}
+          alt="Imagen referencial"
+          open={lightboxOpen}
+          onClose={() => setLightboxOpen(false)}
+          downloadFilename={request.referencePhotoUri.split('/').pop()}
+        />
+      )}
     </div>
   );
 };

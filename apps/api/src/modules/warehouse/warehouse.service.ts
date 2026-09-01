@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { RequestsService } from '../requests/requests.service';
 
@@ -10,6 +10,25 @@ const REQUEST_INCLUDE = {
   workflowInstance: true,
 } as const;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function flattenRequestData(raw: any) {
+  const { requestData, ...rest } = raw;
+  if (!requestData) return rest;
+  return {
+    ...rest,
+    groupId: requestData.groupId,
+    subgroupId: requestData.subgroupId,
+    categoryId: requestData.categoryId,
+    brandId: requestData.brandId,
+    unitId: requestData.unitId,
+    manufacturer: requestData.manufacturer,
+    model: requestData.model,
+    partNumber: requestData.partNumber,
+    application: requestData.application,
+    masterCode: requestData.masterCode,
+  };
+}
+
 @Injectable()
 export class WarehouseService {
   constructor(
@@ -18,24 +37,25 @@ export class WarehouseService {
   ) {}
 
   async findPendingClassification() {
-    return this.prisma.request.findMany({
+    const rows = await this.prisma.request.findMany({
       where: { status: 'PENDING_WAREHOUSE' },
       include: REQUEST_INCLUDE,
       orderBy: { createdAt: 'asc' },
     });
+    return rows.map(flattenRequestData);
   }
 
   async findOneForClassification(id: string) {
-    const request = await this.prisma.request.findUnique({
+    const raw = await this.prisma.request.findUnique({
       where: { id },
       include: REQUEST_INCLUDE,
     });
 
-    if (!request) {
+    if (!raw) {
       throw new NotFoundException(`Request ${id} not found`);
     }
 
-    return request;
+    return flattenRequestData(raw);
   }
 
   async classify(id: string, data: Record<string, unknown>, userId: string, companyId: string) {
@@ -53,6 +73,12 @@ export class WarehouseService {
 
     if (request.status !== 'PENDING_WAREHOUSE' && request.status !== 'WAREHOUSE_APPROVED') {
       throw new NotFoundException(`Request ${id} is not pending warehouse classification`);
+    }
+
+    // Validate classification exists before advancing
+    const requestData = await this.prisma.requestData.findUnique({ where: { requestId: id } });
+    if (!requestData || !requestData.groupId || !requestData.subgroupId || !requestData.masterCode) {
+      throw new BadRequestException('No se puede enviar a Contabilidad: la clasificación de Almacén está incompleta. Faltan grupo, subgrupo o código master.');
     }
 
     return this.requestsService.approve(id, { action: 'APPROVE', comment: 'Warehouse classification approved' }, userId, companyId);

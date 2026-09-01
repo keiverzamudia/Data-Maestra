@@ -60,6 +60,13 @@ export interface AccountingCode {
   description: string;
 }
 
+// ── Final Review Service ──
+export interface FinalReviewService {
+  getPendingReviews(companyId?: string): Promise<Request[]>;
+  approveReview(id: string): Promise<void>;
+  rejectReview(id: string, comment: string): Promise<void>;
+}
+
 // ── Import Service ──
 export interface ImportService {
   getImportRuns(): Promise<ImportRun[]>;

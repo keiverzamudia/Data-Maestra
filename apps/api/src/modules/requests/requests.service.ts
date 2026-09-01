@@ -4,6 +4,25 @@ import { CreateRequestDto } from './dto/create-request.dto';
 import { ClassifyRequestDto } from './dto/classify-request.dto';
 import { ApprovalDto } from './dto/approval.dto';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function flattenRequestData(raw: any) {
+  const { requestData, ...rest } = raw;
+  if (!requestData) return rest;
+  return {
+    ...rest,
+    groupId: requestData.groupId,
+    subgroupId: requestData.subgroupId,
+    categoryId: requestData.categoryId,
+    brandId: requestData.brandId,
+    unitId: requestData.unitId,
+    manufacturer: requestData.manufacturer,
+    model: requestData.model,
+    partNumber: requestData.partNumber,
+    application: requestData.application,
+    masterCode: requestData.masterCode,
+  };
+}
+
 @Injectable()
 export class RequestsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -74,7 +93,7 @@ export class RequestsService {
         workflowInstance: { select: { id: true, currentStepCode: true } },
       },
       orderBy: { createdAt: 'desc' },
-    });
+    }).then(rows => rows.map(flattenRequestData));
   }
 
   async findOne(id: string) {
@@ -105,7 +124,7 @@ export class RequestsService {
       throw new NotFoundException(`Request ${id} not found`);
     }
 
-    return request;
+    return flattenRequestData(request);
   }
 
   async submit(id: string, userId: string, companyId: string) {

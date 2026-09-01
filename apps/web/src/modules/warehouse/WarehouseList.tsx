@@ -54,7 +54,7 @@ export const WarehouseList: React.FC = () => {
                 const dept = departments.find(d => d.id === r.departmentId);
                 return (
                   <tr key={r.id}>
-                    <td><strong>REQ-{r.requestNumber}</strong></td>
+                    <td><strong>{r.requestNumber}</strong></td>
                     <td className="ellipsis">{r.requestedDescription}</td>
                     <td>{requester?.displayName || '—'}</td>
                     <td>{dept?.name || '—'}</td>

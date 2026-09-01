@@ -31,15 +31,15 @@ function flattenRequestData(raw: any) {
 }
 
 @Injectable()
-export class AccountingService {
+export class FinalReviewService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly requestsService: RequestsService,
   ) {}
 
-  async findPendingApproval() {
+  async findPendingReview() {
     const rows = await this.prisma.request.findMany({
-      where: { status: 'PENDING_ACCOUNTING' },
+      where: { status: 'PENDING_FINAL_REVIEW' },
       include: REQUEST_INCLUDE,
       orderBy: { createdAt: 'asc' },
     });
@@ -49,7 +49,13 @@ export class AccountingService {
   async findOneForReview(id: string) {
     const raw = await this.prisma.request.findUnique({
       where: { id },
-      include: REQUEST_INCLUDE,
+      include: {
+        ...REQUEST_INCLUDE,
+        approvals: {
+          include: { actor: { select: { id: true, username: true, displayName: true } } },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
     });
 
     if (!raw) {
@@ -59,33 +65,31 @@ export class AccountingService {
     return flattenRequestData(raw);
   }
 
-  async approve(id: string, accountingCodes: Array<{ code: string; description: string }>, userId: string, companyId: string) {
-    const request = await this.findOneForReview(id);
+  async approve(id: string, userId: string, companyId: string) {
+    const request = await this.prisma.request.findUnique({ where: { id } });
 
-    if (request.status !== 'PENDING_ACCOUNTING') {
-      throw new NotFoundException(`Request ${id} is not pending accounting approval`);
+    if (!request) {
+      throw new NotFoundException(`Request ${id} not found`);
     }
 
-    if (accountingCodes.length > 0) {
-      await this.prisma.requestAccountingCode.createMany({
-        data: accountingCodes.map((ac) => ({
-          requestId: id,
-          code: ac.code,
-          description: ac.description,
-        })),
-      });
+    if (request.status !== 'PENDING_FINAL_REVIEW') {
+      throw new NotFoundException(`Request ${id} is not pending final review`);
     }
 
-    return this.requestsService.approve(id, { action: 'APPROVE', comment: 'Accounting approved' }, userId, companyId);
+    return this.requestsService.approve(id, { action: 'APPROVE', comment: 'Final review approved' }, userId, companyId);
   }
 
   async reject(id: string, comment?: string, userId?: string, companyId?: string) {
-    const request = await this.findOneForReview(id);
+    const request = await this.prisma.request.findUnique({ where: { id } });
 
-    if (request.status !== 'PENDING_ACCOUNTING') {
-      throw new NotFoundException(`Request ${id} is not pending accounting approval`);
+    if (!request) {
+      throw new NotFoundException(`Request ${id} not found`);
     }
 
-    return this.requestsService.approve(id, { action: 'REJECT', comment: comment ?? 'Rejected by accounting' }, userId!, companyId!);
+    if (request.status !== 'PENDING_FINAL_REVIEW') {
+      throw new NotFoundException(`Request ${id} is not pending final review`);
+    }
+
+    return this.requestsService.approve(id, { action: 'REJECT', comment: comment ?? 'Rejected at final review' }, userId!, companyId!);
   }
 }

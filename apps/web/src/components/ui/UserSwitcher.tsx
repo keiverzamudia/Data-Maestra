@@ -47,7 +47,7 @@ export const UserSwitcher: React.FC = () => {
           opacity: 0.85,
         }}
       >
-        {loading ? 'Cambiando...' : `👤 ${session.name} (${ROLE_LABELS[session.roleCodes[0]] ?? session.roleCodes[0]})`}
+        {loading ? 'Cambiando...' : `👤 ${session.name} (${ROLE_LABELS[session.roleCodes[0] ?? ''] ?? session.roleCodes[0] ?? '—'})`}
       </button>
 
       {open && (
@@ -87,7 +87,7 @@ export const UserSwitcher: React.FC = () => {
             >
               <div style={{ fontSize: 13 }}>{u.name}</div>
               <div style={{ fontSize: 11, color: '#64748b' }}>
-                {ROLE_LABELS[u.roleCodes[0]] ?? u.roleCodes[0]} — {u.department}
+                {ROLE_LABELS[u.roleCodes[0] ?? ''] ?? u.roleCodes[0] ?? '—'} — {u.department}
               </div>
             </button>
           ))}

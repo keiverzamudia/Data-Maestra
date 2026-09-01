@@ -218,7 +218,7 @@ export const RequestCreate: React.FC = () => {
                   <div style={{ marginTop: 8, display: 'flex', gap: 8, justifyContent: 'center' }}>
                     <Button variant="ghost" size="sm" onClick={removeImage}>Eliminar</Button>
                     <label style={{ cursor: 'pointer' }}>
-                      <Button variant="ghost" size="sm" as="span">Cambiar</Button>
+                      <span className="btn btn-ghost btn-sm">Cambiar</span>
                       <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleFileInput} style={{ display: 'none' }} />
                     </label>
                   </div>
@@ -227,7 +227,7 @@ export const RequestCreate: React.FC = () => {
                 <div>
                   <p className="muted">Arrastre una imagen, haga clic para seleccionar o pegue con Ctrl+V</p>
                   <label style={{ cursor: 'pointer', display: 'inline-block', marginTop: 8 }}>
-                    <Button variant="secondary" size="sm" as="span">Seleccionar imagen</Button>
+                    <span className="btn btn-secondary btn-sm">Seleccionar imagen</span>
                     <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleFileInput} style={{ display: 'none' }} />
                   </label>
                 </div>

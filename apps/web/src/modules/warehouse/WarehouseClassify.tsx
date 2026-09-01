@@ -4,7 +4,7 @@ import { useSession } from '../../contexts/SessionContext';
 import { warehouseService } from '../../services';
 import { analyzerProposals } from '../../mock/source-items';
 import { groups, subgroups, categories, brands, units } from '../../mock/catalog';
-import { PageHeader, Button, Select, Textarea, Modal } from '../../components/ui';
+import { PageHeader, Button, Select, Textarea, Modal, ImageLightbox } from '../../components/ui';
 import { WorkflowTimeline, AnalyzerPanel, MasterCodePreview } from '../../components/workflow';
 import type { Request } from '../../types';
 
@@ -25,6 +25,9 @@ export const WarehouseClassify: React.FC = () => {
   const [returnModal, setReturnModal] = React.useState(false);
   const [returnReason, setReturnReason] = React.useState('');
   const [saved, setSaved] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [lightboxOpen, setLightboxOpen] = React.useState(false);
 
   React.useEffect(() => {
     if (id) {
@@ -53,14 +56,22 @@ export const WarehouseClassify: React.FC = () => {
   const filteredCategories = categories.filter(c => c.subgroupId === subgroupId);
 
   const handleSave = async () => {
-    if (!id) return;
-    await warehouseService.saveClassification(id, {
-      groupId, subgroupId, categoryId: categoryId || undefined,
-      brandId: brandId || undefined, unitId: unitId || undefined,
-      manufacturer: manufacturer || undefined, model: model || undefined,
-      partNumber: partNumber || undefined, application: application || undefined,
-    });
-    setSaved(true);
+    if (!id || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await warehouseService.saveClassification(id, {
+        groupId, subgroupId, categoryId: categoryId || undefined,
+        brandId: brandId || undefined, unitId: unitId || undefined,
+        manufacturer: manufacturer || undefined, model: model || undefined,
+        partNumber: partNumber || undefined, application: application || undefined,
+      });
+      setSaved(true);
+    } catch (err: any) {
+      setError(err?.message || 'Error al guardar la clasificación.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleReturn = async () => {
@@ -71,9 +82,25 @@ export const WarehouseClassify: React.FC = () => {
   };
 
   const handleApprove = async () => {
-    if (!id) return;
-    await warehouseService.approveClassification(id);
-    navigate('/warehouse');
+    if (!id || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      // Step 1: Save classification
+      await warehouseService.saveClassification(id, {
+        groupId, subgroupId, categoryId: categoryId || undefined,
+        brandId: brandId || undefined, unitId: unitId || undefined,
+        manufacturer: manufacturer || undefined, model: model || undefined,
+        partNumber: partNumber || undefined, application: application || undefined,
+      });
+      // Step 2: Approve only if save succeeded
+      await warehouseService.approveClassification(id);
+      navigate('/warehouse');
+    } catch (err: any) {
+      setError(err?.message || 'Error al procesar la clasificación.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (!request) return <div className="empty">Cargando...</div>;
@@ -81,7 +108,7 @@ export const WarehouseClassify: React.FC = () => {
   return (
     <div className="stack">
       <PageHeader
-        title={`Clasificación — REQ-${request.requestNumber}`}
+        title={`Clasificación — ${request.requestNumber}`}
         action={<Button variant="secondary" onClick={() => navigate('/warehouse')}>Volver</Button>}
       />
 
@@ -102,8 +129,10 @@ export const WarehouseClassify: React.FC = () => {
                 <img
                   src={`/api/v1/uploads/${request.referencePhotoUri}`}
                   alt="Imagen referencial"
-                  onClick={() => window.open(`/api/v1/uploads/${request.referencePhotoUri}`, '_blank')}
-                  style={{ maxWidth: '100%', maxHeight: 250, borderRadius: 8, cursor: 'zoom-in', border: '1px solid var(--border)' }}
+                  onClick={() => setLightboxOpen(true)}
+                  style={{ maxWidth: '100%', maxHeight: 250, borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border)' }}
+                  onMouseEnter={e => (e.currentTarget.style.opacity = '0.85')}
+                  onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
                 />
               </div>
             )}
@@ -197,10 +226,16 @@ export const WarehouseClassify: React.FC = () => {
 
           {/* Actions */}
           <div className="form-actions">
-            <Button variant="ghost" onClick={() => setReturnModal(true)}>Devolver</Button>
-            <Button variant="secondary" onClick={handleSave} disabled={saved}>{saved ? 'Guardado' : 'Guardar Borrador'}</Button>
-            <Button onClick={handleApprove} disabled={!groupId || !subgroupId}>Aprobar Clasificación</Button>
+            <Button variant="ghost" onClick={() => setReturnModal(true)} disabled={saving}>Devolver</Button>
+            <Button variant="secondary" onClick={handleSave} disabled={saving || saved}>{saving ? 'Guardando...' : saved ? 'Guardado' : 'Guardar Borrador'}</Button>
+            <Button onClick={handleApprove} disabled={saving || !groupId || !subgroupId}>{saving ? 'Procesando...' : 'Aprobar Clasificación'}</Button>
           </div>
+
+          {error && (
+            <div className="alert" style={{ marginTop: 8, background: '#fee2e2', borderColor: '#fca5a5', color: '#991b1b' }}>
+              {error}
+            </div>
+          )}
         </div>
 
         {/* Sidebar - Code preview */}
@@ -238,6 +273,16 @@ export const WarehouseClassify: React.FC = () => {
         <div className="alert" style={{ position: 'fixed', bottom: 20, right: 20, zIndex: 100 }}>
           ✓ Borrador guardado
         </div>
+      )}
+
+      {request.referencePhotoUri && (
+        <ImageLightbox
+          src={`/api/v1/uploads/${request.referencePhotoUri}`}
+          alt="Imagen referencial"
+          open={lightboxOpen}
+          onClose={() => setLightboxOpen(false)}
+          downloadFilename={request.referencePhotoUri.split('/').pop()}
+        />
       )}
     </div>
   );

@@ -7,6 +7,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { RequestsModule } from './modules/requests/requests.module';
 import { WarehouseModule } from './modules/warehouse/warehouse.module';
 import { AccountingModule } from './modules/accounting/accounting.module';
+import { FinalReviewModule } from './modules/final-review/final-review.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { PrismaModule } from './shared/prisma/prisma.module';
@@ -26,6 +27,7 @@ import { MasterCodeModule } from './shared/master-code/master-code.module';
     RequestsModule,
     WarehouseModule,
     AccountingModule,
+    FinalReviewModule,
     AuditModule,
     UploadsModule,
     WorkflowModule,

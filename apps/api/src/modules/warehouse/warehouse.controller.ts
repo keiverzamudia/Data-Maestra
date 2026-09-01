@@ -1,10 +1,13 @@
-import { Controller, Get, Post, Param, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiParam } from '@nestjs/swagger';
 import { WarehouseService } from './warehouse.service';
 import { AuthService } from '../auth/auth.service';
+import { RbacGuard } from '../auth/rbac.guard';
+import { RequirePermission } from '../auth/require-permission.decorator';
 
 @ApiTags('Warehouse')
 @Controller('warehouse')
+@UseGuards(RbacGuard)
 export class WarehouseController {
   constructor(
     private readonly warehouseService: WarehouseService,
@@ -12,12 +15,14 @@ export class WarehouseController {
   ) {}
 
   @Get('pending')
+  @RequirePermission('WAREHOUSE.VIEW')
   @ApiOperation({ summary: 'List requests pending warehouse classification' })
   findPending() {
     return this.warehouseService.findPendingClassification();
   }
 
   @Get(':id')
+  @RequirePermission('WAREHOUSE.VIEW')
   @ApiOperation({ summary: 'Get request with classification data for editing' })
   @ApiParam({ name: 'id', description: 'Request ID' })
   findOne(@Param('id') id: string) {
@@ -25,6 +30,7 @@ export class WarehouseController {
   }
 
   @Post(':id/classify')
+  @RequirePermission('WAREHOUSE.CLASSIFY')
   @ApiOperation({ summary: 'Save classification' })
   @ApiParam({ name: 'id', description: 'Request ID' })
   async classify(@Param('id') id: string, @Body() body: Record<string, unknown>) {
@@ -34,6 +40,7 @@ export class WarehouseController {
 
   @Post(':id/approve')
   @HttpCode(HttpStatus.OK)
+  @RequirePermission('WAREHOUSE.CLASSIFY')
   @ApiOperation({ summary: 'Approve classification (advances workflow)' })
   @ApiParam({ name: 'id', description: 'Request ID' })
   async approve(@Param('id') id: string) {
@@ -43,6 +50,7 @@ export class WarehouseController {
 
   @Post(':id/return')
   @HttpCode(HttpStatus.OK)
+  @RequirePermission('WAREHOUSE.CLASSIFY')
   @ApiOperation({ summary: 'Return request to requester' })
   @ApiParam({ name: 'id', description: 'Request ID' })
   async returnRequest(@Param('id') id: string, @Body('comment') comment?: string) {

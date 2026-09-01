@@ -57,7 +57,7 @@ export const DashboardPage: React.FC = () => {
             <tbody>
               {recentRequests.map(r => (
                 <tr key={r.id}>
-                  <td><strong>REQ-{r.requestNumber}</strong></td>
+                  <td><strong>{r.requestNumber}</strong></td>
                   <td className="ellipsis">{r.requestedDescription}</td>
                   <td><StatusBadge status={r.status} /></td>
                   <td className="muted small">{new Date(r.createdAt).toLocaleDateString('es-VE')}</td>

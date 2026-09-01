@@ -47,7 +47,7 @@ export const RequesterList: React.FC = () => {
             <tbody>
               {requests.map(r => (
                 <tr key={r.id} className="clickable" onClick={() => window.location.href = `/requester/${r.id}`}>
-                  <td><strong>REQ-{r.requestNumber}</strong></td>
+                  <td><strong>{r.requestNumber}</strong></td>
                   <td className="ellipsis">{r.requestedDescription}</td>
                   <td><StatusBadge status={r.status} /></td>
                   <td><PriorityBadge priority={r.priority} /></td>

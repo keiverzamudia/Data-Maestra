@@ -11,6 +11,7 @@ const allNav = [
   { key: 'approvals', to: '/approvals', label: 'Aprobaciones', icon: '✔', permission: 'MANAGER.APPROVE' },
   { key: 'warehouse', to: '/warehouse', label: 'Clasificación', icon: '▭', permission: 'WAREHOUSE.CLASSIFY' },
   { key: 'accounting', to: '/accounting', label: 'Contabilidad', icon: '✓', permission: 'ACCOUNTING.APPROVE' },
+  { key: 'final-review', to: '/final-review', label: 'Aprobación Final', icon: '★', permission: 'FINAL_REVIEW.APPROVE' },
   { key: 'imports', to: '/imports', label: 'Importaciones', icon: '↻', permission: 'IMPORT.RUN' },
   { key: 'audit', to: '/audit', label: 'Auditoría', icon: '≡', permission: 'AUDIT.VIEW' },
   { key: 'administration', to: '/admin', label: 'Administración', icon: '⚙', permission: 'ADMIN.MANAGE' },

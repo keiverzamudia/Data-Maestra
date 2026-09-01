@@ -22,6 +22,8 @@ export const AccountingList: React.FC = () => {
   const [codes, setCodes] = React.useState<AccountingCode[]>([{ code: '', description: '' }]);
   const [rejectModal, setRejectModal] = React.useState(false);
   const [rejectReason, setRejectReason] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
   const navigate = useNavigate();
 
   React.useEffect(() => {
@@ -43,21 +45,36 @@ export const AccountingList: React.FC = () => {
   };
 
   const handleApprove = async () => {
-    if (!selected) return;
-    await accountingService.approveAccounting(selected.id, codes.filter(c => c.code));
-    setSelected(null);
-    setCodes([{ code: '', description: '' }]);
-    // Refresh
-    accountingService.getPendingApprovals(session.company.id).then(setRequests);
+    if (!selected || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await accountingService.approveAccounting(selected.id, codes.filter(c => c.code));
+      setSelected(null);
+      setCodes([{ code: '', description: '' }]);
+      accountingService.getPendingApprovals(session.company.id).then(setRequests);
+    } catch (err: any) {
+      setError(err?.message || 'Error al aprobar la solicitud contable.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleReject = async () => {
-    if (!selected) return;
-    await accountingService.rejectAccounting(selected.id, rejectReason);
-    setSelected(null);
-    setRejectModal(false);
-    setRejectReason('');
-    accountingService.getPendingApprovals(session.company.id).then(setRequests);
+    if (!selected || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await accountingService.rejectAccounting(selected.id, rejectReason);
+      setSelected(null);
+      setRejectModal(false);
+      setRejectReason('');
+      accountingService.getPendingApprovals(session.company.id).then(setRequests);
+    } catch (err: any) {
+      setError(err?.message || 'Error al rechazar la solicitud.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (selected) {
@@ -67,7 +84,7 @@ export const AccountingList: React.FC = () => {
     return (
       <div className="stack">
         <PageHeader
-          title={`Aprobación Contable — REQ-${selected.requestNumber}`}
+          title={`Aprobación Contable — ${selected.requestNumber}`}
           action={<Button variant="secondary" onClick={() => setSelected(null)}>Volver</Button>}
         />
 
@@ -115,18 +132,24 @@ export const AccountingList: React.FC = () => {
             </div>
 
             <div className="form-actions">
-              <Button variant="danger" onClick={() => setRejectModal(true)}>Rechazar</Button>
-              <Button onClick={handleApprove} disabled={!codes.some(c => c.code)}>Aprobar</Button>
+              <Button variant="danger" onClick={() => setRejectModal(true)} disabled={saving}>Rechazar</Button>
+              <Button onClick={handleApprove} disabled={saving || !codes.some(c => c.code)}>{saving ? 'Procesando...' : 'Aprobar'}</Button>
             </div>
+
+            {error && (
+              <div className="alert" style={{ marginTop: 8, background: '#fee2e2', borderColor: '#fca5a5', color: '#991b1b' }}>
+                {error}
+              </div>
+            )}
           </div>
 
           <div className="side-panel">
             <div className="card p16">
               <span className="muted small">Código Master Propuesto</span>
               <div className="master-code-display" style={{ marginTop: 4 }}>
-                {selected.groupId && selected.subgroupId
+                {selected.masterCode || (selected.groupId && selected.subgroupId
                   ? `${groups.find(g => g.id === selected.groupId)?.code || ''}${subgroups.find(s => s.id === selected.subgroupId)?.code || ''}000001`
-                  : '—'}
+                  : '—')}
               </div>
             </div>
           </div>
@@ -142,8 +165,8 @@ export const AccountingList: React.FC = () => {
               rows={3}
             />
             <div className="form-actions">
-              <Button variant="secondary" onClick={() => setRejectModal(false)}>Cancelar</Button>
-              <Button variant="danger" onClick={handleReject} disabled={!rejectReason.trim()}>Rechazar</Button>
+              <Button variant="secondary" onClick={() => setRejectModal(false)} disabled={saving}>Cancelar</Button>
+              <Button variant="danger" onClick={handleReject} disabled={saving || !rejectReason.trim()}>{saving ? 'Rechazando...' : 'Rechazar'}</Button>
             </div>
           </div>
         </Modal>
@@ -179,16 +202,16 @@ export const AccountingList: React.FC = () => {
             <tbody>
               {filtered.map(r => (
                 <tr key={r.id}>
-                  <td><strong>REQ-{r.requestNumber}</strong></td>
+                  <td><strong>{r.requestNumber}</strong></td>
                   <td className="ellipsis">{r.requestedDescription}</td>
                   <td>{findName(groups, r.groupId)}</td>
                   <td>{findName(subgroups, r.subgroupId)}</td>
                   <td>{findName(brands, r.brandId)}</td>
                   <td>
                     <span className="master-code-display" style={{ fontSize: 12 }}>
-                      {r.groupId && r.subgroupId
+                      {r.masterCode || (r.groupId && r.subgroupId
                         ? `${groups.find(g => g.id === r.groupId)?.code || ''}${subgroups.find(s => s.id === r.subgroupId)?.code || ''}000001`
-                        : '—'}
+                        : '—')}
                     </span>
                   </td>
                   <td>{users.find(u => u.id === r.requesterId)?.displayName || '—'}</td>

@@ -6,6 +6,7 @@ import { DashboardPage } from '../modules/dashboard';
 import { RequesterList, RequestCreate, RequestDetailPage } from '../modules/requester';
 import { WarehouseList, WarehouseClassify } from '../modules/warehouse';
 import { AccountingList } from '../modules/accounting';
+import { FinalReviewPage } from '../modules/final-review';
 import { ApprovalsPage } from '../modules/approvals';
 import { ImportsPage } from '../modules/imports';
 import { AuditPage } from '../modules/audit';
@@ -34,6 +35,9 @@ export function App() {
 
               {/* Accounting module */}
               <Route path="/accounting" element={<AccountingList />} />
+
+              {/* Final Review module */}
+              <Route path="/final-review" element={<FinalReviewPage />} />
 
               {/* Imports / Pipeline */}
               <Route path="/imports" element={<ImportsPage />} />

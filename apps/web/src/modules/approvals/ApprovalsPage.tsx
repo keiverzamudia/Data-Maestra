@@ -58,7 +58,7 @@ export const ApprovalsPage: React.FC = () => {
     return (
       <div className="stack">
         <div className="flex-between">
-          <h2 className="h1">Solicitud REQ-{selected.requestNumber}</h2>
+          <h2 className="h1">Solicitud {selected.requestNumber}</h2>
           <Button variant="secondary" onClick={() => setSelected(null)}>Volver a la bandeja</Button>
         </div>
 
@@ -116,7 +116,7 @@ export const ApprovalsPage: React.FC = () => {
             <tbody>
               {filtered.map(r => (
                 <tr key={r.id}>
-                  <td><strong>REQ-{r.requestNumber}</strong></td>
+                  <td><strong>{r.requestNumber}</strong></td>
                   <td className="ellipsis">{r.requestedDescription}</td>
                   <td>{r.requesterId ? `Usuario ${r.requesterId}` : '—'}</td>
                   <td>{r.departmentId ? `Depto ${r.departmentId}` : '—'}</td>
