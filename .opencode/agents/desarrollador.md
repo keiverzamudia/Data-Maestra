@@ -1,7 +1,7 @@
 ---
 description: Agente de desarrollo para Data-Maestra — inspecciona, planifica, implementa, valida y finaliza
 mode: primary
-steps: 12
+steps: 40
 ---
 
 # Agente Desarrollador — Data-Maestra
