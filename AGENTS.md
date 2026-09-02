@@ -316,3 +316,26 @@ Para determinar cómo funciona actualmente el sistema, utilizar este orden:
 
 Los documentos en `docs/historial/fases/` NO representan necesariamente el comportamiento actual del sistema.
 OpenCode no debe usar documentación histórica para implementar cambios actuales salvo que el usuario lo solicite explícitamente.
+
+## 16. PRECEDENCIA DE SKILLS
+
+Orden de autoridad ante conflicto:
+
+1. Código actual del proyecto
+2. Schema Prisma y configuración actual
+3. Tests actuales
+4. AGENTS.md
+5. Skills específicas de Data-Maestra (`master-data`, `matching-engine`, `profit-integration`, `workflow-approval`, `backend-nestjs`, `frontend-react`, `postgresql`, `database-migrations`, `security`, `ui-ux`, `code-review`, `testing`)
+6. Skills genéricas externas (`improve-codebase-architecture`, `agent-browser`, `create-agent-tests`, `diagnose`)
+7. Documentación actual (`docs/MANUAL_DESARROLLADOR.md`, `docs/MAPA_PROYECTO.md`)
+8. Documentación histórica (`docs/historial/fases/`)
+
+Una skill externa **nunca** puede contradecir una regla específica de AGENTS.md o de las skills de dominio. Prevalece la regla específica del proyecto.
+
+Prioridad conceptual por dominio:
+- **Dominio:** master-data, workflow-approval, profit-integration, matching-engine
+- **Arquitectura:** improve-codebase-architecture, backend-nestjs, frontend-react, postgresql, database-migrations
+- **Calidad:** testing, create-agent-tests, code-review, diagnose
+- **Seguridad:** security
+- **UI:** ui-ux
+- **Navegador:** agent-browser

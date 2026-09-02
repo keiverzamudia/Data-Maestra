@@ -14,6 +14,7 @@ import { OrganizacionModule } from './modulos/organizacion/organizacion.module';
 import { ImportacionesModule } from './modulos/importaciones/importaciones.module';
 import { NotificacionesModule } from './modulos/notificaciones/notificaciones.module';
 import { PanelModule } from './modulos/panel/panel.module';
+import { ProfitModule } from './modulos/profit/profit.module';
 import { PrismaModule } from './comun/prisma/prisma.module';
 
 @Module({
@@ -36,6 +37,7 @@ import { PrismaModule } from './comun/prisma/prisma.module';
     ImportacionesModule,
     NotificacionesModule,
     PanelModule,
+    ProfitModule,
   ],
 })
 export class AppModule {}
