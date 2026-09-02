@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { CatalogsController } from '../src/modules/catalogs/catalogs.controller';
-import { CatalogsService } from '../src/modules/catalogs/catalogs.service';
+import { CatalogosController } from '../src/modulos/catalogos/catalogos.controller';
+import { CatalogosService } from '../src/modulos/catalogos/catalogos.service';
 
-function createCatalogsServiceMock() {
+function createCatalogosServiceMock() {
   return {
     findAllGroups: vi.fn(),
     findAllSubgroups: vi.fn(),
@@ -12,13 +12,13 @@ function createCatalogsServiceMock() {
   };
 }
 
-describe('CatalogsController', () => {
-  let controller: CatalogsController;
-  let catalogsService: ReturnType<typeof createCatalogsServiceMock>;
+describe('CatalogosController', () => {
+  let controller: CatalogosController;
+  let CatalogosService: ReturnType<typeof createCatalogosServiceMock>;
 
   beforeEach(() => {
-    catalogsService = createCatalogsServiceMock();
-    controller = new CatalogsController(catalogsService as unknown as CatalogsService);
+    CatalogosService = createCatalogosServiceMock();
+    controller = new CatalogosController(CatalogosService as unknown as CatalogosService);
   });
 
   describe('GET /catalogs/groups', () => {
@@ -27,16 +27,16 @@ describe('CatalogsController', () => {
         { id: 'g1', code: 'ELEC', name: 'Electrónica' },
         { id: 'g2', code: 'MEC', name: 'Mecánica' },
       ];
-      catalogsService.findAllGroups.mockResolvedValue(mockGroups);
+      CatalogosService.findAllGroups.mockResolvedValue(mockGroups);
 
       const result = await controller.findGroups();
 
       expect(result).toEqual(mockGroups);
-      expect(catalogsService.findAllGroups).toHaveBeenCalledOnce();
+      expect(CatalogosService.findAllGroups).toHaveBeenCalledOnce();
     });
 
     it('returns empty array when no groups exist', async () => {
-      catalogsService.findAllGroups.mockResolvedValue([]);
+      CatalogosService.findAllGroups.mockResolvedValue([]);
 
       const result = await controller.findGroups();
 
@@ -50,16 +50,16 @@ describe('CatalogsController', () => {
         { id: 'b1', name: 'Siemens' },
         { id: 'b2', name: 'ABB' },
       ];
-      catalogsService.findAllBrands.mockResolvedValue(mockBrands);
+      CatalogosService.findAllBrands.mockResolvedValue(mockBrands);
 
       const result = await controller.findBrands();
 
       expect(result).toEqual(mockBrands);
-      expect(catalogsService.findAllBrands).toHaveBeenCalledOnce();
+      expect(CatalogosService.findAllBrands).toHaveBeenCalledOnce();
     });
 
     it('returns empty array when no brands exist', async () => {
-      catalogsService.findAllBrands.mockResolvedValue([]);
+      CatalogosService.findAllBrands.mockResolvedValue([]);
 
       const result = await controller.findBrands();
 

@@ -7,8 +7,6 @@ Objetivo: preparar la base documental y de arquitectura del sistema de Data Mast
 Lee obligatoriamente:
 - AGENTS.md
 - docs/architecture.md
-- docs/state-machines.md
-- docs/rbac.md
 - db/schema.sql
 - todas las skills relevantes.
 

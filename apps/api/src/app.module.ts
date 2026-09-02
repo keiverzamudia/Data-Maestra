@@ -1,18 +1,20 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { join } from 'path';
-import { CatalogsModule } from './modules/catalogs/catalogs.module';
-import { HealthModule } from './modules/health/health.module';
-import { AuthModule } from './modules/auth/auth.module';
-import { RequestsModule } from './modules/requests/requests.module';
-import { WarehouseModule } from './modules/warehouse/warehouse.module';
-import { AccountingModule } from './modules/accounting/accounting.module';
-import { FinalReviewModule } from './modules/final-review/final-review.module';
-import { AuditModule } from './modules/audit/audit.module';
-import { UploadsModule } from './modules/uploads/uploads.module';
-import { PrismaModule } from './shared/prisma/prisma.module';
-import { WorkflowModule } from './shared/workflow/workflow.module';
-import { MasterCodeModule } from './shared/master-code/master-code.module';
+import { CatalogosModule } from './modulos/catalogos/catalogos.module';
+import { SaludModule } from './modulos/salud/salud.module';
+import { AutenticacionModule } from './modulos/autenticacion/autenticacion.module';
+import { SolicitudesModule } from './modulos/solicitudes/solicitud.module';
+import { AlmacenModule } from './modulos/almacen/almacen.module';
+import { ContabilidadModule } from './modulos/contabilidad/contabilidad.module';
+import { RevisionFinalModule } from './modulos/revision-final/revision-final.module';
+import { AuditoriaModule } from './modulos/auditoria/auditoria.module';
+import { ArchivosModule } from './modulos/archivos/archivos.module';
+import { OrganizacionModule } from './modulos/organizacion/organizacion.module';
+import { ImportacionesModule } from './modulos/importaciones/importaciones.module';
+import { NotificacionesModule } from './modulos/notificaciones/notificaciones.module';
+import { PanelModule } from './modulos/panel/panel.module';
+import { PrismaModule } from './comun/prisma/prisma.module';
 
 @Module({
   imports: [
@@ -21,17 +23,19 @@ import { MasterCodeModule } from './shared/master-code/master-code.module';
       envFilePath: [join(__dirname, '..', '.env.local'), join(__dirname, '..', '.env')],
     }),
     PrismaModule,
-    HealthModule,
-    CatalogsModule,
-    AuthModule,
-    RequestsModule,
-    WarehouseModule,
-    AccountingModule,
-    FinalReviewModule,
-    AuditModule,
-    UploadsModule,
-    WorkflowModule,
-    MasterCodeModule,
+    SaludModule,
+    CatalogosModule,
+    AutenticacionModule,
+    SolicitudesModule,
+    AlmacenModule,
+    ContabilidadModule,
+    RevisionFinalModule,
+    AuditoriaModule,
+    ArchivosModule,
+    OrganizacionModule,
+    ImportacionesModule,
+    NotificacionesModule,
+    PanelModule,
   ],
 })
 export class AppModule {}

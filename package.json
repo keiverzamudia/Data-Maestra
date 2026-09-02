@@ -10,6 +10,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "test": "pnpm --parallel -r run test",
+    "typecheck": "pnpm --filter @master-data/api run typecheck && pnpm --filter @master-data/web run typecheck",
     "test:e2e": "pnpm --filter @master-data/api run test:e2e",
     "db:generate": "pnpm --filter @master-data/api run db:generate",
     "db:push": "pnpm --filter @master-data/api run db:push",

@@ -36,6 +36,8 @@ model Company {
   requests     Request[]
   userRoles    UserRole[]
   auditEvents  AuditEvent[]  @relation("ActorCompany")
+  importRuns   ImportRun[]
+  sourceItems  SourceItem[]
 
   @@map("companies")
 }
@@ -57,6 +59,7 @@ model User {
   requests        Request[]
   createdMasterItems MasterItem[]
   approvals       Approval[]
+  notifications   Notification[]
 
   @@map("users")
 }
@@ -383,4 +386,76 @@ model AuditEvent {
   @@index([actorId])
   @@index([createdAt])
   @@map("audit_events")
+}
+
+// --- Import Runs ---
+
+model ImportRun {
+  id              String    @id @default(uuid())
+  sourceName      String    @map("source_name")
+  companyId       String?   @map("company_id")
+  status          String    @default("COMPLETED")
+  startedAt       DateTime  @default(now()) @map("started_at")
+  finishedAt      DateTime? @map("finished_at")
+  rowsRead        Int       @default(0) @map("rows_read")
+  rowsImported    Int       @default(0) @map("rows_imported")
+  rowsUnchanged   Int       @default(0) @map("rows_unchanged")
+  rowsFailed      Int       @default(0) @map("rows_failed")
+  rowsSkipped     Int       @default(0) @map("rows_skipped")
+  errorSummary    String?   @map("error_summary")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  company    Company? @relation(fields: [companyId], references: [id])
+  sourceItems SourceItem[]
+
+  @@index([companyId])
+  @@index([startedAt])
+  @@map("import_runs")
+}
+
+// --- Source Items ---
+
+model SourceItem {
+  id                    String   @id @default(uuid())
+  importRunId           String?  @map("import_run_id")
+  companyId             String?  @map("company_id")
+  sourceRecordId        String   @map("source_record_id")
+  sourceCode            String?  @map("source_code")
+  originalDescription   String   @map("original_description")
+  normalizedDescription String?  @map("normalized_description")
+  brand                 String?
+  manufacturer          String?
+  model                 String?
+  partNumber            String?  @map("part_number")
+  status                String   @default("IMPORTED")
+  lastSeenAt            DateTime @default(now()) @map("last_seen_at")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  importRun ImportRun? @relation(fields: [importRunId], references: [id])
+  company   Company?   @relation(fields: [companyId], references: [id])
+
+  @@index([importRunId])
+  @@index([companyId])
+  @@index([sourceRecordId])
+  @@map("source_items")
+}
+
+// --- Notifications ---
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  title     String
+  body      String
+  type      String   @default("info")
+  read      Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([userId, read])
+  @@index([createdAt])
+  @@map("notifications")
 }

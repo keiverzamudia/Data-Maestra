@@ -1,16 +1,16 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { CompanyProvider } from '../contexts/CompanyContext';
-import { SessionProvider } from '../contexts/SessionContext';
-import { AppLayout } from '../components/layout/AppLayout';
-import { DashboardPage } from '../modules/dashboard';
-import { RequesterList, RequestCreate, RequestDetailPage } from '../modules/requester';
-import { WarehouseList, WarehouseClassify } from '../modules/warehouse';
-import { AccountingList } from '../modules/accounting';
-import { FinalReviewPage } from '../modules/final-review';
-import { ApprovalsPage } from '../modules/approvals';
-import { ImportsPage } from '../modules/imports';
-import { AuditPage } from '../modules/audit';
-import { AdminPage } from '../modules/administration';
+import { CompanyProvider } from '../contextos/CompanyContext';
+import { SessionProvider } from '../contextos/SessionContext';
+import { AppLayout } from '../componentes/diseno/AppLayout';
+import { PanelPage } from '../modulos/panel';
+import { SolicitudesList, SolicitudCreate, SolicitudDetailPage } from '../modulos/solicitudes';
+import { AlmacenList, AlmacenClassify } from '../modulos/almacen';
+import { ContabilidadList } from '../modulos/contabilidad';
+import { RevisionFinalPage } from '../modulos/revision-final';
+import { AprobacionesPage } from '../modulos/aprobaciones';
+import { ImportacionesPage } from '../modulos/importaciones';
+import { AuditoriaPage } from '../modulos/auditoria';
+import { AdministracionPage } from '../modulos/administracion';
 
 export function App() {
   return (
@@ -19,43 +19,43 @@ export function App() {
         <CompanyProvider>
           <AppLayout>
             <Routes>
-              <Route path="/" element={<DashboardPage />} />
+              <Route path="/" element={<PanelPage />} />
 
-              {/* Requester module */}
-              <Route path="/requester" element={<RequesterList />} />
-              <Route path="/requester/new" element={<RequestCreate />} />
-              <Route path="/requester/:id" element={<RequestDetailPage />} />
+              {/* Solicitudes */}
+              <Route path="/requester" element={<SolicitudesList />} />
+              <Route path="/requester/new" element={<SolicitudCreate />} />
+              <Route path="/requester/:id" element={<SolicitudDetailPage />} />
 
-              {/* Warehouse / Classification module */}
-              <Route path="/warehouse" element={<WarehouseList />} />
-              <Route path="/warehouse/:id" element={<WarehouseClassify />} />
+              {/* Almacen */}
+              <Route path="/warehouse" element={<AlmacenList />} />
+              <Route path="/warehouse/:id" element={<AlmacenClassify />} />
 
-              {/* Manager approvals */}
-              <Route path="/approvals" element={<ApprovalsPage />} />
+              {/* Aprobaciones */}
+              <Route path="/approvals" element={<AprobacionesPage />} />
 
-              {/* Accounting module */}
-              <Route path="/accounting" element={<AccountingList />} />
+              {/* Contabilidad */}
+              <Route path="/accounting" element={<ContabilidadList />} />
 
-              {/* Final Review module */}
-              <Route path="/final-review" element={<FinalReviewPage />} />
+              {/* Revision Final */}
+              <Route path="/final-review" element={<RevisionFinalPage />} />
 
-              {/* Imports / Pipeline */}
-              <Route path="/imports" element={<ImportsPage />} />
+              {/* Importaciones */}
+              <Route path="/imports" element={<ImportacionesPage />} />
 
-              {/* Audit */}
-              <Route path="/audit" element={<AuditPage />} />
+              {/* Auditoria */}
+              <Route path="/audit" element={<AuditoriaPage />} />
 
-              {/* Administration */}
-              <Route path="/admin" element={<AdminPage />} />
+              {/* Administracion */}
+              <Route path="/admin" element={<AdministracionPage />} />
 
               {/* Legacy routes */}
-              <Route path="/requests" element={<RequesterList />} />
-              <Route path="/requests/new" element={<RequestCreate />} />
-              <Route path="/requests/:id" element={<RequestDetailPage />} />
-              <Route path="/matching" element={<ImportsPage />} />
-              <Route path="/data-quality" element={<ImportsPage />} />
-              <Route path="/master-items" element={<AdminPage />} />
-              <Route path="/source-items" element={<ImportsPage />} />
+              <Route path="/requests" element={<SolicitudesList />} />
+              <Route path="/requests/new" element={<SolicitudCreate />} />
+              <Route path="/requests/:id" element={<SolicitudDetailPage />} />
+              <Route path="/matching" element={<ImportacionesPage />} />
+              <Route path="/data-quality" element={<ImportacionesPage />} />
+              <Route path="/master-items" element={<AdministracionPage />} />
+              <Route path="/source-items" element={<ImportacionesPage />} />
             </Routes>
           </AppLayout>
         </CompanyProvider>

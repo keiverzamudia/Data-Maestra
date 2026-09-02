@@ -7,6 +7,10 @@ dist
 build
 *.tsbuildinfo
 
+# Vite generated config (from tsc -b)
+apps/web/vite.config.js
+apps/web/vite.config.d.ts
+
 # Environment
 .env
 .env.local
@@ -62,3 +66,6 @@ node_modules/.bin/.cache
 # Compressed archives
 *.zip
 *.tar.gz
+
+# Uploads (official: apps/api/uploads/)
+uploads/

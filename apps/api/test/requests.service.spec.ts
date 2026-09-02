@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
-import { RequestsService } from '../src/modules/requests/requests.service';
+import { SolicitudesService } from '../src/modulos/solicitudes/solicitud.service';
 
 function createPrismaMock() {
   return {
@@ -26,6 +26,8 @@ function createPrismaMock() {
     workflowTask: {
       create: vi.fn(),
       updateMany: vi.fn(),
+      findUnique: vi.fn(),
+      update: vi.fn(),
     },
     workflowHistory: {
       create: vi.fn(),
@@ -47,13 +49,13 @@ function createPrismaMock() {
   };
 }
 
-describe('RequestsService', () => {
-  let service: RequestsService;
+describe('SolicitudesService', () => {
+  let service: SolicitudesService;
   let prisma: ReturnType<typeof createPrismaMock>;
 
   beforeEach(() => {
     prisma = createPrismaMock();
-    service = new RequestsService(prisma as any);
+    service = new SolicitudesService(prisma as any);
   });
 
   describe('create', () => {
@@ -314,7 +316,12 @@ describe('RequestsService', () => {
         const tx = {
           request: { update: vi.fn().mockResolvedValue(updatedRequest) },
           workflowHistory: { create: vi.fn().mockResolvedValue({}) },
-          workflowTask: { updateMany: vi.fn().mockResolvedValue({}), create: vi.fn().mockResolvedValue({}) },
+          workflowTask: {
+            updateMany: vi.fn().mockResolvedValue({}),
+            findUnique: vi.fn().mockResolvedValue(null),
+            create: vi.fn().mockResolvedValue({}),
+            update: vi.fn().mockResolvedValue({}),
+          },
           workflowInstance: { update: vi.fn().mockResolvedValue({}) },
           approval: { create: vi.fn().mockResolvedValue({}) },
           auditEvent: { create: vi.fn().mockResolvedValue({}) },
@@ -330,6 +337,141 @@ describe('RequestsService', () => {
       );
 
       expect(result.status).toBe('DRAFT');
+    });
+
+    it('reactivates existing task on RETURN from PENDING_ACCOUNTING to PENDING_WAREHOUSE', async () => {
+      prisma.request.findUnique.mockResolvedValue({
+        id: 'req-1',
+        status: 'PENDING_ACCOUNTING',
+        workflowInstance: { id: 'wf-1' },
+      });
+
+      const updatedRequest = { id: 'req-1', status: 'PENDING_WAREHOUSE' };
+
+      const mockHistoryCreate = vi.fn().mockResolvedValue({});
+      const mockApprovalCreate = vi.fn().mockResolvedValue({});
+      const mockAuditCreate = vi.fn().mockResolvedValue({});
+      const mockTaskUpdateMany = vi.fn().mockResolvedValue({});
+      const mockTaskFindUnique = vi.fn().mockResolvedValue({ id: 'task-warehouse', instanceId: 'wf-1', stepCode: 'PENDING_WAREHOUSE', status: 'COMPLETED' });
+      const mockTaskUpdate = vi.fn().mockResolvedValue({});
+      const mockInstanceUpdate = vi.fn().mockResolvedValue({});
+
+      prisma.$transaction.mockImplementation(async (fn: any) => {
+        const tx = {
+          request: { update: vi.fn().mockResolvedValue(updatedRequest) },
+          workflowHistory: { create: mockHistoryCreate },
+          workflowTask: {
+            updateMany: mockTaskUpdateMany,
+            findUnique: mockTaskFindUnique,
+            update: mockTaskUpdate,
+            create: vi.fn().mockResolvedValue({}),
+          },
+          workflowInstance: { update: mockInstanceUpdate },
+          approval: { create: mockApprovalCreate },
+          auditEvent: { create: mockAuditCreate },
+        };
+        return fn(tx);
+      });
+
+      const result = await service.approve(
+        'req-1',
+        { action: 'RETURN', comment: 'Faltan datos contables' },
+        'user-4',
+        'company-1',
+      );
+
+      expect(result.status).toBe('PENDING_WAREHOUSE');
+
+      expect(mockTaskUpdateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ stepCode: 'PENDING_ACCOUNTING' }),
+          data: expect.objectContaining({ status: 'COMPLETED' }),
+        }),
+      );
+
+      expect(mockTaskFindUnique).toHaveBeenCalledWith({
+        where: {
+          instanceId_stepCode: {
+            instanceId: 'wf-1',
+            stepCode: 'PENDING_WAREHOUSE',
+          },
+        },
+      });
+
+      expect(mockTaskUpdate).toHaveBeenCalledWith({
+        where: { id: 'task-warehouse' },
+        data: { status: 'PENDING', completedAt: null },
+      });
+
+      expect(mockInstanceUpdate).toHaveBeenCalledWith({
+        where: { id: 'wf-1' },
+        data: { currentStepCode: 'PENDING_WAREHOUSE' },
+      });
+
+      expect(mockHistoryCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            fromStep: 'PENDING_ACCOUNTING',
+            toStep: 'PENDING_WAREHOUSE',
+            action: 'RETURN',
+          }),
+        }),
+      );
+
+      expect(mockApprovalCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'RETURN',
+            fromStatus: 'PENDING_ACCOUNTING',
+            toStatus: 'PENDING_WAREHOUSE',
+            comment: 'Faltan datos contables',
+          }),
+        }),
+      );
+    });
+
+    it('creates new task on RETURN when target task does not exist', async () => {
+      prisma.request.findUnique.mockResolvedValue({
+        id: 'req-1',
+        status: 'PENDING_ACCOUNTING',
+        workflowInstance: { id: 'wf-1' },
+      });
+
+      const updatedRequest = { id: 'req-1', status: 'PENDING_WAREHOUSE' };
+
+      const mockTaskCreate = vi.fn().mockResolvedValue({});
+
+      prisma.$transaction.mockImplementation(async (fn: any) => {
+        const tx = {
+          request: { update: vi.fn().mockResolvedValue(updatedRequest) },
+          workflowHistory: { create: vi.fn().mockResolvedValue({}) },
+          workflowTask: {
+            updateMany: vi.fn().mockResolvedValue({}),
+            findUnique: vi.fn().mockResolvedValue(null),
+            update: vi.fn().mockResolvedValue({}),
+            create: mockTaskCreate,
+          },
+          workflowInstance: { update: vi.fn().mockResolvedValue({}) },
+          approval: { create: vi.fn().mockResolvedValue({}) },
+          auditEvent: { create: vi.fn().mockResolvedValue({}) },
+        };
+        return fn(tx);
+      });
+
+      await service.approve(
+        'req-1',
+        { action: 'RETURN', comment: 'Retry' },
+        'user-4',
+        'company-1',
+      );
+
+      expect(mockTaskCreate).toHaveBeenCalledWith({
+        data: {
+          instanceId: 'wf-1',
+          stepCode: 'PENDING_WAREHOUSE',
+          status: 'PENDING',
+        },
+      });
     });
   });
 

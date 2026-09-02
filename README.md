@@ -1,32 +1,48 @@
-# Master Data & Homologación de Artículos — OpenCode Starter Kit
+# Data-Maestra
 
-Este paquete prepara un proyecto para homologar artículos provenientes de múltiples empresas/instancias de Profit Plus 2K8.
+Plataforma web para gestionar y homologar artículos de múltiples empresas/instancias de Profit Plus 2K8.
 
-## Objetivo
-- Importar/leer datos de Profit sin modificar el ERP durante la primera fase.
-- Normalizar y homologar artículos.
-- Crear un código maestro universal.
-- Relacionar múltiples códigos Profit con un mismo artículo maestro.
-- Implementar flujo de solicitud → gerente → almacén → contabilidad → control final.
-- Mantener trazabilidad y auditoría.
+## Stack
 
-## Stack objetivo
-- Backend: Node.js + TypeScript + NestJS
+- Backend: Node.js + TypeScript + NestJS + Prisma + SQLite
 - Frontend: React + TypeScript + Vite
-- DB: PostgreSQL
-- ORM: Prisma
-- API: REST
-- Validación: Zod en frontend / class-validator o DTO validation en backend
-- Tests: Vitest/Jest + Playwright
+- Testing: Vitest
 - Monorepo: pnpm workspaces
 
-## Regla de Fase 0
-No crear lógica de negocio ni integración real con Profit. Solo arquitectura, documentación, modelo de datos, contratos y decisiones técnicas.
+## Inicio rápido
 
-## Instalación
-1. Extraer el contenido en la raíz del repositorio.
-2. Revisar `AGENTS.md`.
-3. Revisar `docs/architecture.md`.
-4. Revisar `db/schema.sql`.
-5. Ejecutar OpenCode desde la raíz.
-6. Usar `prompts/phase-00.md` como primer prompt.
+```bash
+# Instalar dependencias
+pnpm install
+
+# Preparar base de datos
+cd apps/api && npx prisma db push && npx prisma db seed && cd ../..
+
+# Iniciar desarrollo
+pnpm dev
+```
+
+- Frontend: http://localhost:5173
+- API: http://localhost:3001
+- Health: http://localhost:3001/api/v1/health
+- Swagger: http://localhost:3001/docs
+
+## Comandos
+
+| Comando | Descripción |
+|---------|-------------|
+| `pnpm dev` | Iniciar frontend + backend |
+| `pnpm build` | Build completo |
+| `pnpm test` | Ejecutar tests |
+| `pnpm typecheck` | Verificar tipos |
+| `pnpm lint` | Linting |
+
+## Documentación
+
+- **`docs/MANUAL_DESARROLLADOR.md`** — Manual completo del desarrollador
+- **`docs/MAPA_PROYECTO.md`** — "¿Dónde está esto?"
+- **`docs/FLUJO_DATOS.md`** — Flujo de datos y workflow
+- **`docs/REGLAS_ARQUITECTURA.md`** — Reglas de arquitectura
+- **`docs/GLOSARIO_PROYECTO.md`** — Glosario de términos
+- **`docs/`** — Toda la documentación
+- **`AGENTS.md`** — Reglas para OpenCode

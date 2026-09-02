@@ -9,9 +9,7 @@ REGLA: esta fase NO permite implementar lógica de negocio, endpoints funcionale
 
 Primero lee:
 - AGENTS.md
-- docs/architecture.md
-- docs/state-machines.md
-- docs/rbac.md
+- docs/MANUAL_DESARROLLADOR.md
 - db/schema.sql
 - todas las skills relevantes.
 

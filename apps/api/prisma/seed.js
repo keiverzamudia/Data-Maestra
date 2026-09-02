@@ -31,17 +31,20 @@ async function main() {
     
     console.log('Cleaned existing data');
     
-    // Company
-    const company = await prisma.company.create({
-      data: { id: 'c1', name: 'Empresa A — Distribuidora Central', code: 'EMP-A' }
-    });
-    console.log('Created company:', company.name);
+    // Companies
+    const c1 = await prisma.company.create({ data: { id: 'c1', name: 'Empresa A — Distribuidora Central', code: 'EMP-A' } });
+    const c2 = await prisma.company.create({ data: { id: 'c2', name: 'Empresa B — Logística Norte', code: 'EMP-B' } });
+    const c3 = await prisma.company.create({ data: { id: 'c3', name: 'Empresa C — Servicios Industriales', code: 'EMP-C' } });
+    console.log('Created 3 companies');
     
     // Departments
-    await prisma.department.create({ data: { id: 'd1', companyId: company.id, name: 'Compras', code: 'COMPRAS' } });
-    await prisma.department.create({ data: { id: 'd2', companyId: company.id, name: 'Almacén', code: 'ALMACEN' } });
-    await prisma.department.create({ data: { id: 'd3', companyId: company.id, name: 'Contabilidad', code: 'CONTAB' } });
-    console.log('Created 3 departments');
+    await prisma.department.create({ data: { id: 'd1', companyId: c1.id, name: 'Compras', code: 'COMPRAS', managerId: 'u2' } });
+    await prisma.department.create({ data: { id: 'd2', companyId: c1.id, name: 'Almacén', code: 'ALMACEN', managerId: 'u3' } });
+    await prisma.department.create({ data: { id: 'd3', companyId: c1.id, name: 'Contabilidad', code: 'CONTAB', managerId: 'u4' } });
+    await prisma.department.create({ data: { id: 'd4', companyId: c2.id, name: 'Operaciones', code: 'OPER', managerId: 'u2' } });
+    await prisma.department.create({ data: { id: 'd5', companyId: c2.id, name: 'Almacén', code: 'ALM-B', managerId: 'u3' } });
+    await prisma.department.create({ data: { id: 'd6', companyId: c3.id, name: 'Mantenimiento', code: 'MANT', managerId: 'u5' } });
+    console.log('Created 6 departments');
     
     // Users
     await prisma.user.create({ data: { id: 'u1', username: 'j.perez', displayName: 'Juan Pérez', email: 'j.perez@empresa.com' } });
@@ -49,7 +52,8 @@ async function main() {
     await prisma.user.create({ data: { id: 'u3', username: 'c.rodriguez', displayName: 'Carlos Rodríguez', email: 'c.rodriguez@empresa.com' } });
     await prisma.user.create({ data: { id: 'u4', username: 'a.lopez', displayName: 'Ana López', email: 'a.lopez@empresa.com' } });
     await prisma.user.create({ data: { id: 'u5', username: 'l.martinez', displayName: 'Luis Martínez', email: 'l.martinez@empresa.com' } });
-    console.log('Created 5 users');
+    await prisma.user.create({ data: { id: 'u6', username: 's.admin', displayName: 'Super Admin', email: 'admin@empresa.com' } });
+    console.log('Created 6 users');
     
     // Roles
     const roles = [
@@ -59,30 +63,36 @@ async function main() {
       { id: 'r4', code: 'ACCOUNTING', name: 'Contabilidad' },
       { id: 'r5', code: 'FINAL_REVIEWER', name: 'Revisión Final' },
       { id: 'r6', code: 'MASTER_DATA_ADMIN', name: 'Admin MDM' },
+      { id: 'r7', code: 'AUDITOR', name: 'Auditor' },
     ];
     for (const role of roles) {
       await prisma.role.create({ data: role });
     }
-    console.log('Created 6 roles');
+    console.log('Created 7 roles');
     
     // Permissions
     const permissions = [
       'REQUEST.CREATE', 'REQUEST.VIEW', 'WAREHOUSE.CLASSIFY', 'WAREHOUSE.VIEW',
       'ACCOUNTING.APPROVE', 'ACCOUNTING.VIEW', 'IMPORT.RUN', 'IMPORT.VIEW',
-      'AUDIT.VIEW', 'ADMIN.MANAGE', 'DASHBOARD.VIEW'
+      'AUDIT.VIEW', 'ADMIN.MANAGE', 'DASHBOARD.VIEW', 'MANAGER.APPROVE',
+      'FINAL_REVIEW.APPROVE',
     ];
     for (const code of permissions) {
       await prisma.permission.create({ data: { code } });
     }
-    console.log('Created 11 permissions');
+    console.log('Created 13 permissions');
     
     // User Roles
-    await prisma.userRole.create({ data: { userId: 'u1', roleId: 'r1', companyId: company.id } });
-    await prisma.userRole.create({ data: { userId: 'u2', roleId: 'r2', companyId: company.id } });
-    await prisma.userRole.create({ data: { userId: 'u3', roleId: 'r3', companyId: company.id } });
-    await prisma.userRole.create({ data: { userId: 'u4', roleId: 'r4', companyId: company.id } });
-    await prisma.userRole.create({ data: { userId: 'u5', roleId: 'r6', companyId: company.id } });
-    console.log('Created 5 user roles');
+    await prisma.userRole.create({ data: { userId: 'u1', roleId: 'r1', companyId: c1.id } });
+    await prisma.userRole.create({ data: { userId: 'u2', roleId: 'r2', companyId: c1.id } });
+    await prisma.userRole.create({ data: { userId: 'u3', roleId: 'r3', companyId: c1.id } });
+    await prisma.userRole.create({ data: { userId: 'u4', roleId: 'r4', companyId: c1.id } });
+    await prisma.userRole.create({ data: { userId: 'u5', roleId: 'r6', companyId: c1.id } });
+    await prisma.userRole.create({ data: { userId: 'u2', roleId: 'r2', companyId: c2.id } });
+    await prisma.userRole.create({ data: { userId: 'u3', roleId: 'r3', companyId: c2.id } });
+    await prisma.userRole.create({ data: { userId: 'u5', roleId: 'r6', companyId: c2.id } });
+    await prisma.userRole.create({ data: { userId: 'u5', roleId: 'r6', companyId: c3.id } });
+    console.log('Created 9 user roles');
     
     // Catalog Groups
     await prisma.catalogGroup.create({ data: { id: 'g1', code: 'RVH', name: 'Repuestos de Vehículos' } });

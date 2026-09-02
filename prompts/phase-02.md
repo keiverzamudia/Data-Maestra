@@ -1,6 +1,6 @@
 # FASE 2 — Identidad, usuarios y RBAC
 
-Implementa autenticación y autorización base según docs/rbac.md.
+Implementa autenticación y autorización base.
 
 Debe existir:
 - usuarios;
