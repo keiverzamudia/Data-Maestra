@@ -241,7 +241,7 @@ describe('SolicitudesService', () => {
         const tx = {
           request: { update: vi.fn().mockResolvedValue(updatedRequest) },
           workflowHistory: { create: vi.fn().mockResolvedValue({}) },
-          workflowTask: { updateMany: vi.fn().mockResolvedValue({}), create: vi.fn().mockResolvedValue({}) },
+          workflowTask: { updateMany: vi.fn().mockResolvedValue({}), findUnique: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({}) },
           workflowInstance: { update: vi.fn().mockResolvedValue({}) },
           approval: { create: vi.fn().mockResolvedValue({}) },
           auditEvent: { create: vi.fn().mockResolvedValue({}) },
@@ -462,6 +462,103 @@ describe('SolicitudesService', () => {
         'req-1',
         { action: 'RETURN', comment: 'Retry' },
         'user-4',
+        'company-1',
+      );
+
+      expect(mockTaskCreate).toHaveBeenCalledWith({
+        data: {
+          instanceId: 'wf-1',
+          stepCode: 'PENDING_WAREHOUSE',
+          status: 'PENDING',
+        },
+      });
+    });
+
+    it('reactivates existing task on APPROVE when target task already exists', async () => {
+      prisma.request.findUnique.mockResolvedValue({
+        id: 'req-1',
+        status: 'PENDING_WAREHOUSE',
+        workflowInstance: { id: 'wf-1' },
+      });
+
+      const updatedRequest = { id: 'req-1', status: 'PENDING_ACCOUNTING' };
+
+      const mockTaskFindUnique = vi.fn().mockResolvedValue({ id: 'task-accounting', instanceId: 'wf-1', stepCode: 'PENDING_ACCOUNTING', status: 'COMPLETED' });
+      const mockTaskUpdate = vi.fn().mockResolvedValue({});
+
+      prisma.$transaction.mockImplementation(async (fn: any) => {
+        const tx = {
+          request: { update: vi.fn().mockResolvedValue(updatedRequest) },
+          workflowHistory: { create: vi.fn().mockResolvedValue({}) },
+          workflowTask: {
+            updateMany: vi.fn().mockResolvedValue({}),
+            findUnique: mockTaskFindUnique,
+            update: mockTaskUpdate,
+            create: vi.fn().mockResolvedValue({}),
+          },
+          workflowInstance: { update: vi.fn().mockResolvedValue({}) },
+          approval: { create: vi.fn().mockResolvedValue({}) },
+          auditEvent: { create: vi.fn().mockResolvedValue({}) },
+        };
+        return fn(tx);
+      });
+
+      const result = await service.approve(
+        'req-1',
+        { action: 'APPROVE' },
+        'user-3',
+        'company-1',
+      );
+
+      expect(result.status).toBe('PENDING_ACCOUNTING');
+
+      expect(mockTaskFindUnique).toHaveBeenCalledWith({
+        where: {
+          instanceId_stepCode: {
+            instanceId: 'wf-1',
+            stepCode: 'PENDING_ACCOUNTING',
+          },
+        },
+      });
+
+      expect(mockTaskUpdate).toHaveBeenCalledWith({
+        where: { id: 'task-accounting' },
+        data: { status: 'PENDING', completedAt: null },
+      });
+    });
+
+    it('creates new task on APPROVE when no existing task', async () => {
+      prisma.request.findUnique.mockResolvedValue({
+        id: 'req-1',
+        status: 'PENDING_MANAGER',
+        workflowInstance: { id: 'wf-1' },
+      });
+
+      const updatedRequest = { id: 'req-1', status: 'PENDING_WAREHOUSE' };
+
+      const mockTaskCreate = vi.fn().mockResolvedValue({});
+
+      prisma.$transaction.mockImplementation(async (fn: any) => {
+        const tx = {
+          request: { update: vi.fn().mockResolvedValue(updatedRequest) },
+          workflowHistory: { create: vi.fn().mockResolvedValue({}) },
+          workflowTask: {
+            updateMany: vi.fn().mockResolvedValue({}),
+            findUnique: vi.fn().mockResolvedValue(null),
+            update: vi.fn().mockResolvedValue({}),
+            create: mockTaskCreate,
+          },
+          workflowInstance: { update: vi.fn().mockResolvedValue({}) },
+          approval: { create: vi.fn().mockResolvedValue({}) },
+          auditEvent: { create: vi.fn().mockResolvedValue({}) },
+        };
+        return fn(tx);
+      });
+
+      await service.approve(
+        'req-1',
+        { action: 'APPROVE' },
+        'user-2',
         'company-1',
       );
 

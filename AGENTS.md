@@ -169,7 +169,7 @@ Sí se permite crear:
 
 ## 12. API RUNTIME — DO NOT MANAGE FROM AGENT
 
-OpenCode **NO** debe iniciar, detener, reiniciar ni reconstruir la API automaticamente durante una tarea normal.
+OpenCode **NO** debe iniciar, detener, reiniciar ni reconstruir la API automáticamente durante una tarea normal.
 
 OpenCode **NO** debe ejecutar:
 - `node apps/api/dist/main.js`
@@ -179,7 +179,7 @@ OpenCode **NO** debe ejecutar:
 - `Start-Process ... node ...`
 - `Start-Process ... -NoNewWindow`
 - `taskkill /IM node.exe`
-- `Stop-Process` sobre procesos Node sin identificacion precisa
+- `Stop-Process` sobre procesos Node sin identificación precisa
 - Cualquier comando inline para administrar el ciclo de vida de la API
 
 ### Estado normal
@@ -197,13 +197,13 @@ Si devuelve HTTP 200:
 - NO reiniciar la API
 - NO reconstruir la API
 - NO detener la API
-- NO ejecutar ningun proceso Node
+- NO ejecutar ningún proceso Node
 
 ### Si health falla
 
 Si `http://localhost:3001/api/v1/health` NO devuelve HTTP 200:
 
-- NO intentar solucionar automaticamente el problema iniciando Node
+- NO intentar solucionar automáticamente el problema iniciando Node
 - NO ejecutar Start-Process
 - NO ejecutar comandos background
 - NO intentar matar procesos Node
@@ -215,12 +215,12 @@ API NO DISPONIBLE.
 Ejecute manualmente:
 .\scripts\api-restart.ps1
 
-Cuando el health responda HTTP 200, indique a OpenCode que continune.
+Cuando el health responda HTTP 200, indique a OpenCode que continúe.
 ```
 
-### Verificacion rapida
+### Verificación rápida
 
-Desues de cualquier cambio de codigo que afecte el backend:
+Después de cualquier cambio de código que afecte el backend:
 1. Verificar `GET http://localhost:3001/api/v1/health`
 2. Si responde 200, continuar
 3. Si no responde, reportar y esperar
@@ -261,3 +261,58 @@ Antes de modificar archivos:
 No hacer refactors masivos no solicitados.
 No introducir dependencias innecesarias.
 No cambiar el stack sin justificarlo.
+
+## 14. REGLA DE FINALIZACIÓN DE TAREAS
+
+El agente debe considerar una tarea TERMINADA cuando:
+
+1. Los cambios solicitados fueron implementados.
+2. Los tests requeridos fueron ejecutados.
+3. Typecheck/build/lint requeridos fueron ejecutados.
+4. Si la tarea requiere API, health responde HTTP 200.
+5. No quedan errores conocidos relacionados con la tarea.
+6. Se puede entregar el informe final.
+
+Cuando todos los criterios anteriores estén cumplidos:
+
+- NO ejecutar más herramientas.
+- NO volver a inspeccionar archivos.
+- NO buscar problemas adicionales.
+- NO hacer refactors adicionales.
+- NO ejecutar otro test innecesariamente.
+- NO reiniciar la API.
+- NO volver a comprobar health repetidamente.
+- NO intentar mejorar el código fuera del alcance.
+- NO iniciar una nueva fase.
+- NO continuar analizando la tarea.
+- NO crear cambios adicionales.
+- Entregar inmediatamente el informe final.
+- TERMINAR LA EJECUCIÓN DEL AGENTE.
+
+Especialmente:
+
+Si una herramienta devuelve:
+
+    API READY
+    Health OK
+    HTTP 200
+
+y las demás validaciones de la tarea ya fueron completadas:
+
+NO ejecutar ninguna herramienta adicional.
+
+Ese resultado debe considerarse una señal de finalización.
+
+## 15. FUENTES DE VERDAD DEL PROYECTO
+
+Para determinar cómo funciona actualmente el sistema, utilizar este orden:
+
+1. Código actual
+2. Schema Prisma actual
+3. Configuración actual
+4. Tests actuales
+5. Documentación vigente (`docs/MANUAL_DESARROLLADOR.md`, `docs/MAPA_PROYECTO.md`)
+6. Documentación histórica (`docs/historial/fases/`) solamente como referencia
+
+Los documentos en `docs/historial/fases/` NO representan necesariamente el comportamiento actual del sistema.
+OpenCode no debe usar documentación histórica para implementar cambios actuales salvo que el usuario lo solicite explícitamente.

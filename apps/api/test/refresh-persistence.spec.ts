@@ -37,7 +37,7 @@ function createPrismaMock() {
       },
       auditEvent: { create: vi.fn(async () => ({})) },
       workflowInstance: { create: vi.fn(async (args: any) => ({ id: 'wf-1', ...args.data })), update: vi.fn(async () => ({})) },
-      workflowTask: { create: vi.fn(async () => ({})), updateMany: vi.fn(async () => ({})) },
+      workflowTask: { create: vi.fn(async () => ({})), updateMany: vi.fn(async () => ({})), findUnique: vi.fn(async () => null) },
       workflowHistory: { create: vi.fn(async () => ({})), findMany: vi.fn(async () => []) },
       approval: { create: vi.fn(async () => ({})) },
       catalogGroup: { findUnique: vi.fn(async () => ({ id: 'g1', code: 'RVH' })) },

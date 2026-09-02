@@ -136,10 +136,12 @@ model Department {
 // --- Catalog ---
 
 model CatalogGroup {
-  id     String  @id @default(uuid())
-  code   String  @unique
-  name   String
-  active Boolean @default(true)
+  id           String  @id @default(uuid())
+  code         String  @unique
+  name         String
+  active       Boolean @default(true)
+  sourceSystem String? @map("source_system")
+  sourceCode   String? @map("source_code")
 
   subgroups   CatalogSubgroup[]
   masterItems MasterItem[]
@@ -148,11 +150,13 @@ model CatalogGroup {
 }
 
 model CatalogSubgroup {
-  id      String  @id @default(uuid())
-  groupId String  @map("group_id")
-  code    String
-  name    String
-  active  Boolean @default(true)
+  id           String  @id @default(uuid())
+  groupId      String  @map("group_id")
+  code         String
+  name         String
+  active       Boolean @default(true)
+  sourceSystem String? @map("source_system")
+  sourceCode   String? @map("source_code")
 
   group       CatalogGroup     @relation(fields: [groupId], references: [id])
   categories  CatalogCategory[]

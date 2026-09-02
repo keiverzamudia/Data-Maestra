@@ -13,8 +13,11 @@ export const RequestDetail: React.FC<{ request: Request; showWorkflow?: boolean 
   const { grupos, subgrupos, categorias, marcas, unidades } = useCatalogos();
   const { usuarios, departamentos } = useOrganizacion();
   const requester = usuarios.find(u => u.id === request.requesterId);
-  const dept = departamentos.find(d => d.id === request.departmentId);
-  const manager = dept?.managerId ? usuarios.find(u => u.id === dept.managerId) : null;
+  const deptFromList = departamentos.find(d => d.id === request.departmentId);
+  const embeddedDept = (request as Request & { department?: { managerId?: string | null; name: string } }).department;
+  const dept = embeddedDept ?? deptFromList;
+  const managerId = (dept as any)?.managerId ?? deptFromList?.managerId;
+  const manager = managerId ? usuarios.find(u => u.id === managerId) : null;
 
   const [lightboxOpen, setLightboxOpen] = React.useState(false);
 

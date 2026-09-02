@@ -15,6 +15,8 @@ export interface UnitOfMeasure { id: string; code: string; name: string; }
 // ── Request / Workflow ──
 export type RequestStatus = 'DRAFT' | 'PENDING_MANAGER' | 'MANAGER_APPROVED' | 'PENDING_WAREHOUSE' | 'WAREHOUSE_APPROVED' | 'PENDING_ACCOUNTING' | 'ACCOUNTING_APPROVED' | 'PENDING_FINAL_REVIEW' | 'APPROVED' | 'MASTER_ACTIVE' | 'RETURNED' | 'REJECTED';
 export type Priority = 0 | 1 | 2 | 3;
+export interface DepartmentRef { id: string; name: string; code: string; managerId?: string | null; }
+export interface ApprovalRef { id: string; stepCode: string; actorId: string; action: string; fromStatus: string; toStatus: string; comment?: string | null; createdAt: string; actor?: { id: string; username: string; displayName: string }; }
 export interface Request {
   id: string; requestNumber: number; companyId: string; departmentId: string; requesterId: string;
   requestedDescription: string; purpose: string; referencePhotoUri?: string;
@@ -25,6 +27,8 @@ export interface Request {
   notes?: string; attributes?: Record<string,string>;
   accountingCodes?: { code: string; description: string }[];
   createdAt: string; updatedAt: string;
+  department?: DepartmentRef;
+  approvals?: ApprovalRef[];
 }
 export interface WorkflowStepDef { code: RequestStatus; name: string; order: number; slaHours?: number; }
 export interface WorkflowHistoryEntry { id: string; requestId: string; from: RequestStatus; to: RequestStatus; action: 'APPROVE'|'REJECT'|'RETURN'|'SUBMIT'; actorId: string; comment?: string; createdAt: string; }

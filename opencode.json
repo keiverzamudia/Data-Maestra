@@ -1,0 +1,15 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "default_agent": "desarrollador",
+  "agent": {
+    "desarrollador": {
+      "description": "Agente de desarrollo para Data-Maestra. Inspecciona, planifica, implementa, valida y finaliza.",
+      "mode": "primary",
+      "steps": 12,
+      "prompt": "Eres el agente de desarrollo de Data-Maestra. Sigue estrictamente AGENTS.md. Inspecciona antes de implementar. Planifica antes de escribir código. Valida después de cada cambio. Cuando las validaciones finales sean exitosas (tests, typecheck, build, health), entrega el informe final y TERMINA sin ejecutar herramientas adicionales."
+    }
+  },
+  "instructions": [
+    "AGENTS.md"
+  ]
+}

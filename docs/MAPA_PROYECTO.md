@@ -18,6 +18,7 @@
 | Auditoría | `apps/web/src/modulos/auditoria/` | `apps/api/src/modulos/auditoria/` |
 | Administración | `apps/web/src/modulos/administracion/` | `apps/api/src/modulos/organizacion/` |
 | Catálogos | `apps/web/src/hooks/useCatalogos.ts` | `apps/api/src/modulos/catalogos/` |
+| Importar catálogo | `POST /api/v1/catalogs/import` | `apps/api/src/modulos/catalogos/catalog-import.service.ts` |
 | Organización | `apps/web/src/hooks/useOrganizacion.ts` | `apps/api/src/modulos/organizacion/` |
 | Notificaciones | `apps/web/src/componentes/diseno/AppLayout.tsx` | `apps/api/src/modulos/notificaciones/` |
 | Auth/RBAC | `apps/web/src/contextos/SessionContext.tsx` | `apps/api/src/modulos/autenticacion/` |

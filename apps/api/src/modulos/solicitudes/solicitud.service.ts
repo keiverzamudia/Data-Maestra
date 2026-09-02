@@ -69,7 +69,7 @@ export class SolicitudesService {
       where,
       include: {
         company: { select: { id: true, name: true, code: true } },
-        department: { select: { id: true, name: true, code: true } },
+        department: { select: { id: true, name: true, code: true, managerId: true } },
         requester: { select: { id: true, username: true, displayName: true } },
         requestData: true,
         workflowInstance: { select: { id: true, currentStepCode: true } },
@@ -83,7 +83,7 @@ export class SolicitudesService {
       where: { id },
       include: {
         company: { select: { id: true, name: true, code: true } },
-        department: { select: { id: true, name: true, code: true } },
+        department: { select: { id: true, name: true, code: true, managerId: true } },
         requester: { select: { id: true, username: true, displayName: true } },
         requestData: true,
         workflowInstance: {
@@ -256,13 +256,29 @@ export class SolicitudesService {
             });
           }
         } else if (dto.action === 'APPROVE') {
-          await tx.workflowTask.create({
-            data: {
-              instanceId: request.workflowInstance.id,
-              stepCode: nextStatus,
-              status: 'PENDING',
+          const existingTask = await tx.workflowTask.findUnique({
+            where: {
+              instanceId_stepCode: {
+                instanceId: request.workflowInstance.id,
+                stepCode: nextStatus,
+              },
             },
           });
+
+          if (existingTask) {
+            await tx.workflowTask.update({
+              where: { id: existingTask.id },
+              data: { status: 'PENDING', completedAt: null },
+            });
+          } else {
+            await tx.workflowTask.create({
+              data: {
+                instanceId: request.workflowInstance.id,
+                stepCode: nextStatus,
+                status: 'PENDING',
+              },
+            });
+          }
         }
 
         await tx.workflowInstance.update({

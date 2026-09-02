@@ -10,11 +10,13 @@
 |---------|--------|
 | Motor actual (desarrollo) | SQLite |
 | Archivo | `apps/api/data/dev.db` |
-| Schema | `apps/api/prisma/schema.prisma` (461 líneas, 21 modelos) |
+| Schema | `apps/api/prisma/schema.prisma` (24 modelos, ~470 líneas) |
 | Migraciones | **Ninguna** — se usa `prisma db push` |
 | Seed | `apps/api/prisma/seed.js` |
 | Motor diseño (producción) | PostgreSQL 16 (Docker Compose) |
 | Schema diseño | `db/schema.sql` (347 líneas) |
+| Catálogos Profit | 38 grupos, 179 subgrupos importados |
+| Campos sourceSystem/sourceCode | Agregados para trazabilidad Profit |
 
 ---
 

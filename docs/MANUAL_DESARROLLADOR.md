@@ -330,12 +330,22 @@ La solicitud puede haber pasado anteriormente por Almacén, por lo que ya puede 
 ## 15. Catálogos
 
 **Backend:**
-- `apps/api/src/modulos/catalogos/catalogos.controller.ts` — Endpoints: groups, subgroups, categories, brands, units
-- `apps/api/src/modulos/catalogos/catalogos.service.ts`
+- `apps/api/src/modulos/catalogos/catalogos.controller.ts` — Endpoints: groups, subgroups, categories, brands, units, import
+- `apps/api/src/modulos/catalogos/catalogos.service.ts` — Lectura de catálogos
+- `apps/api/src/modulos/catalogos/catalog-import.service.ts` — Importación idempotente desde fuentes externas
 
 **Frontend:**
 - `apps/web/src/hooks/useCatalogos.ts` — Hook que carga desde API
 - `apps/web/src/servicios/api/api-catalogo-service.ts` → `/api/v1/catalogos`
+
+**Modelo de datos:**
+- `CatalogGroup`: code, name, active, sourceSystem, sourceCode
+- `CatalogSubgroup`: groupId, code, name, active, sourceSystem, sourceCode
+- `sourceSystem` = 'PROFIT' para registros provenientes de Profit
+- `sourceCode` = código original de Profit
+- Los registros locales (no Profit) tienen sourceSystem = null
+
+**Importación:** `POST /api/v1/catalogs/import` con body `{ rows: [...] }`. Idempotente.
 
 ---
 
