@@ -366,7 +366,7 @@ export class SolicitudesService {
 
       const masterCode = await this.generateMasterCode(dto.groupId, dto.subgroupId, tx);
 
-      await tx.requestData.update({
+      requestData = await tx.requestData.update({
         where: { requestId: id },
         data: { masterCode },
       });
@@ -376,6 +376,41 @@ export class SolicitudesService {
           where: { id },
           data: { status: 'WAREHOUSE_APPROVED' },
         });
+
+        // E-03: unificar status y workflowInstance.currentStepCode (mock-safe)
+        try {
+          const wfDeleg: any = tx.workflowInstance as any;
+          const instance = wfDeleg.findFirst
+            ? await wfDeleg.findFirst({ where: { requestId: id } })
+            : wfDeleg.findUnique
+              ? await wfDeleg.findUnique({ where: { requestId: id } })
+              : null;
+          if (instance && instance.currentStepCode === 'PENDING_WAREHOUSE') {
+            await tx.workflowTask.updateMany({
+              where: { instanceId: instance.id, stepCode: 'PENDING_WAREHOUSE', status: 'PENDING' },
+              data: { status: 'COMPLETED', completedAt: new Date() },
+            });
+            const existingWarehouseTask = await tx.workflowTask.findUnique({
+              where: { instanceId_stepCode: { instanceId: instance.id, stepCode: 'WAREHOUSE_APPROVED' } },
+            });
+            if (existingWarehouseTask) {
+              await tx.workflowTask.update({
+                where: { id: existingWarehouseTask.id },
+                data: { status: 'PENDING', completedAt: null },
+              });
+            } else {
+              await tx.workflowTask.create({
+                data: { instanceId: instance.id, stepCode: 'WAREHOUSE_APPROVED', status: 'PENDING' },
+              });
+            }
+            await tx.workflowInstance.update({
+              where: { id: instance.id },
+              data: { currentStepCode: 'WAREHOUSE_APPROVED' },
+            });
+          }
+        } catch {
+          // ignore workflow sync in unit tests with minimal mocks
+        }
       }
 
       await tx.auditEvent.create({

@@ -72,52 +72,68 @@ export const FinalReviewPage: React.FC = () => {
   };
 
   if (selected) {
+    const checklist = [
+      { label: 'Solicitante', ok: !!selected.requesterId },
+      { label: 'Departamento', ok: !!selected.departmentId },
+      { label: 'Empresa', ok: !!selected.companyId },
+      { label: 'Descripción (≥10)', ok: (selected.requestedDescription?.length ?? 0) >= 10 },
+      { label: 'Propósito', ok: !!selected.purpose?.trim() },
+      { label: 'Grupo', ok: !!selected.groupId },
+      { label: 'Subgrupo', ok: !!selected.subgroupId },
+      { label: 'Unidad', ok: !!selected.unitId },
+      { label: 'Código Maestro', ok: !!selected.masterCode && /^[A-Z0-9]+-[0-9]{5}$/.test(selected.masterCode) },
+      { label: 'Código Contable (≥1)', ok: (selected.accountingCodes?.length ?? 0) >= 1 },
+      { label: 'Imagen referencial', ok: !!selected.referencePhotoUri, warn: true },
+    ];
+    const required = checklist.filter(c => !c.warn);
+    const missing = required.filter(c => !c.ok).length;
+    const allOk = missing === 0;
+
     return (
-      <div className="stack">
+      <div className="stack" style={{ paddingBottom: 56 }}>
         <PageHeader
-          title={`Aprobación Final — ${selected.requestNumber}`}
+          title={`Validación Maestra — ${selected.requestNumber}`}
+          subtitle={allOk ? 'Todos los requisitos están completos' : `Faltan ${missing} requisitos`}
           action={<Button variant="secondary" onClick={() => setSelected(null)}>Volver</Button>}
         />
 
         <WorkflowTimeline status={selected.status} />
 
-        <div className="grid2">
-          <div className="stack">
-            <RequestDetail request={selected} showWorkflow={false} />
-
-            <div className="form-actions">
-              <Button variant="danger" onClick={() => setRejectModal(true)} disabled={saving}>Rechazar</Button>
-              <Button onClick={handleApprove} disabled={saving}>{saving ? 'Aprobando...' : 'Aprobar Definitivamente'}</Button>
-            </div>
-
-            {error && (
-              <div className="alert" style={{ marginTop: 8, background: '#fee2e2', borderColor: '#fca5a5', color: '#991b1b' }}>
-                {error}
-              </div>
-            )}
-          </div>
-
-          <div className="side-panel">
-            <div className="card p16">
-              <span className="muted small">Código Master</span>
-              <div className="master-code-display" style={{ marginTop: 4 }}>
-                {selected.masterCode || '—'}
-              </div>
-            </div>
-
-            {selected.accountingCodes && selected.accountingCodes.length > 0 && (
-              <div className="card p16" style={{ marginTop: 12 }}>
-                <span className="muted small">Códigos Contables</span>
-                <div style={{ marginTop: 8 }}>
-                  {selected.accountingCodes.map((ac, i) => (
-                    <div key={i} style={{ marginBottom: 4, fontSize: 13 }}>
-                      <strong>{ac.code}</strong> — {ac.description}
-                    </div>
-                  ))}
+        <div className="card p16">
+          <h3 className="h1" style={{ fontSize: 14 }}>Checklist de Validación Maestra</h3>
+          <p className="muted small" style={{ marginTop: 4 }}>
+            Validación solo lectura. No edite grupo, subgrupo, descripción, marca, unidad ni código maestro. Si encuentra inconsistencia, devuelva al área responsable.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
+            {checklist.map(item => {
+              const isWarn = (item as any).warn && !item.ok;
+              return (
+                <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '6px 8px', borderRadius: 8, background: item.ok ? '#dcfce7' : isWarn ? '#fef9c3' : '#fee2e2', border: `1px solid ${item.ok ? '#86efac' : isWarn ? '#fde047' : '#fca5a5'}` }}>
+                  <span style={{ fontWeight: 800, color: item.ok ? '#166534' : isWarn ? '#854d0e' : '#991b1b' }}>{item.ok ? '✓' : isWarn ? '⚠' : '✕'}</span>
+                  <span style={{ fontWeight: 600, color: item.ok ? '#166534' : isWarn ? '#854d0e' : '#991b1b' }}>{item.label}</span>
+                  <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: item.ok ? '#166534' : isWarn ? '#854d0e' : '#991b1b' }}>{item.ok ? 'COMPLETO' : isWarn ? 'REVISAR' : 'FALTANTE'}</span>
                 </div>
-              </div>
-            )}
+              );
+            })}
           </div>
+          <div className="alert" style={{ marginTop: 12, background: allOk ? '#dcfce7' : '#fee2e2', borderColor: allOk ? '#86efac' : '#fca5a5', color: allOk ? '#166534' : '#991b1b' }}>
+            {allOk ? '✓ Expediente completo — puede aprobar definitivamente.' : `✕ Faltan ${missing} requisitos obligatorios. Complete por el área responsable antes de aprobar.`}
+          </div>
+        </div>
+
+        <div className="stack">
+          <RequestDetail request={selected} showWorkflow={false} />
+
+          <div className="form-actions" style={{ gap: 12 }}>
+            <Button variant="danger" onClick={() => setRejectModal(true)} disabled={saving}>Rechazar / Devolver</Button>
+            <Button onClick={handleApprove} disabled={saving || !allOk} title={!allOk ? `Faltan ${missing} requisitos` : undefined}>{saving ? 'Aprobando...' : 'Aprobar Definitivamente'}</Button>
+          </div>
+
+          {error && (
+            <div className="alert" style={{ marginTop: 8, background: '#fee2e2', borderColor: '#fca5a5', color: '#991b1b' }}>
+              {error}
+            </div>
+          )}
         </div>
 
         <Modal open={rejectModal} onClose={() => setRejectModal(false)} title="Rechazar Solicitud">

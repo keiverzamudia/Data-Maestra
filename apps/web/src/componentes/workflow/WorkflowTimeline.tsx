@@ -6,14 +6,15 @@ const stepOrder: { code: RequestStatus; name: string; order: number }[] = [
   { code: 'PENDING_MANAGER', name: 'Gerente', order: 1 },
   { code: 'PENDING_WAREHOUSE', name: 'Almacén', order: 2 },
   { code: 'PENDING_ACCOUNTING', name: 'Contabilidad', order: 3 },
-  { code: 'APPROVED', name: 'Aprobado', order: 4 },
-  { code: 'MASTER_ACTIVE', name: 'Master', order: 5 },
+  { code: 'PENDING_FINAL_REVIEW', name: 'Validación Maestra', order: 4 },
+  { code: 'APPROVED', name: 'Aprobación Final', order: 5 },
+  { code: 'MASTER_ACTIVE', name: 'Master Activo', order: 6 },
 ];
 
 function getStepIndex(status: RequestStatus): number {
   const special: Record<string, number> = {
     MANAGER_APPROVED: 1, WAREHOUSE_APPROVED: 2, ACCOUNTING_APPROVED: 3,
-    PENDING_FINAL_REVIEW: 3, RETURNED: -1, REJECTED: -1,
+    RETURNED: -1, REJECTED: -1,
   };
   if (special[status] !== undefined) return special[status];
   const idx = stepOrder.findIndex(s => s.code === status);

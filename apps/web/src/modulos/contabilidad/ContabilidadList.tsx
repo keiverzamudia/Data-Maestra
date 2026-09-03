@@ -4,7 +4,7 @@ import { useSession } from '../../contextos/SessionContext';
 import { accountingService } from '../../servicios';
 import { useCatalogos } from '../../hooks/useCatalogos';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
-import { PageHeader, Button, SearchInput, StatusBadge, EmptyState, Modal, Input, Textarea } from '../../componentes/ui';
+import { PageHeader, Button, SearchInput, StatusBadge, EmptyState, Modal, Input, Textarea, ImageLightbox } from '../../componentes/ui';
 import { WorkflowTimeline } from '../../componentes/workflow';
 import type { AccountingCode } from '../../contratos';
 import type { Request } from '../../tipos';
@@ -26,6 +26,7 @@ export const AccountingList: React.FC = () => {
   const [rejectReason, setRejectReason] = React.useState('');
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [lightboxOpen, setLightboxOpen] = React.useState(false);
   const navigate = useNavigate();
 
   React.useEffect(() => {
@@ -90,10 +91,29 @@ export const AccountingList: React.FC = () => {
           action={<Button variant="secondary" onClick={() => setSelected(null)}>Volver</Button>}
         />
 
-        <WorkflowTimeline status={selected.status} />
+          <WorkflowTimeline status={selected.status} />
 
         <div className="grid2">
           <div className="stack">
+            {selected.referencePhotoUri && (
+              <div className="card p16">
+                <span className="muted small">Imagen referencial</span>
+                <img
+                  src={`/api/v1/uploads/${selected.referencePhotoUri}`}
+                  alt="Imagen referencial"
+                  onClick={() => setLightboxOpen(true)}
+                  style={{ maxWidth: '100%', maxHeight: 250, borderRadius: 8, marginTop: 8, cursor: 'pointer', border: '1px solid var(--border)' }}
+                />
+                <ImageLightbox
+                  src={`/api/v1/uploads/${selected.referencePhotoUri}`}
+                  alt="Imagen referencial"
+                  open={lightboxOpen}
+                  onClose={() => setLightboxOpen(false)}
+                  downloadFilename={selected.referencePhotoUri.split('/').pop()}
+                />
+              </div>
+            )}
+
             <div className="card p16">
               <h3 className="h1" style={{ fontSize: 16 }}>Clasificación de Almacén</h3>
               <div className="review-grid" style={{ marginTop: 8 }}>

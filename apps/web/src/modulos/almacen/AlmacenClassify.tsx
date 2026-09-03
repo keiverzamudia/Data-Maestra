@@ -110,12 +110,13 @@ export const WarehouseClassify: React.FC = () => {
 
       <WorkflowTimeline status={request.status} />
 
-      {/* Rejection note from accounting */}
+      {/* Rejection note from accounting — E-05 fix: último RETURN/REJECT */}
       {request.status === 'PENDING_WAREHOUSE' && request.approvals && (
         (() => {
-          const lastRejection = request.approvals!.find(
-            (a) => (a.action === 'RETURN' || a.action === 'REJECT') && a.comment
-          );
+          const candidates = request.approvals!
+            .filter((a) => (a.action === 'RETURN' || a.action === 'REJECT') && a.comment)
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          const lastRejection = candidates[0];
           if (lastRejection) {
             return (
               <div className="card p16" style={{ borderLeft: '4px solid #dc2626' }}>
