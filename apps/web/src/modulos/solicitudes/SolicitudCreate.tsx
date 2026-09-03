@@ -154,7 +154,7 @@ export const RequestCreate: React.FC = () => {
     <div className="stack" onPaste={handlePaste}>
       <PageHeader title="Nueva Solicitud" subtitle="Solicitud de nuevo artículo" />
 
-      <WorkflowTimeline status="DRAFT" />
+      <WorkflowTimeline status="BORRADOR" />
 
       <div className="grid2">
         <div className="stack">

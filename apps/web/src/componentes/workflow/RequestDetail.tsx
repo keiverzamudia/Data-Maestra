@@ -146,6 +146,7 @@ export const RequestDetail: React.FC<{ request: Request; showWorkflow?: boolean 
           <div style={{ marginTop: 8 }}>
             {request.accountingCodes.map((ac, i) => (
               <div key={i} style={{ marginBottom: 4, fontSize: 13 }}>
+                {ac.position && <span className="badge badge-blue" style={{ marginRight: 6 }}>{ac.position}</span>}
                 <strong>{ac.code}</strong> — {ac.description}
               </div>
             ))}

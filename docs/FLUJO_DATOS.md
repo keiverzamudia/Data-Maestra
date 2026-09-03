@@ -45,34 +45,34 @@
 
 ```
 Solicitante crea solicitud
-    ↓ DRAFT
+    ↓ BORRADOR
 Solicitante envía (submit)
-    ↓ PENDING_MANAGER
+    ↓ PENDIENTE_GERENTE
 Gerente aprueba
-    ↓ PENDING_WAREHOUSE
+    ↓ PENDIENTE_ALMACEN
 Almacén clasifica (classify)
-    ↓ WAREHOUSE_APPROVED
+    ↓ ALMACEN_APROBADO
 Almacén aprueba (approve)
-    ↓ PENDING_ACCOUNTING
+    ↓ PENDIENTE_CONTABILIDAD
 Contabilidad aprueba con códigos
-    ↓ PENDING_FINAL_REVIEW
+    ↓ PENDIENTE_VALIDACION_MAESTRA
 Revisión final aprueba
-    ↓ APPROVED
+    ↓ APROBADO_FINAL
 ```
 
 ### Retorno (devolución)
 
 ```
-Gerente devuelve → DRAFT
-Almacén devuelve → PENDING_MANAGER
-Contabilidad devuelve → PENDING_WAREHOUSE
-Revisión final devuelve → PENDING_ACCOUNTING
+Gerente devuelve → BORRADOR
+Almacén devuelve → PENDIENTE_GERENTE
+Contabilidad devuelve → PENDIENTE_ALMACEN
+Revisión final devuelve → PENDIENTE_CONTABILIDAD
 ```
 
 ### Rechazo
 
 ```
-Cualquier aprobador rechaza → REJECTED (terminal)
+Cualquier aprobador rechaza → RECHAZADO (terminal)
 ```
 
 ---
@@ -110,7 +110,7 @@ Para RETURN específicamente:
 4. Almacén aprueba:
    POST /api/v1/almacen/:id/approve
 
-5. Backend avanza a PENDING_ACCOUNTING
+5. Backend avanza a PENDIENTE_CONTABILIDAD
 
 6. Contabilidad ve los datos en:
    GET /api/v1/contabilidad/pending

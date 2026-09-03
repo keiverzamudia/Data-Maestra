@@ -59,6 +59,33 @@ describe('ProfitAdapterService', () => {
     expect(content).toContain('PROTECTION');
   });
 
+  it('exposes READ-ONLY accounts catalog from sccuenta (Fase 8E.6)', async () => {
+    const fs = await import('fs');
+    const content = fs.readFileSync('src/modulos/profit/profit-adapter.service.ts', 'utf-8');
+    expect(content).toContain('getAccounts');
+    expect(content).toContain('C_DIST.dbo.sccuenta');
+    expect(content).toContain('detalle = 1');
+    expect(content).toContain('inactivo = 0');
+    expect(content).toContain('OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY');
+    // xart_cont queda como referencia de uso, no como catálogo
+    expect(content).not.toMatch(/FROM dbo\.xart_cont[^`]*AS code/);
+  });
+
+  it('searches accounts by code AND name (Fase 8E.6.1)', async () => {
+    const fs = await import('fs');
+    const content = fs.readFileSync('src/modulos/profit/profit-adapter.service.ts', 'utf-8');
+    expect(content).toContain(`co_cue LIKE '%' + @search + '%'`);
+    expect(content).toContain(`des_cue LIKE '%' + @search + '%'`);
+  });
+
+  it('exposes brands from colores with code and description (Fase 8F)', async () => {
+    const fs = await import('fs');
+    const content = fs.readFileSync('src/modulos/profit/profit-adapter.service.ts', 'utf-8');
+    expect(content).toContain('getBrands');
+    expect(content).toContain('SELECT co_col, des_col FROM dbo.colores ORDER BY co_col');
+    expect(content).toContain('LTRIM(RTRIM(@co_col))');
+  });
+
   it('has timeouts configured', async () => {
     const fs = await import('fs');
     const content = fs.readFileSync('src/modulos/profit/profit-adapter.service.ts', 'utf-8');

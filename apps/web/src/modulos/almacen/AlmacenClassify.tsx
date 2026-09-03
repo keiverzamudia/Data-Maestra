@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useSession } from '../../contextos/SessionContext';
 import { warehouseService } from '../../servicios';
 import { useCatalogos } from '../../hooks/useCatalogos';
+import { useProfitCatalogos } from '../../hooks/useProfitCatalogos';
 import { analyzerProposals } from '../../mock/source-items';
 import { PageHeader, Button, Select, Textarea, Modal, ImageLightbox } from '../../componentes/ui';
 import { WorkflowTimeline, AnalyzerPanel, MasterCodePreview } from '../../componentes/workflow';
@@ -12,13 +13,25 @@ export const WarehouseClassify: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { session } = useSession();
-  const { grupos, subgrupos, categorias, marcas, unidades, loading: loadingCatalogs } = useCatalogos();
+  // Catálogo local (unidades + traducción ID→código para solicitudes existentes).
+  const { grupos: localGrupos, subgrupos: localSubgrupos, categorias: localCategorias, marcas: localMarcas, unidades } = useCatalogos();
   const [request, setRequest] = React.useState<Request | null>(null);
-  const [groupId, setGroupId] = React.useState('');
-  const [subgroupId, setSubgroupId] = React.useState('');
-  const [categoryId, setCategoryId] = React.useState('');
-  const [brandId, setBrandId] = React.useState('');
+  // Códigos Profit directos (FASE 8F): el subgrupo se identifica por (grupo, subgrupo).
+  const [groupCode, setGroupCode] = React.useState('');
+  const [subgroupCode, setSubgroupCode] = React.useState('');
+  const [categoryCode, setCategoryCode] = React.useState('');
+  const [categoryName, setCategoryName] = React.useState('');
+  const [brandCode, setBrandCode] = React.useState('');
+  const [brandName, setBrandName] = React.useState('');
+  // IDs legacy de la solicitud (compatibilidad histórica): se envían solo si
+  // el usuario no elige un código Profit nuevo para ese campo.
+  const [legacyCategoryId, setLegacyCategoryId] = React.useState('');
+  const [legacyBrandId, setLegacyBrandId] = React.useState('');
   const [unitId, setUnitId] = React.useState('');
+  const {
+    grupos: pGrupos, subgrupos: pSubgrupos, categorias: pCategorias, marcas: pMarcas,
+    loading: loadingProfit, error: profitError,
+  } = useProfitCatalogos(groupCode || undefined);
   const [manufacturer, setManufacturer] = React.useState('');
   const [model, setModel] = React.useState('');
   const [partNumber, setPartNumber] = React.useState('');
@@ -30,15 +43,47 @@ export const WarehouseClassify: React.FC = () => {
   const [error, setError] = React.useState<string | null>(null);
   const [lightboxOpen, setLightboxOpen] = React.useState(false);
 
+  // Prefill: traduce IDs locales guardados a códigos Profit (el catálogo local
+  // cubre los códigos Profit, verificado en FASE 8F).
+  const idToCode = React.useCallback((kind: 'group' | 'subgroup' | 'category' | 'brand', valueId?: string) => {
+    if (!valueId) return { code: '', name: '' };
+    if (kind === 'group') {
+      const g = localGrupos.find(x => x.id === valueId);
+      return { code: g?.code ?? '', name: g?.name ?? '' };
+    }
+    if (kind === 'subgroup') {
+      const s = localSubgrupos.find(x => x.id === valueId);
+      return { code: s?.code ?? '', name: s?.name ?? '' };
+    }
+    if (kind === 'category') {
+      const c = localCategorias.find(x => x.id === valueId);
+      return { code: c?.code ?? '', name: c?.name ?? '' };
+    }
+    const b = localMarcas.find(x => x.id === valueId);
+    return { code: '', name: b?.name ?? '' };
+  }, [localGrupos, localSubgrupos, localCategorias, localMarcas]);
+
+  // El prefill solo se aplica una vez: nunca debe pisar la selección del usuario
+  // aunque los catálogos se recarguen.
+  const prefilledRef = React.useRef(false);
+
   React.useEffect(() => {
-    if (id) {
+    if (id && !prefilledRef.current) {
       warehouseService.getRequestForClassification(id).then(r => {
+        if (prefilledRef.current) return;
+        prefilledRef.current = true;
         if (r) {
           setRequest(r);
-          if (r.groupId) setGroupId(r.groupId);
-          if (r.subgroupId) setSubgroupId(r.subgroupId);
-          if (r.categoryId) setCategoryId(r.categoryId);
-          if (r.brandId) setBrandId(r.brandId);
+          setGroupCode(idToCode('group', r.groupId).code);
+          setSubgroupCode(idToCode('subgroup', r.subgroupId).code);
+          const cat = idToCode('category', r.categoryId);
+          setCategoryCode(cat.code);
+          setCategoryName(cat.name);
+          if (r.categoryId) setLegacyCategoryId(r.categoryId);
+          const brand = idToCode('brand', r.brandId);
+          setBrandCode(brand.code);
+          setBrandName(brand.name);
+          if (r.brandId) setLegacyBrandId(r.brandId);
           if (r.unitId) setUnitId(r.unitId);
           if (r.manufacturer) setManufacturer(r.manufacturer);
           if (r.model) setModel(r.model);
@@ -47,23 +92,32 @@ export const WarehouseClassify: React.FC = () => {
         }
       });
     }
-  }, [id]);
+  }, [id, idToCode]);
 
   const analyzerProposal = id ? analyzerProposals[id] : null;
-  const filteredSubgroups = subgrupos.filter(s => s.groupId === groupId);
-  const filteredCategories = categorias.filter(c => c.subgroupId === subgroupId);
+  // El backend ya filtra subgrupos por grupo (co_lin); la lista es del grupo.
+  const filteredSubgroups = pSubgrupos;
+
+  const buildPayload = () => ({
+    groupCode, subgroupCode,
+    categoryCode: categoryCode || undefined,
+    categoryName: categoryName || undefined,
+    brandCode: brandCode || undefined,
+    brandName: brandName || undefined,
+    // Compatibilidad histórica: solo si no se eligió código Profit nuevo.
+    categoryId: !categoryCode && legacyCategoryId ? legacyCategoryId : undefined,
+    brandId: !brandCode && legacyBrandId ? legacyBrandId : undefined,
+    unitId: unitId || undefined,
+    manufacturer: manufacturer || undefined, model: model || undefined,
+    partNumber: partNumber || undefined, application: application || undefined,
+  });
 
   const handleSave = async () => {
     if (!id || saving) return;
     setSaving(true);
     setError(null);
     try {
-      await warehouseService.saveClassification(id, {
-        groupId, subgroupId, categoryId: categoryId || undefined,
-        brandId: brandId || undefined, unitId: unitId || undefined,
-        manufacturer: manufacturer || undefined, model: model || undefined,
-        partNumber: partNumber || undefined, application: application || undefined,
-      });
+      await warehouseService.saveClassification(id, buildPayload());
       setSaved(true);
     } catch (err: any) {
       setError(err?.message || 'Error al guardar la clasificación.');
@@ -84,12 +138,7 @@ export const WarehouseClassify: React.FC = () => {
     setSaving(true);
     setError(null);
     try {
-      await warehouseService.saveClassification(id, {
-        groupId, subgroupId, categoryId: categoryId || undefined,
-        brandId: brandId || undefined, unitId: unitId || undefined,
-        manufacturer: manufacturer || undefined, model: model || undefined,
-        partNumber: partNumber || undefined, application: application || undefined,
-      });
+      await warehouseService.saveClassification(id, buildPayload());
       await warehouseService.approveClassification(id);
       navigate('/warehouse');
     } catch (err: any) {
@@ -99,7 +148,7 @@ export const WarehouseClassify: React.FC = () => {
     }
   };
 
-  if (!request || loadingCatalogs) return <div className="empty">Cargando...</div>;
+  if (!request || loadingProfit) return <div className="empty">Cargando...</div>;
 
   return (
     <div className="stack">
@@ -111,7 +160,7 @@ export const WarehouseClassify: React.FC = () => {
       <WorkflowTimeline status={request.status} />
 
       {/* Rejection note from accounting — E-05 fix: último RETURN/REJECT */}
-      {request.status === 'PENDING_WAREHOUSE' && request.approvals && (
+      {request.status === 'PENDIENTE_ALMACEN' && request.approvals && (
         (() => {
           const candidates = request.approvals!
             .filter((a) => (a.action === 'RETURN' || a.action === 'REJECT') && a.comment)
@@ -169,8 +218,15 @@ export const WarehouseClassify: React.FC = () => {
           <div className="card p16">
             <h3 className="h1" style={{ fontSize: 16 }}>Clasificación</h3>
             <p className="muted small" style={{ marginTop: 4, marginBottom: 12 }}>
-              Seleccione o corrija la clasificación propuesta por el analizador.
+              Catálogos directos desde Profit. El subgrupo depende del grupo;
+              categoría y marca son independientes.
             </p>
+
+            {profitError && (
+              <div className="alert" style={{ marginBottom: 12, background: '#fee2e2', borderColor: '#fca5a5', color: '#991b1b' }}>
+                No se pudieron cargar los catálogos de Profit: {profitError}
+              </div>
+            )}
 
             <div className="alert" style={{ marginBottom: 12 }}>
               El cambio de clasificación modifica el código propuesto.
@@ -178,35 +234,56 @@ export const WarehouseClassify: React.FC = () => {
 
             <div className="form-grid">
               <label>
-                <span className="muted small">Grupo</span>
-                <Select value={groupId} onChange={e => { setGroupId(e.target.value); setSubgroupId(''); setCategoryId(''); }}>
+                <span className="muted small">Grupo (Profit)</span>
+                <Select value={groupCode} onChange={e => { setGroupCode(e.target.value.trim()); setSubgroupCode(''); }}>
                   <option value="">Seleccionar grupo</option>
-                  {grupos.map(g => <option key={g.id} value={g.id}>{g.code} — {g.name}</option>)}
+                  {pGrupos.map(g => <option key={g.co_lin.trim()} value={g.co_lin.trim()}>{g.co_lin.trim()} — {g.lin_des.trim()}</option>)}
                 </Select>
               </label>
 
               <label>
-                <span className="muted small">Subgrupo</span>
-                <Select value={subgroupId} onChange={e => { setSubgroupId(e.target.value); setCategoryId(''); }} disabled={!groupId}>
+                <span className="muted small">Subgrupo (del grupo seleccionado)</span>
+                <Select value={subgroupCode} onChange={e => setSubgroupCode(e.target.value.trim())} disabled={!groupCode}>
                   <option value="">Seleccionar subgrupo</option>
-                  {filteredSubgroups.map(s => <option key={s.id} value={s.id}>{s.code} — {s.name}</option>)}
+                  {filteredSubgroups.map(s => <option key={`${s.co_lin.trim()}/${s.co_subl.trim()}`} value={s.co_subl.trim()}>{s.co_subl.trim()} — {s.subl_des.trim()}</option>)}
                 </Select>
               </label>
 
               <label>
-                <span className="muted small">Categoría</span>
-                <Select value={categoryId} onChange={e => setCategoryId(e.target.value)} disabled={!subgroupId}>
+                <span className="muted small">Categoría (Profit, independiente)</span>
+                <Select
+                  value={categoryCode}
+                  onChange={e => {
+                    const code = e.target.value.trim();
+                    const found = pCategorias.find(c => c.co_cat.trim() === code);
+                    setCategoryCode(code);
+                    setCategoryName(found ? found.cat_des.trim() : '');
+                    setLegacyCategoryId('');
+                  }}
+                >
                   <option value="">Seleccionar categoría</option>
-                  {filteredCategories.map(c => <option key={c.id} value={c.id}>{c.code} — {c.name}</option>)}
+                  {pCategorias.map(c => <option key={c.co_cat.trim()} value={c.co_cat.trim()}>{c.co_cat.trim()} — {c.cat_des.trim()}</option>)}
                 </Select>
               </label>
 
               <label>
-                <span className="muted small">Marca</span>
-                <Select value={brandId} onChange={e => setBrandId(e.target.value)}>
+                <span className="muted small">Marca (Profit colores, independiente)</span>
+                <Select
+                  value={brandCode}
+                  onChange={e => {
+                    const code = e.target.value.trim();
+                    const found = pMarcas.find(m => m.co_col.trim() === code);
+                    setBrandCode(code);
+                    setBrandName(found ? found.des_col.trim() : '');
+                    setLegacyBrandId('');
+                  }}
+                >
                   <option value="">Seleccionar marca</option>
-                  {marcas.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  {pMarcas.map(m => <option key={m.co_col.trim()} value={m.co_col.trim()}>{m.co_col.trim()} — {m.des_col.trim()}</option>)}
                 </Select>
+                {!brandCode && legacyBrandId && brandName && (
+                  <span className="muted small" style={{ marginTop: 4 }}>Marca guardada: {brandName} (catálogo anterior)</span>
+                )}
               </label>
 
               <label>
@@ -242,7 +319,7 @@ export const WarehouseClassify: React.FC = () => {
           <div className="form-actions">
             <Button variant="ghost" onClick={() => setReturnModal(true)} disabled={saving}>Devolver</Button>
             <Button variant="secondary" onClick={handleSave} disabled={saving || saved}>{saving ? 'Guardando...' : saved ? 'Guardado' : 'Guardar Borrador'}</Button>
-            <Button onClick={handleApprove} disabled={saving || !groupId || !subgroupId}>{saving ? 'Procesando...' : 'Aprobar Clasificación'}</Button>
+            <Button onClick={handleApprove} disabled={saving || !groupCode || !subgroupCode}>{saving ? 'Procesando...' : 'Aprobar Clasificación'}</Button>
           </div>
 
           {error && (
@@ -253,7 +330,7 @@ export const WarehouseClassify: React.FC = () => {
         </div>
 
         <div className="side-panel">
-          <MasterCodePreview groupId={groupId} subgroupId={subgroupId} />
+          <MasterCodePreview groupCode={groupCode} subgroupCode={subgroupCode} />
 
           {request.groupId && (
             <div className="card p16" style={{ marginTop: 12 }}>

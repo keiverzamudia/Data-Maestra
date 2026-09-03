@@ -19,7 +19,7 @@ export const ApprovalsPage: React.FC = () => {
   const loadRequests = React.useCallback(() => {
     setLoading(true);
     setError(null);
-    requestService.list({ companyId: session.company.id, status: 'PENDING_MANAGER' })
+    requestService.list({ companyId: session.company.id, status: 'PENDIENTE_GERENTE' })
       .then(({ data }) => {
         setRequests(data);
         setLoading(false);

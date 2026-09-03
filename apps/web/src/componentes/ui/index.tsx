@@ -8,8 +8,9 @@ export const Select:React.FC<React.SelectHTMLAttributes<HTMLSelectElement>> = (p
 export const Textarea:React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement>> = (p)=><textarea className="input" rows={3} {...p}/>;
 export const Badge:React.FC<{children:React.ReactNode; tone?:'gray'|'green'|'yellow'|'red'|'blue'}> = ({children,tone='gray'})=><span className={`badge badge-${tone}`}>{children}</span>;
 export const StatusBadge:React.FC<{status:string}> = ({status})=>{
-  const map:Record<string,string>={ACTIVE:'green',PENDING_MANAGER:'yellow',PENDING_WAREHOUSE:'yellow',PENDING_ACCOUNTING:'yellow',PENDING_FINAL_REVIEW:'yellow',APPROVED:'blue',MASTER_ACTIVE:'green',RETURNED:'red',REJECTED:'red',DRAFT:'gray',LINKED:'green',IMPORTED:'gray',REVIEW_REQUIRED:'yellow',COMPLETED:'green',RUNNING:'blue',FAILED:'red'};
-  return <Badge tone={(map[status] as any)||'gray'}>{status}</Badge>;
+  const map:Record<string,string>={ACTIVE:'green',BORRADOR:'gray',PENDIENTE_GERENTE:'yellow',PENDIENTE_ALMACEN:'yellow',ALMACEN_APROBADO:'blue',PENDIENTE_CONTABILIDAD:'yellow',PENDIENTE_VALIDACION_MAESTRA:'yellow',APROBADO_FINAL:'blue',PROCESANDO_PROFIT:'blue',REGISTRADO_PROFIT:'green',ERROR_PROFIT:'red',DEVUELTO:'red',RECHAZADO:'red',LINKED:'green',IMPORTED:'gray',PENDING_REVIEW:'yellow',REVIEW_REQUIRED:'yellow',COMPLETED:'green',RUNNING:'blue',FAILED:'red'};
+  const label:Record<string,string>={BORRADOR:'Borrador',PENDIENTE_GERENTE:'Pendiente de Gerente',PENDIENTE_ALMACEN:'Pendiente de Almacén',ALMACEN_APROBADO:'Almacén aprobado',PENDIENTE_CONTABILIDAD:'Pendiente de Contabilidad',PENDIENTE_VALIDACION_MAESTRA:'Pendiente de Validación Maestra',APROBADO_FINAL:'Aprobación Final',PROCESANDO_PROFIT:'Procesando en Profit',REGISTRADO_PROFIT:'Registrado en Profit',ERROR_PROFIT:'Error en Profit',DEVUELTO:'Devuelto',RECHAZADO:'Rechazado'};
+  return <Badge tone={(map[status] as any)||'gray'}>{label[status]||status}</Badge>;
 };
 export const PriorityBadge:React.FC<{priority:number}> = ({priority})=>{
   const m={0:['Baja','gray'],1:['Media','blue'],2:['Alta','yellow'],3:['Crítica','red']} as Record<number,[string,string]>;

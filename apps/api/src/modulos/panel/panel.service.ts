@@ -17,16 +17,16 @@ export class PanelService {
       recentImports,
     ] = await Promise.all([
       this.prisma.request.count({
-        where: { ...where, status: { in: ['PENDING_MANAGER', 'PENDING_WAREHOUSE'] } },
+        where: { ...where, status: { in: ['PENDIENTE_GERENTE', 'PENDIENTE_ALMACEN'] } },
       }),
       this.prisma.request.count({
-        where: { ...where, status: { in: ['PENDING_ACCOUNTING', 'PENDING_FINAL_REVIEW'] } },
+        where: { ...where, status: { in: ['PENDIENTE_CONTABILIDAD', 'PENDIENTE_VALIDACION_MAESTRA'] } },
       }),
       this.prisma.request.count({
-        where: { ...where, status: 'RETURNED' },
+        where: { ...where, status: 'DEVUELTO' },
       }),
       this.prisma.request.count({
-        where: { ...where, status: { in: ['APPROVED', 'MASTER_ACTIVE'] } },
+        where: { ...where, status: 'APROBADO_FINAL' },
       }),
       this.prisma.request.count({ where }),
       this.prisma.importRun.count({

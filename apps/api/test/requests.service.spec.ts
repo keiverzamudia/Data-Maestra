@@ -59,13 +59,13 @@ describe('SolicitudesService', () => {
   });
 
   describe('create', () => {
-    it('generates a request number and creates request with DRAFT status', async () => {
+    it('generates a request number and creates request with BORRADOR status', async () => {
       prisma.request.findFirst.mockResolvedValue(null);
 
       const mockRequest = {
         id: 'req-1',
         requestNumber: 'REQ-0001',
-        status: 'DRAFT',
+        status: 'BORRADOR',
       };
 
       prisma.$transaction.mockImplementation(async (fn: any) => {
@@ -84,7 +84,7 @@ describe('SolicitudesService', () => {
       );
 
       expect(result.requestNumber).toBe('REQ-0001');
-      expect(result.status).toBe('DRAFT');
+      expect(result.status).toBe('BORRADOR');
     });
 
     it('increments request number from the last one', async () => {
@@ -131,11 +131,11 @@ describe('SolicitudesService', () => {
     it('returns requests filtered by status', async () => {
       prisma.request.findMany.mockResolvedValue([]);
 
-      await service.findAll({ status: 'DRAFT' });
+      await service.findAll({ status: 'BORRADOR' });
 
       expect(prisma.request.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ status: 'DRAFT' }),
+          where: expect.objectContaining({ status: 'BORRADOR' }),
         }),
       );
     });
@@ -161,18 +161,18 @@ describe('SolicitudesService', () => {
     it('combines multiple filters', async () => {
       prisma.request.findMany.mockResolvedValue([]);
 
-      await service.findAll({ companyId: 'c1', status: 'DRAFT', search: 'test' });
+      await service.findAll({ companyId: 'c1', status: 'BORRADOR', search: 'test' });
 
       const call = prisma.request.findMany.mock.calls[0][0];
       expect(call.where.companyId).toBe('c1');
-      expect(call.where.status).toBe('DRAFT');
+      expect(call.where.status).toBe('BORRADOR');
       expect(call.where.OR).toBeDefined();
     });
   });
 
   describe('findOne', () => {
     it('returns request when found', async () => {
-      const mockRequest = { id: 'req-1', status: 'DRAFT' };
+      const mockRequest = { id: 'req-1', status: 'BORRADOR' };
       prisma.request.findUnique.mockResolvedValue(mockRequest);
 
       const result = await service.findOne('req-1');
@@ -188,10 +188,10 @@ describe('SolicitudesService', () => {
   });
 
   describe('submit', () => {
-    it('changes status from DRAFT to PENDING_MANAGER', async () => {
-      prisma.request.findUnique.mockResolvedValue({ id: 'req-1', status: 'DRAFT' });
+    it('changes status from BORRADOR to PENDIENTE_GERENTE', async () => {
+      prisma.request.findUnique.mockResolvedValue({ id: 'req-1', status: 'BORRADOR' });
 
-      const updatedRequest = { id: 'req-1', status: 'PENDING_MANAGER' };
+      const updatedRequest = { id: 'req-1', status: 'PENDIENTE_GERENTE' };
 
       prisma.$transaction.mockImplementation(async (fn: any) => {
         const tx = {
@@ -207,7 +207,7 @@ describe('SolicitudesService', () => {
 
       const result = await service.submit('req-1', 'user-1', 'company-1');
 
-      expect(result.status).toBe('PENDING_MANAGER');
+      expect(result.status).toBe('PENDIENTE_GERENTE');
     });
 
     it('throws NotFoundException for invalid ID', async () => {
@@ -218,8 +218,8 @@ describe('SolicitudesService', () => {
       );
     });
 
-    it('throws BadRequestException if request is not in DRAFT status', async () => {
-      prisma.request.findUnique.mockResolvedValue({ id: 'req-1', status: 'PENDING_MANAGER' });
+    it('throws BadRequestException if request is not in BORRADOR status', async () => {
+      prisma.request.findUnique.mockResolvedValue({ id: 'req-1', status: 'PENDIENTE_GERENTE' });
 
       await expect(service.submit('req-1', 'user-1', 'company-1')).rejects.toThrow(
         BadRequestException,
@@ -228,14 +228,14 @@ describe('SolicitudesService', () => {
   });
 
   describe('approve', () => {
-    it('advances workflow from PENDING_MANAGER to PENDING_WAREHOUSE on APPROVE', async () => {
+    it('advances workflow from PENDIENTE_GERENTE to PENDIENTE_ALMACEN on APPROVE', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'PENDING_MANAGER',
+        status: 'PENDIENTE_GERENTE',
         workflowInstance: { id: 'wf-1' },
       });
 
-      const updatedRequest = { id: 'req-1', status: 'PENDING_WAREHOUSE' };
+      const updatedRequest = { id: 'req-1', status: 'PENDIENTE_ALMACEN' };
 
       prisma.$transaction.mockImplementation(async (fn: any) => {
         const tx = {
@@ -256,13 +256,13 @@ describe('SolicitudesService', () => {
         'company-1',
       );
 
-      expect(result.status).toBe('PENDING_WAREHOUSE');
+      expect(result.status).toBe('PENDIENTE_ALMACEN');
     });
 
     it('throws BadRequestException for REJECT without comment', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'PENDING_MANAGER',
+        status: 'PENDIENTE_GERENTE',
         workflowInstance: { id: 'wf-1' },
       });
 
@@ -274,7 +274,7 @@ describe('SolicitudesService', () => {
     it('throws BadRequestException for RETURN without comment', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'PENDING_MANAGER',
+        status: 'PENDIENTE_GERENTE',
         workflowInstance: { id: 'wf-1' },
       });
 
@@ -291,10 +291,10 @@ describe('SolicitudesService', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('throws BadRequestException when request is in DRAFT', async () => {
+    it('throws BadRequestException when request is in BORRADOR', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'DRAFT',
+        status: 'BORRADOR',
         workflowInstance: null,
       });
 
@@ -303,14 +303,14 @@ describe('SolicitudesService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('returns to DRAFT on RETURN from PENDING_MANAGER', async () => {
+    it('returns to BORRADOR on RETURN from PENDIENTE_GERENTE', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'PENDING_MANAGER',
+        status: 'PENDIENTE_GERENTE',
         workflowInstance: { id: 'wf-1' },
       });
 
-      const updatedRequest = { id: 'req-1', status: 'DRAFT' };
+      const updatedRequest = { id: 'req-1', status: 'BORRADOR' };
 
       prisma.$transaction.mockImplementation(async (fn: any) => {
         const tx = {
@@ -336,23 +336,23 @@ describe('SolicitudesService', () => {
         'company-1',
       );
 
-      expect(result.status).toBe('DRAFT');
+      expect(result.status).toBe('BORRADOR');
     });
 
-    it('reactivates existing task on RETURN from PENDING_ACCOUNTING to PENDING_WAREHOUSE', async () => {
+    it('reactivates existing task on RETURN from PENDIENTE_CONTABILIDAD to PENDIENTE_ALMACEN', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'PENDING_ACCOUNTING',
+        status: 'PENDIENTE_CONTABILIDAD',
         workflowInstance: { id: 'wf-1' },
       });
 
-      const updatedRequest = { id: 'req-1', status: 'PENDING_WAREHOUSE' };
+      const updatedRequest = { id: 'req-1', status: 'PENDIENTE_ALMACEN' };
 
       const mockHistoryCreate = vi.fn().mockResolvedValue({});
       const mockApprovalCreate = vi.fn().mockResolvedValue({});
       const mockAuditCreate = vi.fn().mockResolvedValue({});
       const mockTaskUpdateMany = vi.fn().mockResolvedValue({});
-      const mockTaskFindUnique = vi.fn().mockResolvedValue({ id: 'task-warehouse', instanceId: 'wf-1', stepCode: 'PENDING_WAREHOUSE', status: 'COMPLETED' });
+      const mockTaskFindUnique = vi.fn().mockResolvedValue({ id: 'task-warehouse', instanceId: 'wf-1', stepCode: 'PENDIENTE_ALMACEN', status: 'COMPLETED' });
       const mockTaskUpdate = vi.fn().mockResolvedValue({});
       const mockInstanceUpdate = vi.fn().mockResolvedValue({});
 
@@ -380,11 +380,11 @@ describe('SolicitudesService', () => {
         'company-1',
       );
 
-      expect(result.status).toBe('PENDING_WAREHOUSE');
+      expect(result.status).toBe('PENDIENTE_ALMACEN');
 
       expect(mockTaskUpdateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ stepCode: 'PENDING_ACCOUNTING' }),
+          where: expect.objectContaining({ stepCode: 'PENDIENTE_CONTABILIDAD' }),
           data: expect.objectContaining({ status: 'COMPLETED' }),
         }),
       );
@@ -393,7 +393,7 @@ describe('SolicitudesService', () => {
         where: {
           instanceId_stepCode: {
             instanceId: 'wf-1',
-            stepCode: 'PENDING_WAREHOUSE',
+            stepCode: 'PENDIENTE_ALMACEN',
           },
         },
       });
@@ -405,14 +405,14 @@ describe('SolicitudesService', () => {
 
       expect(mockInstanceUpdate).toHaveBeenCalledWith({
         where: { id: 'wf-1' },
-        data: { currentStepCode: 'PENDING_WAREHOUSE' },
+        data: { currentStepCode: 'PENDIENTE_ALMACEN' },
       });
 
       expect(mockHistoryCreate).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            fromStep: 'PENDING_ACCOUNTING',
-            toStep: 'PENDING_WAREHOUSE',
+            fromStep: 'PENDIENTE_CONTABILIDAD',
+            toStep: 'PENDIENTE_ALMACEN',
             action: 'RETURN',
           }),
         }),
@@ -422,8 +422,8 @@ describe('SolicitudesService', () => {
         expect.objectContaining({
           data: expect.objectContaining({
             action: 'RETURN',
-            fromStatus: 'PENDING_ACCOUNTING',
-            toStatus: 'PENDING_WAREHOUSE',
+            fromStatus: 'PENDIENTE_CONTABILIDAD',
+            toStatus: 'PENDIENTE_ALMACEN',
             comment: 'Faltan datos contables',
           }),
         }),
@@ -433,11 +433,11 @@ describe('SolicitudesService', () => {
     it('creates new task on RETURN when target task does not exist', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'PENDING_ACCOUNTING',
+        status: 'PENDIENTE_CONTABILIDAD',
         workflowInstance: { id: 'wf-1' },
       });
 
-      const updatedRequest = { id: 'req-1', status: 'PENDING_WAREHOUSE' };
+      const updatedRequest = { id: 'req-1', status: 'PENDIENTE_ALMACEN' };
 
       const mockTaskCreate = vi.fn().mockResolvedValue({});
 
@@ -468,7 +468,7 @@ describe('SolicitudesService', () => {
       expect(mockTaskCreate).toHaveBeenCalledWith({
         data: {
           instanceId: 'wf-1',
-          stepCode: 'PENDING_WAREHOUSE',
+          stepCode: 'PENDIENTE_ALMACEN',
           status: 'PENDING',
         },
       });
@@ -477,13 +477,13 @@ describe('SolicitudesService', () => {
     it('reactivates existing task on APPROVE when target task already exists', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'PENDING_WAREHOUSE',
+        status: 'PENDIENTE_ALMACEN',
         workflowInstance: { id: 'wf-1' },
       });
 
-      const updatedRequest = { id: 'req-1', status: 'PENDING_ACCOUNTING' };
+      const updatedRequest = { id: 'req-1', status: 'PENDIENTE_CONTABILIDAD' };
 
-      const mockTaskFindUnique = vi.fn().mockResolvedValue({ id: 'task-accounting', instanceId: 'wf-1', stepCode: 'PENDING_ACCOUNTING', status: 'COMPLETED' });
+      const mockTaskFindUnique = vi.fn().mockResolvedValue({ id: 'task-accounting', instanceId: 'wf-1', stepCode: 'PENDIENTE_CONTABILIDAD', status: 'COMPLETED' });
       const mockTaskUpdate = vi.fn().mockResolvedValue({});
 
       prisma.$transaction.mockImplementation(async (fn: any) => {
@@ -510,13 +510,13 @@ describe('SolicitudesService', () => {
         'company-1',
       );
 
-      expect(result.status).toBe('PENDING_ACCOUNTING');
+      expect(result.status).toBe('PENDIENTE_CONTABILIDAD');
 
       expect(mockTaskFindUnique).toHaveBeenCalledWith({
         where: {
           instanceId_stepCode: {
             instanceId: 'wf-1',
-            stepCode: 'PENDING_ACCOUNTING',
+            stepCode: 'PENDIENTE_CONTABILIDAD',
           },
         },
       });
@@ -530,11 +530,11 @@ describe('SolicitudesService', () => {
     it('creates new task on APPROVE when no existing task', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'PENDING_MANAGER',
+        status: 'PENDIENTE_GERENTE',
         workflowInstance: { id: 'wf-1' },
       });
 
-      const updatedRequest = { id: 'req-1', status: 'PENDING_WAREHOUSE' };
+      const updatedRequest = { id: 'req-1', status: 'PENDIENTE_ALMACEN' };
 
       const mockTaskCreate = vi.fn().mockResolvedValue({});
 
@@ -565,7 +565,7 @@ describe('SolicitudesService', () => {
       expect(mockTaskCreate).toHaveBeenCalledWith({
         data: {
           instanceId: 'wf-1',
-          stepCode: 'PENDING_WAREHOUSE',
+          stepCode: 'PENDIENTE_ALMACEN',
           status: 'PENDING',
         },
       });
@@ -576,7 +576,7 @@ describe('SolicitudesService', () => {
     it('saves RequestData and generates master code', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'PENDING_WAREHOUSE',
+        status: 'PENDIENTE_ALMACEN',
       });
 
       prisma.requestData.findUnique.mockResolvedValue(null);
@@ -638,7 +638,7 @@ describe('SolicitudesService', () => {
     it('throws BadRequestException if request is not in classifiable status', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'DRAFT',
+        status: 'BORRADOR',
       });
 
       await expect(
@@ -651,10 +651,10 @@ describe('SolicitudesService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('allows classification when status is WAREHOUSE_APPROVED', async () => {
+    it('allows classification when status is ALMACEN_APROBADO', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'WAREHOUSE_APPROVED',
+        status: 'ALMACEN_APROBADO',
       });
 
       const mockRequestData = { id: 'rd-1', requestId: 'req-1', masterCode: 'RVHCAR000001' };

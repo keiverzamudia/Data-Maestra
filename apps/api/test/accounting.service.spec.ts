@@ -32,9 +32,9 @@ describe('ContabilidadService', () => {
   });
 
   describe('findPendingApproval', () => {
-    it('returns requests with PENDING_ACCOUNTING status', async () => {
+    it('returns requests with PENDIENTE_CONTABILIDAD status', async () => {
       prisma.request.findMany.mockResolvedValue([
-        { id: 'req-1', status: 'PENDING_ACCOUNTING', requestData: { groupId: 'g1' }, accountingCodes: [] },
+        { id: 'req-1', status: 'PENDIENTE_CONTABILIDAD', requestData: { groupId: 'g1' }, accountingCodes: [] },
       ]);
 
       const result = await service.findPendingApproval();
@@ -48,7 +48,7 @@ describe('ContabilidadService', () => {
     it('returns request with flattened data', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'PENDING_ACCOUNTING',
+        status: 'PENDIENTE_CONTABILIDAD',
         requestData: { groupId: 'g1', subgroupId: 'sg1', masterCode: 'RVHCAR-00001' },
         accountingCodes: [],
       });
@@ -71,12 +71,12 @@ describe('ContabilidadService', () => {
     it('saves accounting codes and advances workflow', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'PENDING_ACCOUNTING',
+        status: 'PENDIENTE_CONTABILIDAD',
         requestData: { groupId: 'g1' },
         accountingCodes: [],
       });
       prisma.requestAccountingCode.createMany.mockResolvedValue({ count: 1 });
-      SolicitudesService.approve.mockResolvedValue({ id: 'req-1', status: 'PENDING_FINAL_REVIEW' });
+      SolicitudesService.approve.mockResolvedValue({ id: 'req-1', status: 'PENDIENTE_VALIDACION_MAESTRA' });
 
       const result = await service.approve(
         'req-1',
@@ -86,7 +86,7 @@ describe('ContabilidadService', () => {
       );
 
       expect(prisma.requestAccountingCode.createMany).toHaveBeenCalledWith({
-        data: [{ requestId: 'req-1', code: '5010-01', description: 'Repuestos' }],
+        data: [{ requestId: 'req-1', code: '5010-01', description: 'Repuestos', position: null }],
       });
       expect(SolicitudesService.approve).toHaveBeenCalledWith(
         'req-1',
@@ -94,28 +94,28 @@ describe('ContabilidadService', () => {
         'user-1',
         'c1',
       );
-      expect(result.status).toBe('PENDING_FINAL_REVIEW');
+      expect(result.status).toBe('PENDIENTE_VALIDACION_MAESTRA');
     });
 
     it('allows approve with empty accounting codes', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'PENDING_ACCOUNTING',
+        status: 'PENDIENTE_CONTABILIDAD',
         requestData: { groupId: 'g1' },
         accountingCodes: [],
       });
-      SolicitudesService.approve.mockResolvedValue({ id: 'req-1', status: 'PENDING_FINAL_REVIEW' });
+      SolicitudesService.approve.mockResolvedValue({ id: 'req-1', status: 'PENDIENTE_VALIDACION_MAESTRA' });
 
       const result = await service.approve('req-1', [], 'user-1', 'c1');
 
       expect(prisma.requestAccountingCode.createMany).not.toHaveBeenCalled();
-      expect(result.status).toBe('PENDING_FINAL_REVIEW');
+      expect(result.status).toBe('PENDIENTE_VALIDACION_MAESTRA');
     });
 
-    it('throws NotFoundException when request is not PENDING_ACCOUNTING', async () => {
+    it('throws NotFoundException when request is not PENDIENTE_CONTABILIDAD', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'APPROVED',
+        status: 'APROBADO_FINAL',
         requestData: { groupId: 'g1' },
         accountingCodes: [],
       });
@@ -124,13 +124,75 @@ describe('ContabilidadService', () => {
         service.approve('req-1', [{ code: '5010-01', description: 'Test' }], 'user-1', 'c1'),
       ).rejects.toThrow(NotFoundException);
     });
+
+    it('persists c1..c10 positions (Fase 8E)', async () => {
+      prisma.request.findUnique.mockResolvedValue({
+        id: 'req-1',
+        status: 'PENDIENTE_CONTABILIDAD',
+        requestData: { groupId: 'g1' },
+        accountingCodes: [],
+      });
+      prisma.requestAccountingCode.createMany.mockResolvedValue({ count: 2 });
+      SolicitudesService.approve.mockResolvedValue({ id: 'req-1', status: 'PENDIENTE_VALIDACION_MAESTRA' });
+
+      await service.approve(
+        'req-1',
+        [
+          { code: '1.2.05.02.06.001', description: 'Costo mobiliario', position: 'c1' },
+          { code: '1.1.04.01.01.001', description: 'Mercancías en tránsito', position: 'c7' },
+        ],
+        'user-1',
+        'c1',
+      );
+
+      expect(prisma.requestAccountingCode.createMany).toHaveBeenCalledWith({
+        data: [
+          { requestId: 'req-1', code: '1.2.05.02.06.001', description: 'Costo mobiliario', position: 'c1' },
+          { requestId: 'req-1', code: '1.1.04.01.01.001', description: 'Mercancías en tránsito', position: 'c7' },
+        ],
+      });
+    });
+
+    it('rejects duplicate position', async () => {
+      prisma.request.findUnique.mockResolvedValue({
+        id: 'req-1',
+        status: 'PENDIENTE_CONTABILIDAD',
+        requestData: { groupId: 'g1' },
+        accountingCodes: [],
+      });
+
+      await expect(
+        service.approve(
+          'req-1',
+          [
+            { code: 'a', description: 'A', position: 'c1' },
+            { code: 'b', description: 'B', position: 'c1' },
+          ],
+          'user-1',
+          'c1',
+        ),
+      ).rejects.toThrow(/duplicada/);
+    });
+
+    it('rejects invalid position c11', async () => {
+      prisma.request.findUnique.mockResolvedValue({
+        id: 'req-1',
+        status: 'PENDIENTE_CONTABILIDAD',
+        requestData: { groupId: 'g1' },
+        accountingCodes: [],
+      });
+
+      await expect(
+        service.approve('req-1', [{ code: 'a', description: 'A', position: 'c11' }], 'user-1', 'c1'),
+      ).rejects.toThrow(/c1\.\.c10/);
+    });
   });
 
   describe('reject', () => {
     it('rejects with comment and returns to warehouse', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'PENDING_ACCOUNTING',
+        status: 'PENDIENTE_CONTABILIDAD',
         requestData: { groupId: 'g1' },
         accountingCodes: [],
       });
@@ -149,7 +211,7 @@ describe('ContabilidadService', () => {
     it('throws when no comment is provided', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'PENDING_ACCOUNTING',
+        status: 'PENDIENTE_CONTABILIDAD',
         requestData: { groupId: 'g1' },
         accountingCodes: [],
       });
@@ -157,10 +219,10 @@ describe('ContabilidadService', () => {
       await expect(service.reject('req-1', undefined, 'user-1', 'c1')).rejects.toThrow('El motivo del rechazo es obligatorio');
     });
 
-    it('throws NotFoundException when request is not PENDING_ACCOUNTING', async () => {
+    it('throws NotFoundException when request is not PENDIENTE_CONTABILIDAD', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'APPROVED',
+        status: 'APROBADO_FINAL',
         requestData: { groupId: 'g1' },
         accountingCodes: [],
       });

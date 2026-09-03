@@ -36,7 +36,7 @@ export class ContabilidadController {
   @ApiParam({ name: 'id', description: 'Request ID' })
   async approve(
     @Param('id') id: string,
-    @Body() body: { accountingCodes?: Array<{ code: string; description: string }> },
+    @Body() body: { accountingCodes?: Array<{ code: string; description: string; position?: string }> },
   ) {
     const session = this.authService.getSession();
     return this.accountingService.approve(id, body.accountingCodes ?? [], session.id, session.company.id);

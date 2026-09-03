@@ -8,12 +8,12 @@ export const qualityResults: DataQualityResult[] = [
 ];
 
 export const auditEvents: AuditEvent[] = [
-  { id: 'a1', correlationId: 'corr1', requestId: 'rq2', actorId: 'u2', actorCompanyId: 'c1', entityType: 'REQUEST', entityId: 'rq2', action: 'APPROVE', beforeData: { status: 'PENDING_MANAGER' }, afterData: { status: 'MANAGER_APPROVED' }, createdAt: '2026-03-18T09:00:00Z' },
+  { id: 'a1', correlationId: 'corr1', requestId: 'rq2', actorId: 'u2', actorCompanyId: 'c1', entityType: 'REQUEST', entityId: 'rq2', action: 'APPROVE', beforeData: { status: 'PENDIENTE_GERENTE' }, afterData: { status: 'PENDIENTE_ALMACEN' }, createdAt: '2026-03-18T09:00:00Z' },
   { id: 'a2', correlationId: 'corr2', actorId: 'u3', entityType: 'MASTER_ITEM', entityId: 'mi1', action: 'MERGE', beforeData: { mergedInto: null }, afterData: { mergedInto: 'mi1' }, createdAt: '2026-03-15T10:00:00Z' },
-  { id: 'a3', correlationId: 'corr3', requestId: 'rq5', actorId: 'u3', actorCompanyId: 'c1', entityType: 'REQUEST', entityId: 'rq5', action: 'RETURN', beforeData: { status: 'PENDING_WAREHOUSE' }, afterData: { status: 'RETURNED' }, createdAt: '2026-03-20T10:00:00Z' },
-  { id: 'a4', correlationId: 'corr4', actorId: 'u1', actorCompanyId: 'c1', entityType: 'REQUEST', entityId: 'rq1', action: 'CREATE', afterData: { status: 'DRAFT' }, createdAt: '2026-03-18T09:00:00Z' },
+  { id: 'a3', correlationId: 'corr3', requestId: 'rq5', actorId: 'u3', actorCompanyId: 'c1', entityType: 'REQUEST', entityId: 'rq5', action: 'RETURN', beforeData: { status: 'PENDIENTE_ALMACEN' }, afterData: { status: 'DEVUELTO' }, createdAt: '2026-03-20T10:00:00Z' },
+  { id: 'a4', correlationId: 'corr4', actorId: 'u1', actorCompanyId: 'c1', entityType: 'REQUEST', entityId: 'rq1', action: 'CREATE', afterData: { status: 'BORRADOR' }, createdAt: '2026-03-18T09:00:00Z' },
   { id: 'a5', correlationId: 'corr5', actorId: 'u5', entityType: 'IMPORT', entityId: 'ir1', action: 'IMPORT_RUN', afterData: { rowsRead: 1250 }, createdAt: '2026-03-21T06:05:00Z' },
-  { id: 'a6', correlationId: 'corr1', requestId: 'rq2', actorId: 'u1', actorCompanyId: 'c1', entityType: 'REQUEST', entityId: 'rq2', action: 'CREATE', afterData: { status: 'DRAFT' }, createdAt: '2026-03-17T10:30:00Z' },
+  { id: 'a6', correlationId: 'corr1', requestId: 'rq2', actorId: 'u1', actorCompanyId: 'c1', entityType: 'REQUEST', entityId: 'rq2', action: 'CREATE', afterData: { status: 'BORRADOR' }, createdAt: '2026-03-17T10:30:00Z' },
 ];
 
 export const notifications: Notification[] = [

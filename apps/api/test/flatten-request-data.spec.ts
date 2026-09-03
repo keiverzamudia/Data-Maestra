@@ -5,7 +5,7 @@ describe('flattenRequestData', () => {
   it('flattens requestData into top-level fields', () => {
     const raw = {
       id: 'req-1',
-      status: 'PENDING_WAREHOUSE',
+      status: 'PENDIENTE_ALMACEN',
       requestData: {
         requestId: 'req-1',
         groupId: 'g1',
@@ -24,7 +24,7 @@ describe('flattenRequestData', () => {
     const result = flattenRequestData(raw);
 
     expect(result.id).toBe('req-1');
-    expect(result.status).toBe('PENDING_WAREHOUSE');
+    expect(result.status).toBe('PENDIENTE_ALMACEN');
     expect(result.groupId).toBe('g1');
     expect(result.subgroupId).toBe('sg1');
     expect(result.categoryId).toBe('cat1');
@@ -41,27 +41,27 @@ describe('flattenRequestData', () => {
   it('returns original object when requestData is null', () => {
     const raw = {
       id: 'req-2',
-      status: 'DRAFT',
+      status: 'BORRADOR',
       requestData: null,
     };
 
     const result = flattenRequestData(raw);
 
     expect(result.id).toBe('req-2');
-    expect(result.status).toBe('DRAFT');
+    expect(result.status).toBe('BORRADOR');
     expect(result.requestData).toBeUndefined();
   });
 
   it('returns original object when requestData is undefined', () => {
     const raw = {
       id: 'req-3',
-      status: 'DRAFT',
+      status: 'BORRADOR',
     };
 
     const result = flattenRequestData(raw);
 
     expect(result.id).toBe('req-3');
-    expect(result.status).toBe('DRAFT');
+    expect(result.status).toBe('BORRADOR');
     expect(result.requestData).toBeUndefined();
   });
 
@@ -144,7 +144,7 @@ describe('flattenRequestData', () => {
   it('preserves workflowInstance when present', () => {
     const raw = {
       id: 'req-8',
-      workflowInstance: { id: 'wf-1', currentStepCode: 'PENDING_MANAGER' },
+      workflowInstance: { id: 'wf-1', currentStepCode: 'PENDIENTE_GERENTE' },
       requestData: {
         groupId: 'g1',
       },
@@ -152,7 +152,7 @@ describe('flattenRequestData', () => {
 
     const result = flattenRequestData(raw);
 
-    expect(result.workflowInstance).toEqual({ id: 'wf-1', currentStepCode: 'PENDING_MANAGER' });
+    expect(result.workflowInstance).toEqual({ id: 'wf-1', currentStepCode: 'PENDIENTE_GERENTE' });
     expect(result.groupId).toBe('g1');
   });
 });

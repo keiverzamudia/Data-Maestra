@@ -29,9 +29,9 @@ describe('RevisionFinalService', () => {
   });
 
   describe('findPendingReview', () => {
-    it('returns requests with PENDING_FINAL_REVIEW status', async () => {
+    it('returns requests with PENDIENTE_VALIDACION_MAESTRA status', async () => {
       prisma.request.findMany.mockResolvedValue([
-        { id: 'req-1', status: 'PENDING_FINAL_REVIEW', requestData: { groupId: 'g1' }, accountingCodes: [] },
+        { id: 'req-1', status: 'PENDIENTE_VALIDACION_MAESTRA', requestData: { groupId: 'g1' }, accountingCodes: [] },
       ]);
 
       const result = await service.findPendingReview();
@@ -45,7 +45,7 @@ describe('RevisionFinalService', () => {
     it('returns request with approvals', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'PENDING_FINAL_REVIEW',
+        status: 'PENDIENTE_VALIDACION_MAESTRA',
         requestData: { groupId: 'g1', masterCode: 'RVHCAR-00001' },
         accountingCodes: [{ code: '5010-01', description: 'Repuestos' }],
         approvals: [],
@@ -65,12 +65,12 @@ describe('RevisionFinalService', () => {
   });
 
   describe('approve', () => {
-    it('approves and transitions to APPROVED', async () => {
+    it('approves and transitions to APROBADO_FINAL', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'PENDING_FINAL_REVIEW',
+        status: 'PENDIENTE_VALIDACION_MAESTRA',
       });
-      SolicitudesService.approve.mockResolvedValue({ id: 'req-1', status: 'APPROVED' });
+      SolicitudesService.approve.mockResolvedValue({ id: 'req-1', status: 'APROBADO_FINAL' });
 
       const result = await service.approve('req-1', 'user-1', 'c1');
 
@@ -80,7 +80,7 @@ describe('RevisionFinalService', () => {
         'user-1',
         'c1',
       );
-      expect(result.status).toBe('APPROVED');
+      expect(result.status).toBe('APROBADO_FINAL');
     });
 
     it('throws NotFoundException when request not found', async () => {
@@ -89,10 +89,10 @@ describe('RevisionFinalService', () => {
       await expect(service.approve('nonexistent', 'user-1', 'c1')).rejects.toThrow(NotFoundException);
     });
 
-    it('throws NotFoundException when status is not PENDING_FINAL_REVIEW', async () => {
+    it('throws NotFoundException when status is not PENDIENTE_VALIDACION_MAESTRA', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'APPROVED',
+        status: 'APROBADO_FINAL',
       });
 
       await expect(service.approve('req-1', 'user-1', 'c1')).rejects.toThrow(NotFoundException);
@@ -103,9 +103,9 @@ describe('RevisionFinalService', () => {
     it('rejects with comment', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'PENDING_FINAL_REVIEW',
+        status: 'PENDIENTE_VALIDACION_MAESTRA',
       });
-      SolicitudesService.approve.mockResolvedValue({ id: 'req-1', status: 'REJECTED' });
+      SolicitudesService.approve.mockResolvedValue({ id: 'req-1', status: 'RECHAZADO' });
 
       await service.reject('req-1', 'Incomplete documentation', 'user-1', 'c1');
 
@@ -120,9 +120,9 @@ describe('RevisionFinalService', () => {
     it('uses default comment when none provided', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'PENDING_FINAL_REVIEW',
+        status: 'PENDIENTE_VALIDACION_MAESTRA',
       });
-      SolicitudesService.approve.mockResolvedValue({ id: 'req-1', status: 'REJECTED' });
+      SolicitudesService.approve.mockResolvedValue({ id: 'req-1', status: 'RECHAZADO' });
 
       await service.reject('req-1', undefined, 'user-1', 'c1');
 
@@ -140,10 +140,10 @@ describe('RevisionFinalService', () => {
       await expect(service.reject('nonexistent', 'reason', 'user-1', 'c1')).rejects.toThrow(NotFoundException);
     });
 
-    it('throws NotFoundException when status is not PENDING_FINAL_REVIEW', async () => {
+    it('throws NotFoundException when status is not PENDIENTE_VALIDACION_MAESTRA', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'DRAFT',
+        status: 'BORRADOR',
       });
 
       await expect(service.reject('req-1', 'reason', 'user-1', 'c1')).rejects.toThrow(NotFoundException);

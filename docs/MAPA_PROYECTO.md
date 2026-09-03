@@ -10,14 +10,16 @@
 |----------------------|----------|---------|
 | Solicitudes | `apps/web/src/modulos/solicitudes/` | `apps/api/src/modulos/solicitudes/` |
 | Almacén (clasificación) | `apps/web/src/modulos/almacen/` | `apps/api/src/modulos/almacen/` |
-| Contabilidad | `apps/web/src/modulos/contabilidad/` | `apps/api/src/modulos/contabilidad/` |
+| Contabilidad | `apps/web/src/modulos/contabilidad/` + `apps/web/src/componentes/contabilidad/InformacionContable.tsx` | `apps/api/src/modulos/contabilidad/` (`dis.utils.ts` = serialización DIS) |
+| Cuentas Profit (catálogo maestro) | `apps/web/src/servicios/api/api-profit-service.ts` (búsqueda + limit/offset) | `GET /api/v1/profit/accounts` → `ProfitAdapter.getAccounts()` (`C_DIST.dbo.sccuenta`, detalle=1) |
 | Revisión final | `apps/web/src/modulos/revision-final/` | `apps/api/src/modulos/revision-final/` |
 | Aprobaciones gerente | `apps/web/src/modulos/aprobaciones/` | (usa solicitudes) |
 | Panel/dashboard | `apps/web/src/modulos/panel/` | `apps/api/src/modulos/panel/` |
 | Importaciones | `apps/web/src/modulos/importaciones/` | `apps/api/src/modulos/importaciones/` |
 | Auditoría | `apps/web/src/modulos/auditoria/` | `apps/api/src/modulos/auditoria/` |
 | Administración | `apps/web/src/modulos/administracion/` | `apps/api/src/modulos/organizacion/` |
-| Catálogos | `apps/web/src/hooks/useCatalogos.ts` | `apps/api/src/modulos/catalogos/` |
+| Catálogos | `apps/web/src/hooks/useCatalogos.ts` (local/historial) | `apps/api/src/modulos/catalogos/` |
+| Catálogos Profit (clasificación) | `apps/web/src/hooks/useProfitCatalogos.ts` → `AlmacenClassify` | `GET /profit/groups|subgroups|categories|brands` + `CatalogosService.resolveClassification()` |
 | Importar catálogo | `POST /api/v1/catalogs/import` | `apps/api/src/modulos/catalogos/catalog-import.service.ts` |
 | Organización | `apps/web/src/hooks/useOrganizacion.ts` | `apps/api/src/modulos/organizacion/` |
 | Notificaciones | `apps/web/src/componentes/diseno/AppLayout.tsx` | `apps/api/src/modulos/notificaciones/` |
@@ -30,6 +32,7 @@
 | Necesito modificar... | Archivo |
 |----------------------|---------|
 | Workflow (transiciones) | `apps/api/src/modulos/solicitudes/solicitud.service.ts` → `getNextStatus()` |
+| Serialización DIS | `apps/web/src/utilidades/dis.ts` (espejo) | `apps/api/src/modulos/contabilidad/dis.utils.ts` → `serializarDis()` / `deserializarDis()` |
 | MasterCode (generación) | `apps/api/src/modulos/solicitudes/solicitud.service.ts` → `generateMasterCode()` |
 | Roles/permisos | `apps/api/src/modulos/autenticacion/autenticacion.service.ts` → `ROLE_PERMISSIONS` |
 | Usuarios mock | `apps/api/src/modulos/autenticacion/autenticacion.service.ts` → `USERS` |

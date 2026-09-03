@@ -4,11 +4,43 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 export class ClassifyRequestDto {
   @ApiProperty({ example: 'grp-electronics' })
   @IsString()
-  groupId!: string;
+  @IsOptional()
+  groupId?: string;
 
   @ApiProperty({ example: 'sub-sensors' })
   @IsString()
-  subgroupId!: string;
+  @IsOptional()
+  subgroupId?: string;
+
+  @ApiPropertyOptional({ example: 'RVH', description: 'Código Profit de grupo (FASE 8F, preferido sobre groupId)' })
+  @IsString()
+  @IsOptional()
+  groupCode?: string;
+
+  @ApiPropertyOptional({ example: 'CAR', description: 'Código Profit de subgrupo dentro del grupo' })
+  @IsString()
+  @IsOptional()
+  subgroupCode?: string;
+
+  @ApiPropertyOptional({ example: '002', description: 'Código Profit de categoría (cat_art, independiente)' })
+  @IsString()
+  @IsOptional()
+  categoryCode?: string;
+
+  @ApiPropertyOptional({ example: 'ARTICULOS DE OFICINA' })
+  @IsString()
+  @IsOptional()
+  categoryName?: string;
+
+  @ApiPropertyOptional({ example: 'F01', description: 'Código Profit de marca/colores (co_color)' })
+  @IsString()
+  @IsOptional()
+  brandCode?: string;
+
+  @ApiPropertyOptional({ example: 'GASOLINA' })
+  @IsString()
+  @IsOptional()
+  brandName?: string;
 
   @ApiPropertyOptional({ example: 'cat-temp-sensors' })
   @IsString()

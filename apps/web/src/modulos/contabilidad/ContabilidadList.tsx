@@ -4,9 +4,9 @@ import { useSession } from '../../contextos/SessionContext';
 import { accountingService } from '../../servicios';
 import { useCatalogos } from '../../hooks/useCatalogos';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
-import { PageHeader, Button, SearchInput, StatusBadge, EmptyState, Modal, Input, Textarea, ImageLightbox } from '../../componentes/ui';
+import { PageHeader, Button, SearchInput, StatusBadge, EmptyState, Modal, Textarea, ImageLightbox } from '../../componentes/ui';
 import { WorkflowTimeline } from '../../componentes/workflow';
-import type { AccountingCode } from '../../contratos';
+import { InformacionContable, type ContabilidadEntry } from '../../componentes/contabilidad';
 import type { Request } from '../../tipos';
 
 function findName(list: { id: string; name: string }[], id?: string) {
@@ -21,7 +21,7 @@ export const AccountingList: React.FC = () => {
   const [search, setSearch] = React.useState('');
   const [loading, setLoading] = React.useState(true);
   const [selected, setSelected] = React.useState<Request | null>(null);
-  const [codes, setCodes] = React.useState<AccountingCode[]>([{ code: '', description: '' }]);
+  const [entries, setEntries] = React.useState<ContabilidadEntry[]>([]);
   const [rejectModal, setRejectModal] = React.useState(false);
   const [rejectReason, setRejectReason] = React.useState('');
   const [saving, setSaving] = React.useState(false);
@@ -41,20 +41,17 @@ export const AccountingList: React.FC = () => {
     ? requests.filter(r => r.requestedDescription.toLowerCase().includes(search.toLowerCase()))
     : requests;
 
-  const addCode = () => setCodes([...codes, { code: '', description: '' }]);
-  const removeCode = (i: number) => setCodes(codes.filter((_, idx) => idx !== i));
-  const updateCode = (i: number, field: keyof AccountingCode, value: string) => {
-    setCodes(prev => prev.map((item, idx) => idx === i ? { ...item, [field]: value } : item));
-  };
-
   const handleApprove = async () => {
     if (!selected || saving) return;
     setSaving(true);
     setError(null);
     try {
-      await accountingService.approveAccounting(selected.id, codes.filter(c => c.code));
+      await accountingService.approveAccounting(
+        selected.id,
+        entries.map(e => ({ code: e.code, description: e.description, position: e.position })),
+      );
       setSelected(null);
-      setCodes([{ code: '', description: '' }]);
+      setEntries([]);
       accountingService.getPendingApprovals(session.company.id).then(setRequests);
     } catch (err: any) {
       setError(err?.message || 'Error al aprobar la solicitud contable.');
@@ -131,31 +128,15 @@ export const AccountingList: React.FC = () => {
             <div className="card p16">
               <h3 className="h1" style={{ fontSize: 16 }}>Información Contable</h3>
               <p className="muted small" style={{ marginTop: 4, marginBottom: 12 }}>
-                Agregue uno o más códigos de información contable.
+                Posiciones c1…c10 de Profit. Seleccione una cuenta existente por posición (código y descripción vinculados).
               </p>
 
-              {codes.map((c, i) => (
-                <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'flex-end' }}>
-                  <label style={{ flex: 1 }}>
-                    <span className="muted small">Código</span>
-                    <Input placeholder="Ej: 5010-01" value={c.code} onChange={e => updateCode(i, 'code', e.target.value)} />
-                  </label>
-                  <label style={{ flex: 2 }}>
-                    <span className="muted small">Descripción</span>
-                    <Input placeholder="Ej: Repuestos vehículos" value={c.description} onChange={e => updateCode(i, 'description', e.target.value)} />
-                  </label>
-                  {codes.length > 1 && (
-                    <Button variant="ghost" size="sm" onClick={() => removeCode(i)}>✕</Button>
-                  )}
-                </div>
-              ))}
-
-              <Button variant="ghost" size="sm" onClick={addCode}>+ Agregar código</Button>
+              <InformacionContable value={entries} onChange={setEntries} />
             </div>
 
             <div className="form-actions">
               <Button variant="danger" onClick={() => setRejectModal(true)} disabled={saving}>Rechazar</Button>
-              <Button onClick={handleApprove} disabled={saving || !codes.some(c => c.code)}>{saving ? 'Procesando...' : 'Aprobar'}</Button>
+              <Button onClick={handleApprove} disabled={saving || entries.length === 0}>{saving ? 'Procesando...' : 'Aprobar'}</Button>
             </div>
 
             {error && (
@@ -238,7 +219,7 @@ export const AccountingList: React.FC = () => {
                   </td>
                   <td>{usuarios.find(u => u.id === r.requesterId)?.displayName || '—'}</td>
                   <td>
-                    <Button size="sm" onClick={() => { setSelected(r); setCodes([{ code: '', description: '' }]); }}>Revisar</Button>
+                    <Button size="sm" onClick={() => { setSelected(r); setEntries([]); }}>Revisar</Button>
                   </td>
                 </tr>
               ))}

@@ -247,7 +247,7 @@ model Request {
   requestedDescription  String   @map("requested_description")
   purpose               String
   referencePhotoUri     String?  @map("reference_photo_uri")
-  status                String   @default("DRAFT")
+  status                String   @default("BORRADOR")
   priority              Int      @default(0)
   createdAt             DateTime @default(now()) @map("created_at")
   updatedAt             DateTime @default(now()) @map("updated_at")
@@ -292,6 +292,9 @@ model RequestAccountingCode {
   requestId   String  @map("request_id")
   code        String
   description String
+  // Posición contable c1..c10 (Fase 8E). Nullable para compatibilidad
+  // con filas creadas antes de 8E, que no tenían posición.
+  position    String? @map("position")
 
   request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
 

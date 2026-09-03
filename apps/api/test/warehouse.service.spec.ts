@@ -33,9 +33,9 @@ describe('AlmacenService', () => {
   });
 
   describe('findPendingClassification', () => {
-    it('returns requests with PENDING_WAREHOUSE status', async () => {
+    it('returns requests with PENDIENTE_ALMACEN status', async () => {
       prisma.request.findMany.mockResolvedValue([
-        { id: 'req-1', status: 'PENDING_WAREHOUSE', requestData: null },
+        { id: 'req-1', status: 'PENDIENTE_ALMACEN', requestData: null },
       ]);
 
       const result = await service.findPendingClassification();
@@ -49,7 +49,7 @@ describe('AlmacenService', () => {
     it('returns request when found', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'PENDING_WAREHOUSE',
+        status: 'PENDIENTE_ALMACEN',
         requestData: { groupId: 'g1', subgroupId: 'sg1' },
       });
 
@@ -70,7 +70,7 @@ describe('AlmacenService', () => {
     it('throws BadRequestException when no requestData exists', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'PENDING_WAREHOUSE',
+        status: 'PENDIENTE_ALMACEN',
         requestData: null,
       });
       prisma.requestData.findUnique.mockResolvedValue(null);
@@ -81,7 +81,7 @@ describe('AlmacenService', () => {
     it('throws BadRequestException when groupId is missing', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'PENDING_WAREHOUSE',
+        status: 'PENDIENTE_ALMACEN',
         requestData: { requestId: 'req-1' },
       });
       prisma.requestData.findUnique.mockResolvedValue({
@@ -97,7 +97,7 @@ describe('AlmacenService', () => {
     it('throws BadRequestException when subgroupId is missing', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'PENDING_WAREHOUSE',
+        status: 'PENDIENTE_ALMACEN',
         requestData: { requestId: 'req-1' },
       });
       prisma.requestData.findUnique.mockResolvedValue({
@@ -113,7 +113,7 @@ describe('AlmacenService', () => {
     it('throws BadRequestException when masterCode is missing', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'PENDING_WAREHOUSE',
+        status: 'PENDIENTE_ALMACEN',
         requestData: { requestId: 'req-1' },
       });
       prisma.requestData.findUnique.mockResolvedValue({
@@ -129,7 +129,7 @@ describe('AlmacenService', () => {
     it('calls SolicitudesService.approve when classification is complete', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'PENDING_WAREHOUSE',
+        status: 'PENDIENTE_ALMACEN',
         requestData: { requestId: 'req-1' },
       });
       prisma.requestData.findUnique.mockResolvedValue({
@@ -138,7 +138,7 @@ describe('AlmacenService', () => {
         subgroupId: 'sg1',
         masterCode: 'RVHCAR-00001',
       });
-      SolicitudesService.approve.mockResolvedValue({ id: 'req-1', status: 'PENDING_ACCOUNTING' });
+      SolicitudesService.approve.mockResolvedValue({ id: 'req-1', status: 'PENDIENTE_CONTABILIDAD' });
 
       const result = await service.approve('req-1', 'user-1', 'c1');
 
@@ -148,13 +148,13 @@ describe('AlmacenService', () => {
         'user-1',
         'c1',
       );
-      expect(result.status).toBe('PENDING_ACCOUNTING');
+      expect(result.status).toBe('PENDIENTE_CONTABILIDAD');
     });
 
     it('throws NotFoundException when request is not in classifiable status', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'DRAFT',
+        status: 'BORRADOR',
         requestData: null,
       });
 
@@ -166,10 +166,10 @@ describe('AlmacenService', () => {
     it('calls SolicitudesService.approve with RETURN action', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'PENDING_WAREHOUSE',
+        status: 'PENDIENTE_ALMACEN',
         requestData: null,
       });
-      SolicitudesService.approve.mockResolvedValue({ id: 'req-1', status: 'DRAFT' });
+      SolicitudesService.approve.mockResolvedValue({ id: 'req-1', status: 'BORRADOR' });
 
       await service.returnToRequester('req-1', 'Missing info', 'user-1', 'c1');
 
@@ -184,10 +184,10 @@ describe('AlmacenService', () => {
     it('uses default comment when none provided', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'PENDING_WAREHOUSE',
+        status: 'PENDIENTE_ALMACEN',
         requestData: null,
       });
-      SolicitudesService.approve.mockResolvedValue({ id: 'req-1', status: 'DRAFT' });
+      SolicitudesService.approve.mockResolvedValue({ id: 'req-1', status: 'BORRADOR' });
 
       await service.returnToRequester('req-1', undefined, 'user-1', 'c1');
 

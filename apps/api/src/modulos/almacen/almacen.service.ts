@@ -24,7 +24,7 @@ export class AlmacenService {
 
   async findPendingClassification() {
     const rows = await this.prisma.request.findMany({
-      where: { status: 'PENDING_WAREHOUSE' },
+      where: { status: 'PENDIENTE_ALMACEN' },
       include: REQUEST_INCLUDE,
       orderBy: { createdAt: 'asc' },
     });
@@ -47,7 +47,7 @@ export class AlmacenService {
   async classify(id: string, data: Record<string, unknown>, userId: string, companyId: string) {
     const request = await this.findOneForClassification(id);
 
-    if (request.status !== 'PENDING_WAREHOUSE' && request.status !== 'WAREHOUSE_APPROVED') {
+    if (request.status !== 'PENDIENTE_ALMACEN' && request.status !== 'ALMACEN_APROBADO') {
       throw new NotFoundException(`Request ${id} is not pending warehouse classification`);
     }
 
@@ -57,7 +57,7 @@ export class AlmacenService {
   async approve(id: string, userId: string, companyId: string) {
     const request = await this.findOneForClassification(id);
 
-    if (request.status !== 'PENDING_WAREHOUSE' && request.status !== 'WAREHOUSE_APPROVED') {
+    if (request.status !== 'PENDIENTE_ALMACEN' && request.status !== 'ALMACEN_APROBADO') {
       throw new NotFoundException(`Request ${id} is not pending warehouse classification`);
     }
 
@@ -73,7 +73,7 @@ export class AlmacenService {
   async returnToRequester(id: string, comment?: string, userId?: string, companyId?: string) {
     const request = await this.findOneForClassification(id);
 
-    if (request.status !== 'PENDING_WAREHOUSE' && request.status !== 'WAREHOUSE_APPROVED') {
+    if (request.status !== 'PENDIENTE_ALMACEN' && request.status !== 'ALMACEN_APROBADO') {
       throw new NotFoundException(`Request ${id} is not pending warehouse classification`);
     }
 

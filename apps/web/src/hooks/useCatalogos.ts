@@ -28,16 +28,18 @@ export function useCatalogos() {
 
     async function load() {
       try {
-        const [grupos, subgrupos, categorias, marcas, unidades] = await Promise.all([
+        const [grupos, subgrupos, categorias, categoriasProfit, marcas, unidades] = await Promise.all([
           apiCatalogoService.getGrupos(),
           apiCatalogoService.getSubgrupos(),
           apiCatalogoService.getCategorias(),
+          apiCatalogoService.getCategoriasProfit(),
           apiCatalogoService.getMarcas(),
           apiCatalogoService.getUnidades(),
         ]);
+        const todasCategorias = [...categorias, ...categoriasProfit];
 
         if (!cancelled) {
-          setState({ grupos, subgrupos, categorias, marcas, unidades, loading: false, error: null });
+          setState({ grupos, subgrupos, categorias: todasCategorias, marcas, unidades, loading: false, error: null });
         }
       } catch (err: any) {
         if (!cancelled) {

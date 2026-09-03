@@ -28,6 +28,27 @@ export interface ProfitUnit {
   des_uni: string;
 }
 
+export interface ProfitCategory {
+  co_cat: string;
+  cat_des: string;
+}
+
+/**
+ * Marca Profit = dbo.colores (art.co_color FK → colores).
+ * En la UI de Profit aparece como "Marca/Subgrupo" (FASE 8F: AD_TRANS tiene
+ * 01/NO APLICA, F01/GASOLINA…; AD_DIST tiene 01/NO APLICA).
+ */
+export interface ProfitBrand {
+  co_col: string;
+  des_col: string;
+}
+
+/** Cuenta contable Profit (origen: xart_cont ctaN/nom_ctaN, solo cuentas usadas). */
+export interface ProfitAccount {
+  code: string;
+  description: string;
+}
+
 @Injectable()
 export class ProfitAdapterService {
   private readonly logger = new Logger(ProfitAdapterService.name);
@@ -231,6 +252,58 @@ export class ProfitAdapterService {
     const rows = await this.query<ProfitUnit>(
       `SELECT TOP 1 co_uni, des_uni FROM dbo.unidades WHERE LTRIM(RTRIM(co_uni)) = LTRIM(RTRIM(@co_uni))`,
       { co_uni: { type: mssql.VarChar(6), value: co_uni } },
+    );
+    return rows[0] ?? null;
+  }
+
+  async getCategories(): Promise<ProfitCategory[]> {
+    return this.query<ProfitCategory>(`SELECT co_cat, cat_des FROM dbo.cat_art ORDER BY co_cat`);
+  }
+
+  async getCategory(co_cat: string): Promise<ProfitCategory | null> {
+    // @ts-ignore
+    const mssql: any = await import('mssql');
+    const rows = await this.query<ProfitCategory>(
+      `SELECT TOP 1 co_cat, cat_des FROM dbo.cat_art WHERE LTRIM(RTRIM(co_cat)) = LTRIM(RTRIM(@co_cat))`,
+      { co_cat: { type: mssql.VarChar(6), value: co_cat } },
+    );
+    return rows[0] ?? null;
+  }
+
+  /**
+   * Catálogo maestro de cuentas contables (READ-ONLY) — Fase 8E.6.
+   * Fuente: C_DIST.dbo.sccuenta (855 cuentas; ver
+   * docs/INVESTIGACION_CATALOGO_CUENTAS_PROFIT_8E5.md).
+   * Por defecto solo imputables activas (detalle=1 AND inactivo=0, 489).
+   * xart_cont queda como referencia de configuraciones por artículo
+   * (y origen de c9, que no existe en columnas), no como catálogo.
+   */
+  async getAccounts(limit = 20, offset = 0, search?: string): Promise<ProfitAccount[]> {
+    // @ts-ignore
+    const mssql: any = await import('mssql');
+    let sql = `SELECT LTRIM(RTRIM(co_cue)) AS code, LTRIM(RTRIM(des_cue)) AS description FROM C_DIST.dbo.sccuenta WHERE detalle = 1 AND inactivo = 0`;
+    const params: any = {
+      limit: { type: mssql.Int, value: limit },
+      offset: { type: mssql.Int, value: offset },
+    };
+    if (search) {
+      sql += ` AND (co_cue LIKE '%' + @search + '%' OR des_cue LIKE '%' + @search + '%')`;
+      params.search = { type: mssql.VarChar(120), value: search };
+    }
+    sql += ` ORDER BY co_cue OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY`;
+    return this.query<ProfitAccount>(sql, params);
+  }
+
+  async getBrands(): Promise<ProfitBrand[]> {
+    return this.query<ProfitBrand>(`SELECT co_col, des_col FROM dbo.colores ORDER BY co_col`);
+  }
+
+  async getBrand(co_col: string): Promise<ProfitBrand | null> {
+    // @ts-ignore
+    const mssql: any = await import('mssql');
+    const rows = await this.query<ProfitBrand>(
+      `SELECT TOP 1 co_col, des_col FROM dbo.colores WHERE LTRIM(RTRIM(co_col)) = LTRIM(RTRIM(@co_col))`,
+      { co_col: { type: mssql.VarChar(6), value: co_col } },
     );
     return rows[0] ?? null;
   }

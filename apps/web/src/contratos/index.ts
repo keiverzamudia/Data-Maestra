@@ -36,10 +36,17 @@ export interface WarehouseService {
 }
 
 export interface ClassificationData {
-  groupId: string;
-  subgroupId: string;
+  groupId?: string;
+  subgroupId?: string;
   categoryId?: string;
   brandId?: string;
+  /** Códigos Profit directos (FASE 8F, preferidos sobre IDs). */
+  groupCode?: string;
+  subgroupCode?: string;
+  categoryCode?: string;
+  categoryName?: string;
+  brandCode?: string;
+  brandName?: string;
   unitId?: string;
   manufacturer?: string;
   model?: string;
@@ -57,6 +64,8 @@ export interface AccountingService {
 export interface AccountingCode {
   code: string;
   description: string;
+  /** Posición contable c1..c10 (Fase 8E). Opcional por compatibilidad. */
+  position?: string;
 }
 
 // ── Final Review Service ──

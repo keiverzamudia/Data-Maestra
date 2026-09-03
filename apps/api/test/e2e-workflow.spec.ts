@@ -61,7 +61,7 @@ function createPrismaMock() {
   };
 }
 
-describe('E2E Workflow — DRAFT to APPROVED', () => {
+describe('E2E Workflow — BORRADOR to APROBADO_FINAL', () => {
   let service: SolicitudesService;
   let prisma: ReturnType<typeof createPrismaMock>;
 
@@ -75,7 +75,7 @@ describe('E2E Workflow — DRAFT to APPROVED', () => {
       { requestedDescription: 'Sensor', purpose: 'Mant' },
       'user-1', 'c1', 'd1',
     );
-    expect(request.status).toBe('DRAFT');
+    expect(request.status).toBe('BORRADOR');
 
     await service.submit(request.id, 'user-1', 'c1');
     await service.approve(request.id, { action: 'APPROVE' }, 'user-2', 'c1');
@@ -83,21 +83,21 @@ describe('E2E Workflow — DRAFT to APPROVED', () => {
     await service.approve(request.id, { action: 'APPROVE', comment: 'WH OK' }, 'user-3', 'c1');
     await service.approve(request.id, { action: 'APPROVE', comment: 'ACC OK' }, 'user-4', 'c1');
     const final = await service.approve(request.id, { action: 'APPROVE', comment: 'Final OK' }, 'user-5', 'c1');
-    expect(final.status).toBe('APPROVED');
+    expect(final.status).toBe('APROBADO_FINAL');
   });
 
   it('rejects at manager stage', async () => {
     const request = await service.create({ requestedDescription: 'T', purpose: 'T' }, 'u1', 'c1', 'd1');
     await service.submit(request.id, 'u1', 'c1');
     const rejected = await service.approve(request.id, { action: 'REJECT', comment: 'No' }, 'u2', 'c1');
-    expect(rejected.status).toBe('REJECTED');
+    expect(rejected.status).toBe('RECHAZADO');
   });
 
   it('returns to draft from manager', async () => {
     const request = await service.create({ requestedDescription: 'T', purpose: 'T' }, 'u1', 'c1', 'd1');
     await service.submit(request.id, 'u1', 'c1');
     const returned = await service.approve(request.id, { action: 'RETURN', comment: 'Details' }, 'u2', 'c1');
-    expect(returned.status).toBe('DRAFT');
+    expect(returned.status).toBe('BORRADOR');
   });
 });
 

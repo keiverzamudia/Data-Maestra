@@ -21,7 +21,7 @@ export class RevisionFinalService {
 
   async findPendingReview() {
     const rows = await this.prisma.request.findMany({
-      where: { status: 'PENDING_FINAL_REVIEW' },
+      where: { status: 'PENDIENTE_VALIDACION_MAESTRA' },
       include: REQUEST_INCLUDE,
       orderBy: { createdAt: 'asc' },
     });
@@ -54,7 +54,7 @@ export class RevisionFinalService {
       throw new NotFoundException(`Request ${id} not found`);
     }
 
-    if (request.status !== 'PENDING_FINAL_REVIEW') {
+    if (request.status !== 'PENDIENTE_VALIDACION_MAESTRA') {
       throw new NotFoundException(`Request ${id} is not pending final review`);
     }
 
@@ -68,7 +68,7 @@ export class RevisionFinalService {
       throw new NotFoundException(`Request ${id} not found`);
     }
 
-    if (request.status !== 'PENDING_FINAL_REVIEW') {
+    if (request.status !== 'PENDIENTE_VALIDACION_MAESTRA') {
       throw new NotFoundException(`Request ${id} is not pending final review`);
     }
 

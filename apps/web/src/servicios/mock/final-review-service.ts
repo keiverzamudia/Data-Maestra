@@ -5,16 +5,16 @@ const requests: Request[] = [];
 
 export const mockFinalReviewService: FinalReviewService = {
   async getPendingReviews() {
-    return requests.filter(r => r.status === 'PENDING_FINAL_REVIEW');
+    return requests.filter(r => r.status === 'PENDIENTE_VALIDACION_MAESTRA');
   },
 
   async approveReview(id) {
     const r = requests.find(x => x.id === id);
-    if (r) r.status = 'APPROVED';
+    if (r) r.status = 'APROBADO_FINAL';
   },
 
   async rejectReview(id) {
     const r = requests.find(x => x.id === id);
-    if (r) r.status = 'REJECTED';
+    if (r) r.status = 'RECHAZADO';
   },
 };

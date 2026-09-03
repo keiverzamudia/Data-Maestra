@@ -32,6 +32,40 @@ export class ProfitController {
     return this.profitAdapter.getUnits();
   }
 
+  @Get('categories')
+  @RequirePermission('DASHBOARD.VIEW')
+  @ApiOperation({ summary: 'List categories from Profit cat_art (READ-ONLY)' })
+  getCategories() {
+    return this.profitAdapter.getCategories();
+  }
+
+  @Get('accounts')
+  @RequirePermission('DASHBOARD.VIEW')
+  @ApiOperation({ summary: 'List accounting accounts from Profit sccuenta catalog (READ-ONLY)' })
+  @ApiQuery({ name: 'limit', required: false })
+  @ApiQuery({ name: 'offset', required: false })
+  @ApiQuery({ name: 'search', required: false })
+  getAccounts(
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('search') search?: string,
+  ) {
+    const n = limit ? parseInt(limit, 10) : 20;
+    const o = offset ? parseInt(offset, 10) : 0;
+    return this.profitAdapter.getAccounts(
+      Math.min(Math.max(isNaN(n) ? 20 : n, 1), 100),
+      Math.min(Math.max(isNaN(o) ? 0 : o, 0), 10000),
+      search,
+    );
+  }
+
+  @Get('brands')
+  @RequirePermission('DASHBOARD.VIEW')
+  @ApiOperation({ summary: 'List brands from Profit colores (READ-ONLY)' })
+  getBrands() {
+    return this.profitAdapter.getBrands();
+  }
+
   @Get('articles')
   @RequirePermission('DASHBOARD.VIEW')
   @ApiOperation({ summary: 'List articles from Profit (READ-ONLY)' })

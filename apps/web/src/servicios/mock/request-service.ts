@@ -32,7 +32,7 @@ export const mockRequestService: RequestService = {
       requestedDescription: data.requestedDescription || '',
       purpose: data.purpose || '',
       referencePhotoUri: data.referencePhotoUri,
-      status: 'DRAFT',
+      status: 'BORRADOR',
       priority: data.priority || 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -44,22 +44,22 @@ export const mockRequestService: RequestService = {
   async submit(id) {
     await delay();
     const r = requests.find(x => x.id === id);
-    if (r) { r.status = 'PENDING_MANAGER'; r.updatedAt = new Date().toISOString(); }
+    if (r) { r.status = 'PENDIENTE_GERENTE'; r.updatedAt = new Date().toISOString(); }
     return r!;
   },
   async approve(id, comment) {
     await delay();
     const r = requests.find(x => x.id === id);
-    if (r) { r.status = 'MANAGER_APPROVED'; r.updatedAt = new Date().toISOString(); }
+    if (r) { r.status = 'PENDIENTE_ALMACEN'; r.updatedAt = new Date().toISOString(); }
   },
   async reject(id, comment) {
     await delay();
     const r = requests.find(x => x.id === id);
-    if (r) { r.status = 'REJECTED'; r.notes = comment; r.updatedAt = new Date().toISOString(); }
+    if (r) { r.status = 'RECHAZADO'; r.notes = comment; r.updatedAt = new Date().toISOString(); }
   },
   async returnRequest(id, comment) {
     await delay();
     const r = requests.find(x => x.id === id);
-    if (r) { r.status = 'RETURNED'; r.notes = comment; r.updatedAt = new Date().toISOString(); }
+    if (r) { r.status = 'DEVUELTO'; r.notes = comment; r.updatedAt = new Date().toISOString(); }
   },
 };

@@ -16,6 +16,21 @@ export const apiCatalogoService = {
     return api.get<CatalogCategory[]>(`/api/v1/catalogs/categories${qs}`);
   },
 
+  async getCategoriasProfit(): Promise<CatalogCategory[]> {
+    try {
+      const rows = await api.get<{ co_cat: string; cat_des: string }[]>('/api/v1/profit/categories');
+      return rows.map(r => ({
+        id: `profit-${r.co_cat.trim()}`,
+        subgroupId: '' as any, // Profit categories son globales, se muestran siempre
+        code: r.co_cat.trim(),
+        name: r.cat_des.trim(),
+        active: true,
+      }));
+    } catch {
+      return [];
+    }
+  },
+
   async getMarcas(): Promise<Brand[]> {
     return api.get<Brand[]>('/api/v1/catalogs/brands');
   },

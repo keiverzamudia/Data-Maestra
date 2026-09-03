@@ -3,11 +3,16 @@ import { PrismaService } from '../../comun/prisma/prisma.service';
 import { CreateRequestDto } from './dto/create-request.dto';
 import { ClassifyRequestDto } from './dto/classify-request.dto';
 import { ApprovalDto } from './dto/approval.dto';
+import { CatalogosService } from '../catalogos/catalogos.service';
 import { flattenRequestData } from '../../comun/utilidades/flatten-request-data';
+import { getNextWorkflowState, isTerminalWorkflowState } from './workflow-states';
 
 @Injectable()
 export class SolicitudesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly catalogosService: CatalogosService,
+  ) {}
 
   async create(dto: CreateRequestDto, userId: string, companyId: string, departmentId: string) {
     const requestNumber = await this.generateRequestNumber();
@@ -23,7 +28,7 @@ export class SolicitudesService {
           purpose: dto.purpose,
           priority: dto.priority ?? 0,
           referencePhotoUri: dto.referencePhotoUri,
-          status: 'DRAFT',
+          status: 'BORRADOR',
         },
       });
 
@@ -38,7 +43,7 @@ export class SolicitudesService {
           action: 'CREATED',
           afterData: JSON.stringify({
             requestNumber,
-            status: 'DRAFT',
+            status: 'BORRADOR',
             requestedDescription: dto.requestedDescription,
           }),
         },
@@ -116,20 +121,20 @@ export class SolicitudesService {
       throw new NotFoundException(`Request ${id} not found`);
     }
 
-    if (request.status !== 'DRAFT') {
-      throw new BadRequestException(`Request ${id} is not in DRAFT status`);
+    if (request.status !== 'BORRADOR') {
+      throw new BadRequestException(`Request ${id} is not in BORRADOR status`);
     }
 
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.request.update({
         where: { id },
-        data: { status: 'PENDING_MANAGER' },
+        data: { status: 'PENDIENTE_GERENTE' },
       });
 
       const instance = await tx.workflowInstance.create({
         data: {
           requestId: id,
-          currentStepCode: 'PENDING_MANAGER',
+          currentStepCode: 'PENDIENTE_GERENTE',
           version: 1,
         },
       });
@@ -137,7 +142,7 @@ export class SolicitudesService {
       await tx.workflowTask.create({
         data: {
           instanceId: instance.id,
-          stepCode: 'PENDING_MANAGER',
+          stepCode: 'PENDIENTE_GERENTE',
           status: 'PENDING',
         },
       });
@@ -145,8 +150,8 @@ export class SolicitudesService {
       await tx.workflowHistory.create({
         data: {
           instanceId: instance.id,
-          fromStep: 'DRAFT',
-          toStep: 'PENDING_MANAGER',
+          fromStep: 'BORRADOR',
+          toStep: 'PENDIENTE_GERENTE',
           action: 'SUBMIT',
           actorId: userId,
         },
@@ -155,11 +160,11 @@ export class SolicitudesService {
       await tx.approval.create({
         data: {
           requestId: id,
-          stepCode: 'PENDING_MANAGER',
+          stepCode: 'PENDIENTE_GERENTE',
           actorId: userId,
           action: 'SUBMIT',
-          fromStatus: 'DRAFT',
-          toStatus: 'PENDING_MANAGER',
+          fromStatus: 'BORRADOR',
+          toStatus: 'PENDIENTE_GERENTE',
         },
       });
 
@@ -172,8 +177,8 @@ export class SolicitudesService {
           entityType: 'Request',
           entityId: id,
           action: 'SUBMITTED',
-          beforeData: JSON.stringify({ status: 'DRAFT' }),
-          afterData: JSON.stringify({ status: 'PENDING_MANAGER' }),
+          beforeData: JSON.stringify({ status: 'BORRADOR' }),
+          afterData: JSON.stringify({ status: 'PENDIENTE_GERENTE' }),
         },
       });
 
@@ -191,7 +196,7 @@ export class SolicitudesService {
       throw new NotFoundException(`Request ${id} not found`);
     }
 
-    if (request.status === 'DRAFT' || request.status === 'APPROVED' || request.status === 'REJECTED') {
+    if (isTerminalWorkflowState(request.status)) {
       throw new BadRequestException(`Request ${id} cannot be processed in ${request.status} status`);
     }
 
@@ -199,7 +204,7 @@ export class SolicitudesService {
       throw new BadRequestException('Comment is required for REJECT and RETURN actions');
     }
 
-    const nextStatus = this.getNextStatus(request.status, dto.action);
+    const nextStatus = getNextWorkflowState(request.status, dto.action);
 
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.request.update({
@@ -324,11 +329,40 @@ export class SolicitudesService {
       throw new NotFoundException(`Request ${id} not found`);
     }
 
-    if (request.status !== 'PENDING_WAREHOUSE' && request.status !== 'WAREHOUSE_APPROVED') {
+    if (request.status !== 'PENDIENTE_ALMACEN' && request.status !== 'ALMACEN_APROBADO') {
       throw new BadRequestException(`Request ${id} is not in a classifiable status`);
     }
 
     return this.prisma.$transaction(async (tx) => {
+      // FASE 8F: si vienen códigos Profit, se resuelven a IDs locales
+      // (con provisión local de categoría/marca faltante). Si no, vía IDs legacy.
+      let groupId = dto.groupId;
+      let subgroupId = dto.subgroupId;
+      let categoryId = dto.categoryId;
+      let brandId = dto.brandId;
+      let provisioned: string[] = [];
+      if (dto.groupCode || dto.subgroupCode) {
+        if (!dto.groupCode || !dto.subgroupCode) {
+          throw new BadRequestException('groupCode y subgroupCode son requeridos juntos');
+        }
+        const resolved = await this.catalogosService.resolveClassification(tx, {
+          groupCode: dto.groupCode,
+          subgroupCode: dto.subgroupCode,
+          categoryCode: dto.categoryCode,
+          categoryName: dto.categoryName,
+          brandCode: dto.brandCode,
+          brandName: dto.brandName,
+        });
+        groupId = resolved.groupId;
+        subgroupId = resolved.subgroupId;
+        if (dto.categoryCode) categoryId = resolved.categoryId;
+        if (dto.brandCode) brandId = resolved.brandId;
+        provisioned = resolved.provisioned;
+      }
+      if (!groupId || !subgroupId) {
+        throw new BadRequestException(`Request ${id} requiere grupo y subgrupo (IDs o códigos Profit)`);
+      }
+
       const existing = await tx.requestData.findUnique({ where: { requestId: id } });
 
       let requestData;
@@ -336,10 +370,10 @@ export class SolicitudesService {
         requestData = await tx.requestData.update({
           where: { requestId: id },
           data: {
-            groupId: dto.groupId,
-            subgroupId: dto.subgroupId,
-            categoryId: dto.categoryId,
-            brandId: dto.brandId,
+            groupId,
+            subgroupId,
+            categoryId,
+            brandId,
             unitId: dto.unitId,
             manufacturer: dto.manufacturer,
             model: dto.model,
@@ -351,10 +385,10 @@ export class SolicitudesService {
         requestData = await tx.requestData.create({
           data: {
             requestId: id,
-            groupId: dto.groupId,
-            subgroupId: dto.subgroupId,
-            categoryId: dto.categoryId,
-            brandId: dto.brandId,
+            groupId,
+            subgroupId,
+            categoryId,
+            brandId,
             unitId: dto.unitId,
             manufacturer: dto.manufacturer,
             model: dto.model,
@@ -364,17 +398,17 @@ export class SolicitudesService {
         });
       }
 
-      const masterCode = await this.generateMasterCode(dto.groupId, dto.subgroupId, tx);
+      const masterCode = await this.generateMasterCode(groupId, subgroupId, tx);
 
       requestData = await tx.requestData.update({
         where: { requestId: id },
         data: { masterCode },
       });
 
-      if (request.status === 'PENDING_WAREHOUSE') {
+      if (request.status === 'PENDIENTE_ALMACEN') {
         await tx.request.update({
           where: { id },
-          data: { status: 'WAREHOUSE_APPROVED' },
+          data: { status: 'ALMACEN_APROBADO' },
         });
 
         // E-03: unificar status y workflowInstance.currentStepCode (mock-safe)
@@ -385,13 +419,13 @@ export class SolicitudesService {
             : wfDeleg.findUnique
               ? await wfDeleg.findUnique({ where: { requestId: id } })
               : null;
-          if (instance && instance.currentStepCode === 'PENDING_WAREHOUSE') {
+          if (instance && instance.currentStepCode === 'PENDIENTE_ALMACEN') {
             await tx.workflowTask.updateMany({
-              where: { instanceId: instance.id, stepCode: 'PENDING_WAREHOUSE', status: 'PENDING' },
+              where: { instanceId: instance.id, stepCode: 'PENDIENTE_ALMACEN', status: 'PENDING' },
               data: { status: 'COMPLETED', completedAt: new Date() },
             });
             const existingWarehouseTask = await tx.workflowTask.findUnique({
-              where: { instanceId_stepCode: { instanceId: instance.id, stepCode: 'WAREHOUSE_APPROVED' } },
+              where: { instanceId_stepCode: { instanceId: instance.id, stepCode: 'ALMACEN_APROBADO' } },
             });
             if (existingWarehouseTask) {
               await tx.workflowTask.update({
@@ -400,12 +434,12 @@ export class SolicitudesService {
               });
             } else {
               await tx.workflowTask.create({
-                data: { instanceId: instance.id, stepCode: 'WAREHOUSE_APPROVED', status: 'PENDING' },
+                data: { instanceId: instance.id, stepCode: 'ALMACEN_APROBADO', status: 'PENDING' },
               });
             }
             await tx.workflowInstance.update({
               where: { id: instance.id },
-              data: { currentStepCode: 'WAREHOUSE_APPROVED' },
+              data: { currentStepCode: 'ALMACEN_APROBADO' },
             });
           }
         } catch {
@@ -423,8 +457,15 @@ export class SolicitudesService {
           entityId: requestData.id,
           action: 'CLASSIFIED',
           afterData: JSON.stringify({
-            groupId: dto.groupId,
-            subgroupId: dto.subgroupId,
+            groupId,
+            subgroupId,
+            categoryId,
+            brandId,
+            groupCode: dto.groupCode,
+            subgroupCode: dto.subgroupCode,
+            categoryCode: dto.categoryCode,
+            brandCode: dto.brandCode,
+            provisioned,
             masterCode,
           }),
         },
@@ -509,22 +550,5 @@ export class SolicitudesService {
     }
 
     return `${groupCode}${subgroupCode}-${String(seq).padStart(5, '0')}`;
-  }
-
-  private getNextStatus(currentStatus: string, action: string): string {
-    const transitions: Record<string, Record<string, string>> = {
-      PENDING_MANAGER: { APPROVE: 'PENDING_WAREHOUSE', REJECT: 'REJECTED', RETURN: 'DRAFT' },
-      PENDING_WAREHOUSE: { APPROVE: 'PENDING_ACCOUNTING', REJECT: 'REJECTED', RETURN: 'PENDING_MANAGER' },
-      PENDING_ACCOUNTING: { APPROVE: 'PENDING_FINAL_REVIEW', REJECT: 'REJECTED', RETURN: 'PENDING_WAREHOUSE' },
-      PENDING_FINAL_REVIEW: { APPROVE: 'APPROVED', REJECT: 'REJECTED', RETURN: 'PENDING_ACCOUNTING' },
-      WAREHOUSE_APPROVED: { APPROVE: 'PENDING_ACCOUNTING', REJECT: 'REJECTED', RETURN: 'PENDING_MANAGER' },
-    };
-
-    const next = transitions[currentStatus]?.[action];
-    if (!next) {
-      throw new BadRequestException(`Invalid transition: ${currentStatus} -> ${action}`);
-    }
-
-    return next;
   }
 }

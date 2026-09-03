@@ -190,48 +190,52 @@ pnpm --filter @master-data/api run db:studio     # Abrir Prisma Studio
 
 ## 9. Workflow — Flujo completo
 
-**Archivo único de verdad:** `apps/api/src/modulos/solicitudes/solicitud.service.ts` — método `getNextStatus()`
+**Archivo único de verdad:** `apps/api/src/modulos/solicitudes/workflow-states.ts` — `getNextWorkflowState()` (+ `apps/api/src/modulos/solicitudes/solicitud.service.ts` lo consume)
+
+> FASE 8G: estados normalizados a español. Ver `docs/NORMALIZACION_ESTADOS_8G.md`.
 
 ### Estados
 
 | Estado | Significado | Terminal |
 |--------|-------------|----------|
-| DRAFT | Borrador | No |
-| PENDING_MANAGER | Esperando gerente | No |
-| PENDING_WAREHOUSE | Esperando almacén | No |
-| WAREHOUSE_APPROVED | Clasificación completada | No |
-| PENDING_ACCOUNTING | Esperando contabilidad | No |
-| PENDING_FINAL_REVIEW | Esperando revisión final | No |
-| APPROVED | Aprobado | No |
-| MASTER_ACTIVE | Master activo | Sí |
-| RETURNED | Devuelto | No |
-| REJECTED | Rechazado | Sí |
+| BORRADOR | Borrador | Sí (no admite acciones hasta SUBMIT) |
+| PENDIENTE_GERENTE | Esperando gerente | No |
+| PENDIENTE_ALMACEN | Esperando almacén | No |
+| ALMACEN_APROBADO | Clasificación completada | No |
+| PENDIENTE_CONTABILIDAD | Esperando contabilidad | No |
+| PENDIENTE_VALIDACION_MAESTRA | Esperando validación maestra | No |
+| APROBADO_FINAL | Aprobado | Sí |
+| PROCESANDO_PROFIT | Registrando en Profit (futuro, sin lógica aún) | No |
+| REGISTRADO_PROFIT | Registrado en Profit (futuro, sin lógica aún) | No |
+| ERROR_PROFIT | Error técnico Profit (futuro; no es rechazo) | No |
+| DEVUELTO | Devuelto | No |
+| RECHAZADO | Rechazado | Sí |
 
 ### Flujo principal
 
 ```
-DRAFT → [SUBMIT] → PENDING_MANAGER
-PENDING_MANAGER → [APPROVE] → PENDING_WAREHOUSE
-PENDING_WAREHOUSE → [CLASSIFY] → WAREHOUSE_APPROVED
-WAREHOUSE_APPROVED → [APPROVE] → PENDING_ACCOUNTING
-PENDING_ACCOUNTING → [APPROVE] → PENDING_FINAL_REVIEW
-PENDING_FINAL_REVIEW → [APPROVE] → APPROVED
+BORRADOR → [SUBMIT] → PENDIENTE_GERENTE
+PENDIENTE_GERENTE → [APPROVE] → PENDIENTE_ALMACEN
+PENDIENTE_ALMACEN → [CLASSIFY] → ALMACEN_APROBADO
+ALMACEN_APROBADO → [APPROVE] → PENDIENTE_CONTABILIDAD
+PENDIENTE_CONTABILIDAD → [APPROVE] → PENDIENTE_VALIDACION_MAESTRA
+PENDIENTE_VALIDACION_MAESTRA → [APPROVE] → APROBADO_FINAL
 ```
 
 ### Retorno (devolución)
 
 ```
-PENDING_MANAGER → [RETURN] → DRAFT
-PENDING_WAREHOUSE → [RETURN] → PENDING_MANAGER
-WAREHOUSE_APPROVED → [RETURN] → PENDING_MANAGER
-PENDING_ACCOUNTING → [RETURN] → PENDING_WAREHOUSE
-PENDING_FINAL_REVIEW → [RETURN] → PENDING_ACCOUNTING
+PENDIENTE_GERENTE → [RETURN] → BORRADOR
+PENDIENTE_ALMACEN → [RETURN] → PENDIENTE_GERENTE
+ALMACEN_APROBADO → [RETURN] → PENDIENTE_GERENTE
+PENDIENTE_CONTABILIDAD → [RETURN] → PENDIENTE_ALMACEN
+PENDIENTE_VALIDACION_MAESTRA → [RETURN] → PENDIENTE_CONTABILIDAD
 ```
 
 ### Rechazo
 
 ```
-Cualquier estado pendiente → [REJECT] → REJECTED
+Cualquier estado pendiente → [REJECT] → RECHAZADO
 ```
 
 ### Comportamiento de WorkflowTask al devolver una solicitud
@@ -247,9 +251,9 @@ Cuando una solicitud hace RETURN hacia un paso anterior:
 7. workflowHistory conserva el registro de la devolución.
 8. approval conserva el registro de la acción y comentario.
 
-**Ejemplo:** PENDING_ACCOUNTING → RETURN → PENDING_WAREHOUSE
+**Ejemplo:** PENDIENTE_CONTABILIDAD → RETURN → PENDIENTE_ALMACEN
 
-La solicitud puede haber pasado anteriormente por Almacén, por lo que ya puede existir una WorkflowTask con instanceId + PENDING_WAREHOUSE. En ese caso NO se crea una segunda tarea. Se reactiva la existente. Esta regla evita una violación de la restricción única (instance_id, step_code).
+La solicitud puede haber pasado anteriormente por Almacén, por lo que ya puede existir una WorkflowTask con instanceId + PENDIENTE_ALMACEN. En ese caso NO se crea una segunda tarea. Se reactiva la existente. Esta regla evita una violación de la restricción única (instance_id, step_code).
 
 ---
 
@@ -293,7 +297,7 @@ La solicitud puede haber pasado anteriormente por Almacén, por lo que ya puede 
 - `apps/api/src/modulos/contabilidad/contabilidad.controller.ts`
 - `apps/api/src/modulos/contabilidad/contabilidad.service.ts` — getPending, approve, reject (RETURN)
 
-**IMPORTANTE:** El rechazo contable usa `RETURN` → `PENDING_WAREHOUSE` (devuelve a almacén, no rechaza). El comentario es obligatorio al rechazar.
+**IMPORTANTE:** El rechazo contable usa `RETURN` → `PENDIENTE_ALMACEN` (devuelve a almacén, no rechaza). El comentario es obligatorio al rechazar.
 
 **Frontend:**
 - `apps/web/src/modulos/contabilidad/ContabilidadList.tsx`
