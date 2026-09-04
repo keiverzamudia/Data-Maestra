@@ -49,6 +49,12 @@ export interface ProfitAccount {
   description: string;
 }
 
+/** Persona de Profit: código externo estable + nombre visible. Sin secretos. */
+export interface ProfitUser {
+  profitCode: string;
+  displayName: string;
+}
+
 @Injectable()
 export class ProfitAdapterService {
   private readonly logger = new Logger(ProfitAdapterService.name);
@@ -317,5 +323,29 @@ export class ProfitAdapterService {
       this.getUnit(article.uni_venta.trim()),
     ]);
     return { article, group, subgroup, unit };
+  }
+
+  /**
+   * Directorio de usuarios de Profit (READ-ONLY) — Fase 10C.
+   * Fuente oficial y única: MasterProfit.dbo.VUSUARIOS
+   *   columnas reales: codigo (código de ingreso a Profit),
+   *                     nombre  (nombre visible del usuario).
+   * Verificado en SRVBDPROFITBK: 107 filas, códigos distintos, sin vacíos
+   * (ej: KZAMU → KEIBER ZAMUDIA). Solo se leen código y nombre.
+   */
+  async getProfitUsers(): Promise<ProfitUser[]> {
+    const rows = await this.query<{ codigo: string; nombre: string }>(
+      `SELECT codigo, nombre FROM MasterProfit.dbo.VUSUARIOS ORDER BY nombre`,
+    );
+    const seen = new Set<string>();
+    const users: ProfitUser[] = [];
+    for (const r of rows) {
+      const profitCode = (r.codigo ?? '').trim();
+      const displayName = (r.nombre ?? '').trim();
+      if (!profitCode || !displayName || seen.has(profitCode)) continue;
+      seen.add(profitCode);
+      users.push({ profitCode, displayName });
+    }
+    return users;
   }
 }

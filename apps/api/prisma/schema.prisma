@@ -52,7 +52,20 @@ model User {
   active      Boolean  @default(true)
   createdAt   DateTime @default(now()) @map("created_at")
 
+  // --- FASE 10B: autenticación real (sin lógica todavía) ---
+  // Código externo estable proveniente de Profit (referencia para sincronización).
+  // Nullable para compatibilidad con usuarios creados antes de 10B.
+  profitCode String? @unique @map("profit_code")
+  // Hash de contraseña (bcrypt en 10D). NULL = sin contraseña asignada (no puede hacer login).
+  passwordHash String? @map("password_hash")
+  // true = debe cambiar la contraseña en el próximo ingreso (temporal / reset).
+  mustChangePassword Boolean   @default(true) @map("must_change_password")
+  lastLoginAt        DateTime? @map("last_login_at")
+  passwordChangedAt  DateTime? @map("password_changed_at")
+
   userRoles       UserRole[]
+  permissionOverrides UserPermissionOverride[]
+  sessions        Session[]
   auditEvents     AuditEvent[]
   workflowTasks   WorkflowTask[]  @relation("AssignedTo")
   workflowHistory WorkflowHistory[]
@@ -82,6 +95,7 @@ model Permission {
   description String?
 
   rolePermissions RolePermission[]
+  userOverrides UserPermissionOverride[]
 
   @@map("permissions")
 }
@@ -112,6 +126,61 @@ model RolePermission {
 
   @@id([roleId, permissionId])
   @@map("role_permissions")
+}
+
+// --- FASE 10B: RBAC por usuario, sesiones y sincronización Profit ---
+// Sin lógica todavía (fases 10C-10E). Este bloque solo prepara el modelo.
+//
+// Convención del proyecto (SQLite dev): sin enums de Prisma, se usa String.
+// effect admite 'GRANT' | 'DENY' (validado a nivel aplicación en 10G).
+
+model UserPermissionOverride {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  permissionId String   @map("permission_id")
+  effect       String
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @default(now()) @map("updated_at")
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permissionId])
+  @@map("user_permission_overrides")
+}
+
+model Session {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  // Hash del token (nunca el token en claro). Preparado para JWT + sesión
+  // persistente (10E); no se asume todavía qué token se hashea.
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  ip        String?
+  userAgent String?   @map("user_agent")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @default(now()) @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model ProfitUserSyncRun {
+  id         String    @id @default(uuid())
+  startedAt  DateTime  @default(now()) @map("started_at")
+  finishedAt DateTime? @map("finished_at")
+  created    Int       @default(0)
+  updated    Int       @default(0)
+  missing    Int       @default(0)
+  errors     Int       @default(0)
+  // Detalle JSON como String (convención SQLite del proyecto).
+  details    String    @default("{}")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@map("profit_user_sync_runs")
 }
 
 // --- Departments ---
