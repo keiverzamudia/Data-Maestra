@@ -2,11 +2,12 @@ import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { AuditoriaService } from './auditoria.service';
 import { RbacGuard } from '../autenticacion/rbac.guard';
+import { JwtGuard } from '../autenticacion/jwt.guard';
 import { RequirePermission } from '../autenticacion/require-permission.decorator';
 
 @ApiTags('Audit')
 @Controller('audit')
-@UseGuards(RbacGuard)
+@UseGuards(JwtGuard, RbacGuard)
 export class AuditoriaController {
   constructor(private readonly auditService: AuditoriaService) {}
 

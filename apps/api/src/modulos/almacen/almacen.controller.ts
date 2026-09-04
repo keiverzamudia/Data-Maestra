@@ -3,11 +3,13 @@ import { ApiTags, ApiOperation, ApiParam } from '@nestjs/swagger';
 import { AlmacenService } from './almacen.service';
 import { AutenticacionService } from '../autenticacion/autenticacion.service';
 import { RbacGuard } from '../autenticacion/rbac.guard';
+import { JwtGuard } from '../autenticacion/jwt.guard';
+import { CurrentUser, RequestUser } from '../autenticacion/current-user.decorator';
 import { RequirePermission } from '../autenticacion/require-permission.decorator';
 
 @ApiTags('Warehouse')
 @Controller('warehouse')
-@UseGuards(RbacGuard)
+@UseGuards(JwtGuard, RbacGuard)
 export class AlmacenController {
   constructor(
     private readonly warehouseService: AlmacenService,
@@ -33,9 +35,9 @@ export class AlmacenController {
   @RequirePermission('WAREHOUSE.CLASSIFY')
   @ApiOperation({ summary: 'Save classification' })
   @ApiParam({ name: 'id', description: 'Request ID' })
-  async classify(@Param('id') id: string, @Body() body: Record<string, unknown>) {
-    const session = this.authService.getSession();
-    return this.warehouseService.classify(id, body, session.id, session.company.id);
+  async classify(@CurrentUser() user: RequestUser, @Param('id') id: string, @Body() body: Record<string, unknown>) {
+    const companyId = await this.authService.resolveCompanyContext(user.id);
+    return this.warehouseService.classify(id, body, user.id, companyId);
   }
 
   @Post(':id/approve')
@@ -43,9 +45,9 @@ export class AlmacenController {
   @RequirePermission('WAREHOUSE.CLASSIFY')
   @ApiOperation({ summary: 'Approve classification (advances workflow)' })
   @ApiParam({ name: 'id', description: 'Request ID' })
-  async approve(@Param('id') id: string) {
-    const session = this.authService.getSession();
-    return this.warehouseService.approve(id, session.id, session.company.id);
+  async approve(@CurrentUser() user: RequestUser, @Param('id') id: string) {
+    const companyId = await this.authService.resolveCompanyContext(user.id);
+    return this.warehouseService.approve(id, user.id, companyId);
   }
 
   @Post(':id/return')
@@ -53,8 +55,8 @@ export class AlmacenController {
   @RequirePermission('WAREHOUSE.CLASSIFY')
   @ApiOperation({ summary: 'Return request to requester' })
   @ApiParam({ name: 'id', description: 'Request ID' })
-  async returnRequest(@Param('id') id: string, @Body('comment') comment?: string) {
-    const session = this.authService.getSession();
-    return this.warehouseService.returnToRequester(id, comment, session.id, session.company.id);
+  async returnRequest(@CurrentUser() user: RequestUser, @Param('id') id: string, @Body('comment') comment?: string) {
+    const companyId = await this.authService.resolveCompanyContext(user.id);
+    return this.warehouseService.returnToRequester(id, comment, user.id, companyId);
   }
 }

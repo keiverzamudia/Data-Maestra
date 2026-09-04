@@ -3,7 +3,6 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useSession } from '../../contextos/SessionContext';
 import { useCompany } from '../../contextos/CompanyContext';
 import { apiNotificacionService } from '../../servicios/api/api-notificacion-service';
-import { UserSwitcher } from '../ui/UserSwitcher';
 
 const allNav = [
   { key: 'dashboard', to: '/', label: 'Dashboard', icon: '◧', permission: 'DASHBOARD.VIEW' },
@@ -22,7 +21,7 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
   const [showNotif, setShowNotif] = React.useState(false);
   const [search, setSearch] = React.useState('');
   const { companyId, setCompanyId, companies } = useCompany();
-  const { session, hasPermission } = useSession();
+  const { user, logout, hasPermission } = useSession();
   const navigate = useNavigate();
   const [notifs, setNotifs] = React.useState<any[]>([]);
   const [unread, setUnread] = React.useState(0);
@@ -34,7 +33,8 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
 
   const nav = allNav.filter(n => hasPermission(n.permission));
 
-  const initials = session.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  const initials = (user?.displayName ?? '?')
+    .split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 
   return (
     <div className="layout">
@@ -56,8 +56,10 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
             <div className="sidebar-user">
               <span className="avatar">{initials}</span>
               <div className="sidebar-user-info">
-                <div className="sidebar-user-name">{session.name}</div>
-                <div className="sidebar-user-dept">{session.department.name}</div>
+                <div className="sidebar-user-name">{user?.displayName ?? '—'}</div>
+                <div className="sidebar-user-dept">
+                  <button className="btn btn-ghost btn-sm" onClick={() => logout()}>Cerrar sesión</button>
+                </div>
               </div>
             </div>
           </div>
@@ -97,13 +99,12 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
             )}
             <div className="user-chip">
               <span className="avatar">{initials}</span>
-              {!collapsed && <span>{session.name}</span>}
+              {!collapsed && <span>{user?.displayName ?? '—'}</span>}
             </div>
           </div>
         </header>
         <main className="content">{children}</main>
       </div>
-      <UserSwitcher />
     </div>
   );
 };

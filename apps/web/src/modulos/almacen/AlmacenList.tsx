@@ -1,24 +1,24 @@
 import * as React from 'react';
-import { useSession } from '../../contextos/SessionContext';
+import { useCompany } from '../../contextos/CompanyContext';
 import { warehouseService } from '../../servicios';
 import { PageHeader, Button, SearchInput, StatusBadge, PriorityBadge, EmptyState } from '../../componentes/ui';
 import type { Request } from '../../tipos';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
 
 export const WarehouseList: React.FC = () => {
-  const { session } = useSession();
-  const { usuarios, departamentos } = useOrganizacion(session.company.id);
+  const { companyId } = useCompany();
+  const { usuarios, departamentos } = useOrganizacion(companyId);
   const [requests, setRequests] = React.useState<Request[]>([]);
   const [search, setSearch] = React.useState('');
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
     setLoading(true);
-    warehouseService.getPendingRequests(session.company.id).then(r => {
+    warehouseService.getPendingRequests(companyId).then(r => {
       setRequests(r);
       setLoading(false);
     });
-  }, [session.company.id]);
+  }, [companyId]);
 
   const filtered = search
     ? requests.filter(r => r.requestedDescription.toLowerCase().includes(search.toLowerCase()) || String(r.requestNumber).includes(search))

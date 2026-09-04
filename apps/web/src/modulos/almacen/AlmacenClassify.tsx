@@ -1,6 +1,5 @@
 import * as React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useSession } from '../../contextos/SessionContext';
 import { warehouseService } from '../../servicios';
 import { useCatalogos } from '../../hooks/useCatalogos';
 import { useProfitCatalogos } from '../../hooks/useProfitCatalogos';
@@ -12,7 +11,6 @@ import type { Request } from '../../tipos';
 export const WarehouseClassify: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { session } = useSession();
   // Catálogo local (unidades + traducción ID→código para solicitudes existentes).
   const { grupos: localGrupos, subgrupos: localSubgrupos, categorias: localCategorias, marcas: localMarcas, unidades } = useCatalogos();
   const [request, setRequest] = React.useState<Request | null>(null);

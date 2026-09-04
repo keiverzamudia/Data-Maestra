@@ -1,13 +1,21 @@
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSession } from '../../contextos/SessionContext';
+import { useCompany } from '../../contextos/CompanyContext';
+import { useOrganizacion } from '../../hooks/useOrganizacion';
 import { requestService } from '../../servicios';
 import { PageHeader, Button, Input, Textarea, Select, Modal } from '../../componentes/ui';
 import { WorkflowTimeline } from '../../componentes/workflow';
 import { compressImage, formatFileSize, validateImageFile, type CompressResult } from '../../utilidades/image';
 
 export const RequestCreate: React.FC = () => {
-  const { session } = useSession();
+  // 10E §5: identidad real (user) + contexto organizacional real.
+  // Empresa: selector CompanyContext. Departamento: membresías reales del
+  // usuario en esa empresa; selector explícito solo si hay varias opciones.
+  // Nunca primer-registro ni valores arbitrarios.
+  const { user, memberships } = useSession();
+  const { companyId, empresas } = useCompany();
+  const { departamentos, usuarios } = useOrganizacion(companyId);
   const navigate = useNavigate();
   const [description, setDescription] = React.useState('');
   const [purpose, setPurpose] = React.useState('');
@@ -20,7 +28,30 @@ export const RequestCreate: React.FC = () => {
   const [imageFile, setImageFile] = React.useState<File | null>(null);
   const [imageError, setImageError] = React.useState<string | null>(null);
   const [compressInfo, setCompressInfo] = React.useState<CompressResult | null>(null);
+  const [submitError, setSubmitError] = React.useState<string | null>(null);
+  const [departmentId, setDepartmentId] = React.useState('');
   const dropRef = React.useRef<HTMLDivElement>(null);
+
+  // Departamentos reales del usuario en la empresa seleccionada.
+  const myDepartments = React.useMemo(() => {
+    const ids = new Set(
+      memberships.filter(m => m.companyId === companyId && m.departmentId).map(m => m.departmentId as string),
+    );
+    return departamentos.filter(d => ids.has(d.id));
+  }, [memberships, companyId, departamentos]);
+
+  // Una sola opción → se usa directamente. Varias → el usuario elige.
+  // Cero → bloqueado hasta asignación administrativa (10H).
+  React.useEffect(() => {
+    if (myDepartments.length === 1) setDepartmentId(myDepartments[0]!.id);
+    else setDepartmentId('');
+  }, [myDepartments]);
+
+  const selectedDept = departamentos.find(d => d.id === departmentId);
+  const companyName = empresas.find(c => c.id === companyId)?.name ?? '—';
+  const managerName = selectedDept?.managerId
+    ? usuarios.find(u => u.id === selectedDept.managerId)?.displayName ?? '—'
+    : '—';
 
   const processFile = React.useCallback(async (file: File) => {
     setImageError(null);
@@ -101,10 +132,16 @@ export const RequestCreate: React.FC = () => {
 
   const handleSubmit = async () => {
     setSending(true);
+    setSubmitError(null);
     try {
+      if (!companyId || !departmentId) {
+        setSubmitError('Sin contexto organizacional asignado. Solicite a administración su empresa y departamento.');
+        setSending(false);
+        return;
+      }
       const req = await requestService.create({
-        companyId: session.company.id,
-        departmentId: session.department.id,
+        companyId,
+        departmentId,
         requestedDescription: description,
         purpose,
         priority,
@@ -119,6 +156,7 @@ export const RequestCreate: React.FC = () => {
           await fetch(`/api/v1/requests/${req.id}/photo`, {
             method: 'POST',
             body: formData,
+            credentials: 'include',
           });
         } catch {
           // Image upload failed but request was created
@@ -161,11 +199,26 @@ export const RequestCreate: React.FC = () => {
           <div className="card p16">
             <h3 className="h1" style={{ fontSize: 16 }}>Información Automática</h3>
             <div className="review-grid" style={{ marginTop: 8 }}>
-              <div><span className="muted small">Solicitante</span><br /><strong>{session.name}</strong></div>
-              <div><span className="muted small">Área</span><br /><strong>{session.department.name}</strong></div>
-              <div><span className="muted small">Empresa</span><br /><strong>{session.company.name}</strong></div>
-              <div><span className="muted small">Autoriza</span><br /><strong>{session.department.managerName}</strong></div>
+              <div><span className="muted small">Solicitante</span><br /><strong>{user?.displayName ?? '—'}</strong></div>
+              <div>
+                <span className="muted small">Área</span><br />
+                {myDepartments.length > 1 ? (
+                  <Select value={departmentId} onChange={e => setDepartmentId(e.target.value)}>
+                    <option value="">Seleccionar área</option>
+                    {myDepartments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </Select>
+                ) : (
+                  <strong>{selectedDept?.name ?? 'Sin área asignada'}</strong>
+                )}
+              </div>
+              <div><span className="muted small">Empresa</span><br /><strong>{companyName}</strong></div>
+              <div><span className="muted small">Autoriza</span><br /><strong>{managerName}</strong></div>
             </div>
+            {myDepartments.length === 0 && (
+              <div className="alert" style={{ marginTop: 8, background: '#fee2e2', borderColor: '#fca5a5', color: '#991b1b' }}>
+                Sin departamento asignado en esta empresa. Solicite a administración su asignación.
+              </div>
+            )}
           </div>
 
           <div className="card p16">
@@ -267,10 +320,10 @@ export const RequestCreate: React.FC = () => {
       <Modal open={showSummary} onClose={() => setShowSummary(false)} title="Resumen de Solicitud">
         <div className="stack-sm">
           <div className="review-grid">
-            <div><span className="muted small">Solicitante</span><br /><strong>{session.name}</strong></div>
-            <div><span className="muted small">Área</span><br /><strong>{session.department.name}</strong></div>
-            <div><span className="muted small">Autoriza</span><br /><strong>{session.department.managerName}</strong></div>
-            <div><span className="muted small">Empresa</span><br /><strong>{session.company.name}</strong></div>
+            <div><span className="muted small">Solicitante</span><br /><strong>{user?.displayName ?? '—'}</strong></div>
+            <div><span className="muted small">Área</span><br /><strong>{selectedDept?.name ?? '—'}</strong></div>
+            <div><span className="muted small">Autoriza</span><br /><strong>{managerName}</strong></div>
+            <div><span className="muted small">Empresa</span><br /><strong>{companyName}</strong></div>
           </div>
           <hr />
           <div><span className="muted small">Descripción</span><br /><strong>{description}</strong></div>
@@ -283,8 +336,13 @@ export const RequestCreate: React.FC = () => {
           )}
           <div className="form-actions">
             <Button variant="secondary" onClick={() => setShowSummary(false)}>Cancelar</Button>
-            <Button onClick={handleSubmit} disabled={sending}>{sending ? 'Enviando...' : 'Enviar Solicitud'}</Button>
+            <Button onClick={handleSubmit} disabled={sending || !departmentId}>{sending ? 'Enviando...' : 'Enviar Solicitud'}</Button>
           </div>
+          {submitError && (
+            <div className="alert" style={{ marginTop: 8, background: '#fee2e2', borderColor: '#fca5a5', color: '#991b1b' }}>
+              {submitError}
+            </div>
+          )}
         </div>
       </Modal>
     </div>

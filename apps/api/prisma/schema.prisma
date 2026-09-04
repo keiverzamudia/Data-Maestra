@@ -105,6 +105,11 @@ model UserRole {
   userId    String    @map("user_id")
   roleId    String    @map("role_id")
   companyId String    @map("company_id")
+  // --- 10E-A: pertenencia Usuario + Rol + Empresa + Departamento.
+  // Nullable: solo se asigna con evidencia inequívoca (ver backfill 10E-A).
+  // Regla de integridad (nivel aplicación): el departamento debe pertenecer
+  // a la misma empresa (UserRole.companyId === Department.companyId).
+  departmentId String? @map("department_id")
   active    Boolean   @default(true)
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @default(now()) @map("updated_at")
@@ -112,8 +117,9 @@ model UserRole {
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   role    Role    @relation(fields: [roleId], references: [id], onDelete: Cascade)
   company Company @relation(fields: [companyId], references: [id])
+  department Department? @relation(fields: [departmentId], references: [id])
 
-  @@unique([userId, roleId, companyId])
+  @@unique([userId, roleId, companyId, departmentId])
   @@map("user_roles")
 }
 
@@ -197,6 +203,7 @@ model Department {
 
   company  Company   @relation(fields: [companyId], references: [id])
   requests Request[]
+  userRoles UserRole[]
 
   @@unique([companyId, code])
   @@map("departments")

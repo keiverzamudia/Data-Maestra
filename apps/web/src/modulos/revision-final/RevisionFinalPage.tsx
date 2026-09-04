@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useSession } from '../../contextos/SessionContext';
+import { useCompany } from '../../contextos/CompanyContext';
 import { finalReviewService } from '../../servicios';
 import { useCatalogos } from '../../hooks/useCatalogos';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
@@ -12,9 +12,9 @@ function findName(list: { id: string; name: string }[], id?: string) {
 }
 
 export const FinalReviewPage: React.FC = () => {
-  const { session } = useSession();
+  const { companyId } = useCompany();
   const { grupos, subgrupos, marcas } = useCatalogos();
-  const { usuarios } = useOrganizacion(session.company.id);
+  const { usuarios } = useOrganizacion(companyId);
   const [requests, setRequests] = React.useState<Request[]>([]);
   const [search, setSearch] = React.useState('');
   const [loading, setLoading] = React.useState(true);
@@ -26,11 +26,11 @@ export const FinalReviewPage: React.FC = () => {
 
   React.useEffect(() => {
     setLoading(true);
-    finalReviewService.getPendingReviews(session.company.id).then(r => {
+    finalReviewService.getPendingReviews(companyId).then(r => {
       setRequests(r);
       setLoading(false);
     });
-  }, [session.company.id]);
+  }, [companyId]);
 
   const filtered = search
     ? requests.filter(r =>
@@ -46,7 +46,7 @@ export const FinalReviewPage: React.FC = () => {
     try {
       await finalReviewService.approveReview(selected.id);
       setSelected(null);
-      finalReviewService.getPendingReviews(session.company.id).then(setRequests);
+      finalReviewService.getPendingReviews(companyId).then(setRequests);
     } catch (err: any) {
       setError(err?.message || 'Error al aprobar la solicitud.');
     } finally {
@@ -63,7 +63,7 @@ export const FinalReviewPage: React.FC = () => {
       setSelected(null);
       setRejectModal(false);
       setRejectReason('');
-      finalReviewService.getPendingReviews(session.company.id).then(setRequests);
+      finalReviewService.getPendingReviews(companyId).then(setRequests);
     } catch (err: any) {
       setError(err?.message || 'Error al rechazar la solicitud.');
     } finally {

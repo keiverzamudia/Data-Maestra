@@ -2,11 +2,12 @@ import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/co
 import { ApiTags, ApiOperation, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { ImportacionesService } from './importaciones.service';
 import { RbacGuard } from '../autenticacion/rbac.guard';
+import { JwtGuard } from '../autenticacion/jwt.guard';
 import { RequirePermission } from '../autenticacion/require-permission.decorator';
 
 @ApiTags('Importaciones')
 @Controller('importaciones')
-@UseGuards(RbacGuard)
+@UseGuards(JwtGuard, RbacGuard)
 export class ImportacionesController {
   constructor(private readonly importacionesService: ImportacionesService) {}
 

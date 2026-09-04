@@ -3,11 +3,13 @@ import { ApiTags, ApiOperation, ApiParam } from '@nestjs/swagger';
 import { ContabilidadService } from './contabilidad.service';
 import { AutenticacionService } from '../autenticacion/autenticacion.service';
 import { RbacGuard } from '../autenticacion/rbac.guard';
+import { JwtGuard } from '../autenticacion/jwt.guard';
+import { CurrentUser, RequestUser } from '../autenticacion/current-user.decorator';
 import { RequirePermission } from '../autenticacion/require-permission.decorator';
 
 @ApiTags('Accounting')
 @Controller('accounting')
-@UseGuards(RbacGuard)
+@UseGuards(JwtGuard, RbacGuard)
 export class ContabilidadController {
   constructor(
     private readonly accountingService: ContabilidadService,
@@ -35,11 +37,12 @@ export class ContabilidadController {
   @ApiOperation({ summary: 'Approve with accounting codes' })
   @ApiParam({ name: 'id', description: 'Request ID' })
   async approve(
+    @CurrentUser() user: RequestUser,
     @Param('id') id: string,
     @Body() body: { accountingCodes?: Array<{ code: string; description: string; position?: string }> },
   ) {
-    const session = this.authService.getSession();
-    return this.accountingService.approve(id, body.accountingCodes ?? [], session.id, session.company.id);
+    const companyId = await this.authService.resolveCompanyContext(user.id);
+    return this.accountingService.approve(id, body.accountingCodes ?? [], user.id, companyId);
   }
 
   @Post(':id/reject')
@@ -47,8 +50,8 @@ export class ContabilidadController {
   @RequirePermission('ACCOUNTING.APPROVE')
   @ApiOperation({ summary: 'Reject with mandatory comment' })
   @ApiParam({ name: 'id', description: 'Request ID' })
-  async reject(@Param('id') id: string, @Body() body: { comment?: string }) {
-    const session = this.authService.getSession();
-    return this.accountingService.reject(id, body.comment, session.id, session.company.id);
+  async reject(@CurrentUser() user: RequestUser, @Param('id') id: string, @Body() body: { comment?: string }) {
+    const companyId = await this.authService.resolveCompanyContext(user.id);
+    return this.accountingService.reject(id, body.comment, user.id, companyId);
   }
 }

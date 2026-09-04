@@ -1,30 +1,44 @@
 import * as React from 'react';
-import type { SessionUser } from '../contratos';
+import { apiAuthService, type SessionMembership } from '../servicios/api/api-auth-service';
+import { setUnauthorizedHandler } from '../servicios/api/api-client';
 
-interface SessionContextType {
-  session: SessionUser;
-  hasPermission: (p: string) => boolean;
-  visibleModules: string[];
-  switchUser: (userId: string) => Promise<void>;
-  loading: boolean;
+export interface AuthUser {
+  id: string;
+  displayName: string;
+  active: boolean;
 }
 
-const DEFAULT_SESSION: SessionUser = {
-  id: 'u1',
-  name: 'Juan Pérez',
-  username: 'j.perez',
-  department: { id: 'd1', code: 'COMPRAS', name: 'Compras', managerId: 'u2', managerName: 'María García' },
-  company: { id: 'c1', name: 'Empresa A — Distribuidora Central', code: 'EMP-A' },
-  permissions: ['REQUEST.CREATE', 'REQUEST.VIEW', 'DASHBOARD.VIEW'],
-  roleCodes: ['REQUESTER'],
-};
+interface SessionContextType {
+  user: AuthUser | null;
+  memberships: SessionMembership[];
+  permissions: string[];
+  roleCodes: string[];
+  loading: boolean;
+  authenticated: boolean;
+  mustChangePassword: boolean;
+  login: (userId: string, password: string) => Promise<'ok' | 'must-change'>;
+  logout: () => Promise<void>;
+  refreshSession: () => Promise<boolean>;
+  hasPermission: (p: string) => boolean;
+  visibleModules: string[];
+}
 
+// FASE 10E: única fuente de identidad frontend. Sin DEFAULT_SESSION,
+// sin switchUser, sin fetch a /auth/session?userId (eliminados).
+// La sesión vive en cookie HttpOnly; aquí solo estado derivado del backend.
 const SessionContext = React.createContext<SessionContextType>({
-  session: DEFAULT_SESSION,
+  user: null,
+  memberships: [],
+  permissions: [],
+  roleCodes: [],
+  loading: true,
+  authenticated: false,
+  mustChangePassword: false,
+  login: async () => 'ok',
+  logout: async () => {},
+  refreshSession: async () => false,
   hasPermission: () => false,
   visibleModules: [],
-  switchUser: async () => {},
-  loading: false,
 });
 
 function getVisibleModules(permissions: string[]): string[] {
@@ -39,48 +53,93 @@ function getVisibleModules(permissions: string[]): string[] {
   return modules;
 }
 
-export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [session, setSession] = React.useState<SessionUser>(DEFAULT_SESSION);
-  const [loading, setLoading] = React.useState(false);
+const EMPTY = { user: null as AuthUser | null, memberships: [] as SessionMembership[], permissions: [] as string[], roleCodes: [] as string[], mustChangePassword: false };
 
+export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [state, setState] = React.useState(EMPTY);
+  const [loading, setLoading] = React.useState(true);
+
+  const clearLocal = React.useCallback(() => {
+    setState(EMPTY);
+  }, []);
+
+  const refreshSession = React.useCallback(async (): Promise<boolean> => {
+    try {
+      const s = await apiAuthService.session();
+      if (!s?.authenticated || !s.user) {
+        clearLocal();
+        return false;
+      }
+      setState({
+        user: { id: s.user.id, displayName: s.user.displayName, active: s.user.active },
+        memberships: s.memberships ?? [],
+        permissions: s.permissions ?? [],
+        roleCodes: s.roleCodes ?? [],
+        mustChangePassword: s.mustChangePassword,
+      });
+      return true;
+    } catch {
+      clearLocal();
+      return false;
+    }
+  }, [clearLocal]);
+
+  // 401 global → limpiar sin loops (api-client llama aquí).
+  React.useEffect(() => {
+    setUnauthorizedHandler(() => clearLocal());
+    return () => setUnauthorizedHandler(null);
+  }, [clearLocal]);
+
+  // Arranque: resolver sesión antes de mostrar nada (sin flash).
   React.useEffect(() => {
     let cancelled = false;
-    async function loadSession() {
-      for (let attempt = 0; attempt < 5; attempt++) {
-        try {
-          const res = await fetch('/api/v1/auth/session');
-          if (!cancelled && res.ok) {
-            const data = await res.json();
-            setSession(data);
-            return;
-          }
-        } catch {}
-        await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+    (async () => {
+      try {
+        await refreshSession();
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    }
-    loadSession();
+    })();
     return () => { cancelled = true; };
-  }, []);
+  }, [refreshSession]);
 
-  const switchUser = React.useCallback(async (userId: string) => {
-    setLoading(true);
+  const login = React.useCallback(async (userId: string, password: string): Promise<'ok' | 'must-change'> => {
+    const res = await apiAuthService.login(userId, password);
+    const ok = await refreshSession();
+    if (!ok) return 'ok';
+    return res.mustChangePassword ? 'must-change' : 'ok';
+  }, [refreshSession]);
+
+  const logout = React.useCallback(async () => {
     try {
-      const res = await fetch(`/api/v1/auth/session?userId=${userId}`);
-      const data = await res.json();
-      setSession(data);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      await apiAuthService.logout();
+    } catch {}
+    clearLocal();
+  }, [clearLocal]);
 
   const hasPermission = React.useCallback((p: string) => {
-    return session.permissions.includes(p);
-  }, [session.permissions]);
+    return state.permissions.includes(p);
+  }, [state.permissions]);
 
-  const visibleModules = React.useMemo(() => getVisibleModules(session.permissions), [session.permissions]);
+  const visibleModules = React.useMemo(() => getVisibleModules(state.permissions), [state.permissions]);
 
   return (
-    <SessionContext.Provider value={{ session, hasPermission, visibleModules, switchUser, loading }}>
+    <SessionContext.Provider
+      value={{
+        user: state.user,
+        memberships: state.memberships,
+        permissions: state.permissions,
+        roleCodes: state.roleCodes,
+        loading,
+        authenticated: state.user !== null,
+        mustChangePassword: state.mustChangePassword,
+        login,
+        logout,
+        refreshSession,
+        hasPermission,
+        visibleModules,
+      }}
+    >
       {children}
     </SessionContext.Provider>
   );

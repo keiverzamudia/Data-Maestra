@@ -11,6 +11,7 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiQuery, ApiConsumes } from '@nestjs/swagger';
@@ -18,6 +19,8 @@ import { join } from 'path';
 import { SolicitudesService } from './solicitud.service';
 import { AutenticacionService } from '../autenticacion/autenticacion.service';
 import { RbacGuard } from '../autenticacion/rbac.guard';
+import { JwtGuard } from '../autenticacion/jwt.guard';
+import { CurrentUser, RequestUser } from '../autenticacion/current-user.decorator';
 import { RequirePermission } from '../autenticacion/require-permission.decorator';
 import { CreateRequestDto } from './dto/create-request.dto';
 import { ClassifyRequestDto } from './dto/classify-request.dto';
@@ -28,7 +31,7 @@ const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
 
 @ApiTags('Requests')
 @Controller('requests')
-@UseGuards(RbacGuard)
+@UseGuards(JwtGuard, RbacGuard)
 export class SolicitudesController {
   constructor(
     private readonly requestsService: SolicitudesService,
@@ -38,14 +41,20 @@ export class SolicitudesController {
   @Post()
   @RequirePermission('REQUEST.CREATE')
   @ApiOperation({ summary: 'Create a new request' })
-  create(@Body() dto: CreateRequestDto) {
-    const session = this.authService.getSession();
-    return this.requestsService.create(
-      dto,
-      session.id,
-      session.company.id,
-      session.department.id,
-    );
+  async create(@CurrentUser() user: RequestUser, @Body() dto: CreateRequestDto) {
+    // 10E §4: companyId/departmentId del body = contexto funcional validado
+    // contra membresías reales; la identidad es request.user.
+    const companyId = await this.authService.resolveCompanyContext(user.id, dto.companyId);
+    const memberships = await this.authService.getMemberships(user.id);
+    const inCompany = memberships.find(m => m.companyId === companyId);
+    const departmentId =
+      dto.departmentId ??
+      (inCompany && inCompany.departmentId ? inCompany.departmentId : undefined);
+    if (!departmentId) {
+      throw new ForbiddenException('Sin departamento asignado en la empresa indicada.');
+    }
+    await this.authService.requireDepartmentMembership(user.id, companyId, departmentId);
+    return this.requestsService.create(dto, user.id, companyId, departmentId);
   }
 
   @Get()
@@ -73,27 +82,27 @@ export class SolicitudesController {
   @HttpCode(HttpStatus.OK)
   @RequirePermission('REQUEST.CREATE')
   @ApiOperation({ summary: 'Submit request for approval' })
-  submit(@Param('id') id: string) {
-    const session = this.authService.getSession();
-    return this.requestsService.submit(id, session.id, session.company.id);
+  async submit(@CurrentUser() user: RequestUser, @Param('id') id: string) {
+    const companyId = await this.authService.resolveCompanyContext(user.id);
+    return this.requestsService.submit(id, user.id, companyId);
   }
 
   @Post(':id/approve')
   @HttpCode(HttpStatus.OK)
   @RequirePermission('MANAGER.APPROVE')
   @ApiOperation({ summary: 'Approve, reject or return request' })
-  approve(@Param('id') id: string, @Body() dto: ApprovalDto) {
-    const session = this.authService.getSession();
-    return this.requestsService.approve(id, dto, session.id, session.company.id);
+  async approve(@CurrentUser() user: RequestUser, @Param('id') id: string, @Body() dto: ApprovalDto) {
+    const companyId = await this.authService.resolveCompanyContext(user.id);
+    return this.requestsService.approve(id, dto, user.id, companyId);
   }
 
   @Post(':id/classify')
   @HttpCode(HttpStatus.OK)
   @RequirePermission('WAREHOUSE.CLASSIFY')
   @ApiOperation({ summary: 'Save warehouse classification' })
-  classify(@Param('id') id: string, @Body() dto: ClassifyRequestDto) {
-    const session = this.authService.getSession();
-    return this.requestsService.classify(id, dto, session.id, session.company.id);
+  async classify(@CurrentUser() user: RequestUser, @Param('id') id: string, @Body() dto: ClassifyRequestDto) {
+    const companyId = await this.authService.resolveCompanyContext(user.id);
+    return this.requestsService.classify(id, dto, user.id, companyId);
   }
 
   @Post(':id/photo')

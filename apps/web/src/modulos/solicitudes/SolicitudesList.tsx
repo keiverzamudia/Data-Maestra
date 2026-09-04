@@ -1,22 +1,22 @@
 import * as React from 'react';
-import { useSession } from '../../contextos/SessionContext';
+import { useCompany } from '../../contextos/CompanyContext';
 import { requestService } from '../../servicios';
 import { PageHeader, Button, Badge, StatusBadge, PriorityBadge, SearchInput, EmptyState } from '../../componentes/ui';
 import type { Request } from '../../tipos';
 
 export const RequesterList: React.FC = () => {
-  const { session } = useSession();
+  const { companyId } = useCompany();
   const [requests, setRequests] = React.useState<Request[]>([]);
   const [search, setSearch] = React.useState('');
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
     setLoading(true);
-    requestService.list({ companyId: session.company.id, search: search || undefined }).then(r => {
+    requestService.list({ companyId: companyId || undefined, search: search || undefined }).then(r => {
       setRequests(r.data);
       setLoading(false);
     });
-  }, [search, session.company.id]);
+  }, [search, companyId]);
 
   return (
     <div className="stack">

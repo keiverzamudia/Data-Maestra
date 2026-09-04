@@ -2,11 +2,12 @@ import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { ProfitAdapterService } from './profit-adapter.service';
 import { RbacGuard } from '../autenticacion/rbac.guard';
+import { JwtGuard } from '../autenticacion/jwt.guard';
 import { RequirePermission } from '../autenticacion/require-permission.decorator';
 
 @ApiTags('Profit')
 @Controller('profit')
-@UseGuards(RbacGuard)
+@UseGuards(JwtGuard, RbacGuard)
 export class ProfitController {
   constructor(private readonly profitAdapter: ProfitAdapterService) {}
 

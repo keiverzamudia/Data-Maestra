@@ -19,17 +19,7 @@ const BRANDS = [{ co_col: '01', des_col: 'NO APLICA' }];
 
 const mockGetRequest = vi.fn();
 
-vi.mock('../../contextos/SessionContext', () => ({
-  useSession: () => ({
-    session: {
-      id: 'u3', name: 'Carlos', username: 'c.r',
-      department: { id: 'd2', code: 'ALM', name: 'Almacén', managerId: 'u3', managerName: 'Carlos' },
-      company: { id: 'c1', name: 'Emp', code: 'E' },
-      permissions: ['WAREHOUSE.CLASSIFY', 'WAREHOUSE.VIEW', 'REQUEST.VIEW'],
-      roleCodes: ['WAREHOUSE'],
-    },
-  }),
-}));
+// AlmacenClassify ya no consume SessionContext (10E).
 
 vi.mock('../../servicios', () => ({
   warehouseService: {

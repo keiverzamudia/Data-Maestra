@@ -22,4 +22,16 @@ export class CreateRequestDto {
   @IsString()
   @IsOptional()
   referencePhotoUri?: string;
+
+  // 10E §4: contexto funcional (NO autoridad). El backend valida que
+  // empresa+departamento correspondan a una pertenencia activa del usuario.
+  @ApiPropertyOptional({ example: 'c1' })
+  @IsString()
+  @IsOptional()
+  companyId?: string;
+
+  @ApiPropertyOptional({ example: 'd1' })
+  @IsString()
+  @IsOptional()
+  departmentId?: string;
 }

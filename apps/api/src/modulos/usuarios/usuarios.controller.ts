@@ -3,11 +3,13 @@ import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { UsuariosService } from './usuarios.service';
 import { AutenticacionService } from '../autenticacion/autenticacion.service';
 import { RbacGuard } from '../autenticacion/rbac.guard';
+import { JwtGuard } from '../autenticacion/jwt.guard';
+import { CurrentUser, RequestUser } from '../autenticacion/current-user.decorator';
 import { RequirePermission } from '../autenticacion/require-permission.decorator';
 
 @ApiTags('Usuarios')
 @Controller('usuarios')
-@UseGuards(RbacGuard)
+@UseGuards(JwtGuard, RbacGuard)
 export class UsuariosController {
   constructor(
     private readonly usuariosService: UsuariosService,
@@ -16,13 +18,13 @@ export class UsuariosController {
 
   @Post('sincronizar-profit')
   @HttpCode(HttpStatus.OK)
-  // Protección temporal 10C: solo rol con ADMIN.MANAGE (hoy, MASTER_DATA_ADMIN
-  // en memoria). 10E/10F la reemplazarán por autorización real contra BD.
+  // 10E: identidad real; autorización fina por empresa pendiente (10F).
   @RequirePermission('ADMIN.MANAGE')
   @ApiOperation({ summary: 'Synchronize users from Profit (READ-ONLY, idempotent)' })
-  async sincronizarProfit() {
-    const session = this.authService.getSession();
-    return this.usuariosService.synchronize(session.id, session.company.id);
+  async sincronizarProfit(@CurrentUser() user: RequestUser) {
+    const memberships = await this.authService.getMemberships(user.id);
+    const actorCompanyId = memberships.length === 1 ? memberships[0]!.companyId : undefined;
+    return this.usuariosService.synchronize(user.id, actorCompanyId);
   }
 
   @Get()

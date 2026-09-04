@@ -3,11 +3,13 @@ import { ApiTags, ApiOperation, ApiParam } from '@nestjs/swagger';
 import { RevisionFinalService } from './revision-final.service';
 import { AutenticacionService } from '../autenticacion/autenticacion.service';
 import { RbacGuard } from '../autenticacion/rbac.guard';
+import { JwtGuard } from '../autenticacion/jwt.guard';
+import { CurrentUser, RequestUser } from '../autenticacion/current-user.decorator';
 import { RequirePermission } from '../autenticacion/require-permission.decorator';
 
 @ApiTags('Final Review')
 @Controller('final-review')
-@UseGuards(RbacGuard)
+@UseGuards(JwtGuard, RbacGuard)
 export class RevisionFinalController {
   constructor(
     private readonly finalReviewService: RevisionFinalService,
@@ -34,9 +36,9 @@ export class RevisionFinalController {
   @RequirePermission('FINAL_REVIEW.APPROVE')
   @ApiOperation({ summary: 'Approve request at final review' })
   @ApiParam({ name: 'id', description: 'Request ID' })
-  async approve(@Param('id') id: string) {
-    const session = this.authService.getSession();
-    return this.finalReviewService.approve(id, session.id, session.company.id);
+  async approve(@CurrentUser() user: RequestUser, @Param('id') id: string) {
+    const companyId = await this.authService.resolveCompanyContext(user.id);
+    return this.finalReviewService.approve(id, user.id, companyId);
   }
 
   @Post(':id/reject')
@@ -44,8 +46,8 @@ export class RevisionFinalController {
   @RequirePermission('FINAL_REVIEW.APPROVE')
   @ApiOperation({ summary: 'Reject request at final review' })
   @ApiParam({ name: 'id', description: 'Request ID' })
-  async reject(@Param('id') id: string, @Body('comment') comment?: string) {
-    const session = this.authService.getSession();
-    return this.finalReviewService.reject(id, comment, session.id, session.company.id);
+  async reject(@CurrentUser() user: RequestUser, @Param('id') id: string, @Body('comment') comment?: string) {
+    const companyId = await this.authService.resolveCompanyContext(user.id);
+    return this.finalReviewService.reject(id, comment, user.id, companyId);
   }
 }

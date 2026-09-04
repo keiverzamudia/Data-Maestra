@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useSession } from '../../contextos/SessionContext';
+import { useCompany } from '../../contextos/CompanyContext';
 import { accountingService } from '../../servicios';
 import { useCatalogos } from '../../hooks/useCatalogos';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
@@ -14,9 +14,9 @@ function findName(list: { id: string; name: string }[], id?: string) {
 }
 
 export const AccountingList: React.FC = () => {
-  const { session } = useSession();
+  const { companyId } = useCompany();
   const { grupos, subgrupos, categorias, marcas } = useCatalogos();
-  const { usuarios, departamentos } = useOrganizacion(session.company.id);
+  const { usuarios, departamentos } = useOrganizacion(companyId);
   const [requests, setRequests] = React.useState<Request[]>([]);
   const [search, setSearch] = React.useState('');
   const [loading, setLoading] = React.useState(true);
@@ -31,11 +31,11 @@ export const AccountingList: React.FC = () => {
 
   React.useEffect(() => {
     setLoading(true);
-    accountingService.getPendingApprovals(session.company.id).then(r => {
+    accountingService.getPendingApprovals(companyId).then(r => {
       setRequests(r);
       setLoading(false);
     });
-  }, [session.company.id]);
+  }, [companyId]);
 
   const filtered = search
     ? requests.filter(r => r.requestedDescription.toLowerCase().includes(search.toLowerCase()))
@@ -52,7 +52,7 @@ export const AccountingList: React.FC = () => {
       );
       setSelected(null);
       setEntries([]);
-      accountingService.getPendingApprovals(session.company.id).then(setRequests);
+      accountingService.getPendingApprovals(companyId).then(setRequests);
     } catch (err: any) {
       setError(err?.message || 'Error al aprobar la solicitud contable.');
     } finally {
@@ -69,7 +69,7 @@ export const AccountingList: React.FC = () => {
       setSelected(null);
       setRejectModal(false);
       setRejectReason('');
-      accountingService.getPendingApprovals(session.company.id).then(setRequests);
+      accountingService.getPendingApprovals(companyId).then(setRequests);
     } catch (err: any) {
       setError(err?.message || 'Error al rechazar la solicitud.');
     } finally {

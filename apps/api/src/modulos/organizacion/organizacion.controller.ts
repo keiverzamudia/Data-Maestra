@@ -2,10 +2,11 @@ import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { OrganizacionService } from './organizacion.service';
 import { RbacGuard } from '../autenticacion/rbac.guard';
+import { JwtGuard } from '../autenticacion/jwt.guard';
 
 @ApiTags('Organización')
 @Controller('organizacion')
-@UseGuards(RbacGuard)
+@UseGuards(JwtGuard, RbacGuard)
 export class OrganizacionController {
   constructor(private readonly organizacionService: OrganizacionService) {}
 

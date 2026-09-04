@@ -1,7 +1,8 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { CompanyProvider } from '../contextos/CompanyContext';
-import { SessionProvider } from '../contextos/SessionContext';
+import { SessionProvider, useSession } from '../contextos/SessionContext';
 import { AppLayout } from '../componentes/diseno/AppLayout';
+import { LoginPage } from '../modulos/autenticacion';
 import { PanelPage } from '../modulos/panel';
 import { SolicitudesList, SolicitudCreate, SolicitudDetailPage } from '../modulos/solicitudes';
 import { AlmacenList, AlmacenClassify } from '../modulos/almacen';
@@ -16,9 +17,30 @@ export function App() {
   return (
     <BrowserRouter>
       <SessionProvider>
-        <CompanyProvider>
-          <AppLayout>
-            <Routes>
+        <Gate />
+      </SessionProvider>
+    </BrowserRouter>
+  );
+}
+
+// FASE 10E — Puerta real: loading sin flash → sin sesión LoginPage →
+// mustChangePassword cambio obligatorio → autenticado aplicación.
+// CompanyProvider vive dentro (sus endpoints exigen JWT).
+function Gate() {
+  const { loading, authenticated, mustChangePassword } = useSession();
+  if (loading) {
+    return <div className="empty">Cargando sesión…</div>;
+  }
+  if (!authenticated) {
+    return <LoginPage />;
+  }
+  if (mustChangePassword) {
+    return <LoginPage forcedChange />;
+  }
+  return (
+    <CompanyProvider>
+      <AppLayout>
+        <Routes>
               <Route path="/" element={<PanelPage />} />
 
               {/* Solicitudes */}
@@ -57,9 +79,7 @@ export function App() {
               <Route path="/master-items" element={<AdministracionPage />} />
               <Route path="/source-items" element={<ImportacionesPage />} />
             </Routes>
-          </AppLayout>
-        </CompanyProvider>
-      </SessionProvider>
-    </BrowserRouter>
+      </AppLayout>
+    </CompanyProvider>
   );
 }

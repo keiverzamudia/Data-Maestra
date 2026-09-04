@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { useSession } from '../../contextos/SessionContext';
+import { useCompany } from '../../contextos/CompanyContext';
 import { apiPanelService } from '../../servicios/api/api-panel-service';
 import { PageHeader, KpiCard, StatusBadge, EmptyState, Button } from '../../componentes/ui';
 import type { Request } from '../../tipos';
@@ -28,7 +29,8 @@ interface ActivityItem {
 }
 
 export const DashboardPage: React.FC = () => {
-  const { session } = useSession();
+  const { user } = useSession();
+  const { companyId } = useCompany();
   const [stats, setStats] = React.useState<DashboardStats | null>(null);
   const [activity, setActivity] = React.useState<ActivityItem[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -38,8 +40,8 @@ export const DashboardPage: React.FC = () => {
     setLoading(true);
     setError(null);
     Promise.all([
-      apiPanelService.getStats(session.company.id),
-      apiPanelService.getActivity(session.company.id),
+      apiPanelService.getStats(companyId),
+      apiPanelService.getActivity(companyId),
     ]).then(([s, a]) => {
       setStats(s);
       setActivity(a);
@@ -49,7 +51,7 @@ export const DashboardPage: React.FC = () => {
       setError('No fue posible cargar los datos del panel.');
       setLoading(false);
     });
-  }, [session.company.id]);
+  }, [companyId]);
 
   React.useEffect(() => { loadData(); }, [loadData]);
 
@@ -58,7 +60,7 @@ export const DashboardPage: React.FC = () => {
   if (error) {
     return (
       <div className="stack">
-        <PageHeader title="Dashboard" subtitle={`Bienvenido, ${session.name}`} />
+        <PageHeader title="Dashboard" subtitle={`Bienvenido, ${user?.displayName ?? ''}`} />
         <div className="card p16">
           <div className="alert" style={{ background: '#fee2e2', borderColor: '#fca5a5', color: '#991b1b' }}>
             {error}
@@ -75,7 +77,7 @@ export const DashboardPage: React.FC = () => {
 
   return (
     <div className="stack">
-      <PageHeader title="Dashboard" subtitle={`Bienvenido, ${session.name}`} />
+      <PageHeader title="Dashboard" subtitle={`Bienvenido, ${user?.displayName ?? ''}`} />
 
       <div className="kpi-grid">
         <KpiCard label="Solicitudes Totales" value={stats.totalRequests} />

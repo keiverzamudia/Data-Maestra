@@ -70,11 +70,14 @@ describe('FASE 10C — GET /usuarios?search= (autocompletado login 10D)', () => 
     expect(res[0].profitCode).toBe('KZAMU');
   });
 
-  it('sincronizar pasa el actor de sesión a la auditoría', async () => {
+  it('sincronizar pasa el actor real (@CurrentUser) a la auditoría', async () => {
     const svc: any = { synchronize: vi.fn(async () => ({ created: 0 })) };
-    const auth: any = { getSession: () => ({ id: 'u5', company: { id: 'c1' } }) };
+    const auth: any = {
+      getMemberships: vi.fn(async () => [{ companyId: 'c1' }]),
+    };
     const ctrl = new UsuariosController(svc, auth);
-    await ctrl.sincronizarProfit();
+    await ctrl.sincronizarProfit({ id: 'u5', displayName: 'X', sessionId: 's1', roleCodes: [], permissions: [] });
+    expect(auth.getMemberships).toHaveBeenCalledWith('u5');
     expect(svc.synchronize).toHaveBeenCalledWith('u5', 'c1');
   });
 });

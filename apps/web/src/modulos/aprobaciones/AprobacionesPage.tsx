@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useSession } from '../../contextos/SessionContext';
+import { useCompany } from '../../contextos/CompanyContext';
 import { requestService } from '../../servicios';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
 import { PageHeader, Button, SearchInput, StatusBadge, PriorityBadge, EmptyState } from '../../componentes/ui';
@@ -7,8 +7,8 @@ import { RequestDetail } from '../../componentes/workflow';
 import type { Request } from '../../tipos';
 
 export const ApprovalsPage: React.FC = () => {
-  const { session } = useSession();
-  const { usuarios, departamentos } = useOrganizacion(session.company.id);
+  const { companyId } = useCompany();
+  const { usuarios, departamentos } = useOrganizacion(companyId);
   const [requests, setRequests] = React.useState<Request[]>([]);
   const [search, setSearch] = React.useState('');
   const [loading, setLoading] = React.useState(true);
@@ -19,7 +19,7 @@ export const ApprovalsPage: React.FC = () => {
   const loadRequests = React.useCallback(() => {
     setLoading(true);
     setError(null);
-    requestService.list({ companyId: session.company.id, status: 'PENDIENTE_GERENTE' })
+    requestService.list({ companyId: companyId || undefined, status: 'PENDIENTE_GERENTE' })
       .then(({ data }) => {
         setRequests(data);
         setLoading(false);
@@ -28,7 +28,7 @@ export const ApprovalsPage: React.FC = () => {
         setError('No fue posible cargar las solicitudes.');
         setLoading(false);
       });
-  }, [session.company.id]);
+  }, [companyId]);
 
   React.useEffect(() => { loadRequests(); }, [loadRequests]);
 

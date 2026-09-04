@@ -2,11 +2,12 @@ import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { PanelService } from './panel.service';
 import { RbacGuard } from '../autenticacion/rbac.guard';
+import { JwtGuard } from '../autenticacion/jwt.guard';
 import { RequirePermission } from '../autenticacion/require-permission.decorator';
 
 @ApiTags('Panel')
 @Controller('panel')
-@UseGuards(RbacGuard)
+@UseGuards(JwtGuard, RbacGuard)
 export class PanelController {
   constructor(private readonly panelService: PanelService) {}
 
