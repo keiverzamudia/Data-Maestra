@@ -1,20 +1,38 @@
 import * as React from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useSession } from '../../contextos/SessionContext';
 import { useCompany } from '../../contextos/CompanyContext';
 import { apiNotificacionService } from '../../servicios/api/api-notificacion-service';
+import { visibleNav, NAV } from './navigation';
 
-const allNav = [
-  { key: 'dashboard', to: '/', label: 'Dashboard', icon: '◧', permission: 'DASHBOARD.VIEW' },
-  { key: 'requester', to: '/requester', label: 'Solicitante', icon: '◻', permission: 'REQUEST.CREATE' },
-  { key: 'approvals', to: '/approvals', label: 'Aprobaciones', icon: '✔', permission: 'MANAGER.APPROVE' },
-  { key: 'warehouse', to: '/warehouse', label: 'Clasificación', icon: '▭', permission: 'WAREHOUSE.CLASSIFY' },
-  { key: 'accounting', to: '/accounting', label: 'Contabilidad', icon: '✓', permission: 'ACCOUNTING.APPROVE' },
-  { key: 'final-review', to: '/final-review', label: 'Aprobación Final', icon: '★', permission: 'FINAL_REVIEW.APPROVE' },
-  { key: 'imports', to: '/imports', label: 'Importaciones', icon: '↻', permission: 'IMPORT.RUN' },
-  { key: 'audit', to: '/audit', label: 'Auditoría', icon: '≡', permission: 'AUDIT.VIEW' },
-  { key: 'administration', to: '/admin', label: 'Administración', icon: '⚙', permission: 'ADMIN.MANAGE' },
-];
+/** 11B — Miga de pan derivada de la navegación (solo presentación). */
+const Breadcrumb: React.FC = () => {
+  const { pathname } = useLocation();
+  const crumbs: Array<{ label: string; to?: string }> = [{ label: 'Inicio', to: '/' }];
+  for (const n of NAV) {
+    if (n.to && (pathname === n.to || pathname.startsWith(n.to + '/')) && n.to !== '/') {
+      crumbs.push({ label: n.label });
+    }
+    for (const c of n.children ?? []) {
+      if (pathname === c.to || pathname.startsWith(c.to + '/')) {
+        const parent = n.to ? null : n.label;
+        if (parent) crumbs.push({ label: parent });
+        crumbs.push({ label: c.label });
+      }
+    }
+  }
+  if (crumbs.length <= 1) return null;
+  return (
+    <nav className="breadcrumb" aria-label="Ubicación actual">
+      {crumbs.map((c, i) => (
+        <span key={i}>
+          {i > 0 && <span aria-hidden="true"> / </span>}
+          {c.to && i < crumbs.length - 1 ? <NavLink to={c.to}>{c.label}</NavLink> : <span className="breadcrumb-current">{c.label}</span>}
+        </span>
+      ))}
+    </nav>
+  );
+};
 
 export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [collapsed, setCollapsed] = React.useState(false);
@@ -31,7 +49,7 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
     apiNotificacionService.getUnreadCount().then(setUnread).catch(() => {});
   }, []);
 
-  const nav = allNav.filter(n => hasPermission(n.permission));
+  const nav = visibleNav(hasPermission);
 
   const initials = (user?.displayName ?? '?')
     .split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
@@ -44,9 +62,22 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
           <button className="btn btn-ghost btn-sm" onClick={() => setCollapsed(v => !v)}>{collapsed ? '»' : '«'}</button>
         </div>
         <nav className="nav">
-          {nav.map(n => (
-            <NavLink key={n.to} to={n.to} end={n.to === '/'} className={({ isActive }) => `nav-link ${isActive ? 'nav-active' : ''}`}>
-              <span className="nav-icon">{n.icon}</span>
+          {nav.length === 0 && !collapsed && (
+            <div className="muted small" style={{ padding: 8 }}>Sin módulos disponibles</div>
+          )}
+          {nav.map(n => n.children ? (
+            <div key={n.key} className="nav-group">
+              {!collapsed && <div className="muted small" style={{ padding: '8px 8px 2px' }}>{n.label}</div>}
+              {n.children.map(c => (
+                <NavLink key={c.to} to={c.to} title={c.label} className={({ isActive }) => `nav-link ${isActive ? 'nav-active' : ''}`}>
+                  <span className="nav-icon" aria-hidden="true">{n.icon}</span>
+                  {!collapsed && <span>{c.label}</span>}
+                </NavLink>
+              ))}
+            </div>
+          ) : (
+            <NavLink key={n.to} to={n.to!} end={n.to === '/'} title={n.label} className={({ isActive }) => `nav-link ${isActive ? 'nav-active' : ''}`}>
+              <span className="nav-icon" aria-hidden="true">{n.icon}</span>
               {!collapsed && <span>{n.label}</span>}
             </NavLink>
           ))}
@@ -103,7 +134,7 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
             </div>
           </div>
         </header>
-        <main className="content">{children}</main>
+          <main className="content"><div className="page-container"><Breadcrumb />{children}</div></main>
       </div>
     </div>
   );

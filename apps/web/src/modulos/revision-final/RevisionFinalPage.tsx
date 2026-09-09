@@ -1,10 +1,12 @@
 import * as React from 'react';
+import { Can } from '../../componentes/auth/Can';
 import { useCompany } from '../../contextos/CompanyContext';
 import { finalReviewService } from '../../servicios';
 import { useCatalogos } from '../../hooks/useCatalogos';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
-import { PageHeader, Button, SearchInput, StatusBadge, EmptyState, Modal, Textarea } from '../../componentes/ui';
-import { WorkflowTimeline, RequestDetail } from '../../componentes/workflow';
+import { Button, SearchInput, StatusBadge, EmptyState, Modal, Textarea, Alert, ConfirmDialog, Skeleton, ErrorState } from '../../componentes/ui';
+import { Page } from '../../componentes/ui';
+import { WorkflowStepper, WorkflowStatusInfo, RequestDetail } from '../../componentes/workflow';
 import type { Request } from '../../tipos';
 
 function findName(list: { id: string; name: string }[], id?: string) {
@@ -23,13 +25,23 @@ export const FinalReviewPage: React.FC = () => {
   const [rejectReason, setRejectReason] = React.useState('');
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [listError, setListError] = React.useState<string | null>(null);
+  const [confirmApprove, setConfirmApprove] = React.useState(false);
 
   React.useEffect(() => {
     setLoading(true);
-    finalReviewService.getPendingReviews(companyId).then(r => {
-      setRequests(r);
-      setLoading(false);
-    });
+    setListError(null);
+    finalReviewService.getPendingReviews(companyId).then(
+      r => {
+        setRequests(r);
+        setLoading(false);
+      },
+      () => {
+        setRequests([]);
+        setListError('No pudimos cargar las solicitudes pendientes.');
+        setLoading(false);
+      },
+    );
   }, [companyId]);
 
   const filtered = search
@@ -90,49 +102,61 @@ export const FinalReviewPage: React.FC = () => {
     const allOk = missing === 0;
 
     return (
-      <div className="stack" style={{ paddingBottom: 56 }}>
-        <PageHeader
-          title={`Validación Maestra — ${selected.requestNumber}`}
-          subtitle={allOk ? 'Todos los requisitos están completos' : `Faltan ${missing} requisitos`}
-          action={<Button variant="secondary" onClick={() => setSelected(null)}>Volver</Button>}
-        />
-
-        <WorkflowTimeline status={selected.status} />
+      <Page
+        title={`Validación Maestra — ${selected.requestNumber}`}
+        desc={allOk ? `${required.length} de ${required.length} requisitos completos` : `Faltan ${missing} requisitos`}
+        actions={<Button variant="secondary" onClick={() => setSelected(null)}>Volver</Button>}
+      >
+        <WorkflowStepper status={selected.status} />
+        <WorkflowStatusInfo status={selected.status} />
 
         <div className="card p16">
           <h3 className="h1" style={{ fontSize: 14 }}>Checklist de Validación Maestra</h3>
-          <p className="muted small" style={{ marginTop: 4 }}>
+          <Alert tone="info">
             Validación solo lectura. No edite grupo, subgrupo, descripción, marca, unidad ni código maestro. Si encuentra inconsistencia, devuelva al área responsable.
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
+          </Alert>
+          <div className="checklist" style={{ marginTop: 8 }}>
             {checklist.map(item => {
               const isWarn = (item as any).warn && !item.ok;
+              const cls = item.ok ? 'check-ok' : isWarn ? 'check-warn' : 'check-missing';
               return (
-                <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '6px 8px', borderRadius: 8, background: item.ok ? '#dcfce7' : isWarn ? '#fef9c3' : '#fee2e2', border: `1px solid ${item.ok ? '#86efac' : isWarn ? '#fde047' : '#fca5a5'}` }}>
-                  <span style={{ fontWeight: 800, color: item.ok ? '#166534' : isWarn ? '#854d0e' : '#991b1b' }}>{item.ok ? '✓' : isWarn ? '⚠' : '✕'}</span>
-                  <span style={{ fontWeight: 600, color: item.ok ? '#166534' : isWarn ? '#854d0e' : '#991b1b' }}>{item.label}</span>
-                  <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: item.ok ? '#166534' : isWarn ? '#854d0e' : '#991b1b' }}>{item.ok ? 'COMPLETO' : isWarn ? 'REVISAR' : 'FALTANTE'}</span>
+                <div key={item.label} className={`check ${cls}`}>
+                  <span className="check-mark" aria-hidden="true">{item.ok ? '✓' : isWarn ? '⚠' : '✕'}</span>
+                  <span className="check-label">{item.label}</span>
+                  <span className="check-state">{item.ok ? 'COMPLETO' : isWarn ? 'REVISAR' : 'FALTANTE'}</span>
                 </div>
               );
             })}
           </div>
-          <div className="alert" style={{ marginTop: 12, background: allOk ? '#dcfce7' : '#fee2e2', borderColor: allOk ? '#86efac' : '#fca5a5', color: allOk ? '#166534' : '#991b1b' }}>
-            {allOk ? '✓ Expediente completo — puede aprobar definitivamente.' : `✕ Faltan ${missing} requisitos obligatorios. Complete por el área responsable antes de aprobar.`}
+          <div style={{ marginTop: 8 }}>
+            <Alert tone={allOk ? 'success' : 'danger'}>
+              {allOk ? '✓ Expediente completo — puede aprobar definitivamente.' : `✕ Faltan ${missing} requisitos obligatorios. Complete por el área responsable antes de aprobar.`}
+            </Alert>
           </div>
         </div>
 
         <div className="stack">
           <RequestDetail request={selected} showWorkflow={false} />
 
-          <div className="form-actions" style={{ gap: 12 }}>
-            <Button variant="danger" onClick={() => setRejectModal(true)} disabled={saving}>Rechazar / Devolver</Button>
-            <Button onClick={handleApprove} disabled={saving || !allOk} title={!allOk ? `Faltan ${missing} requisitos` : undefined}>{saving ? 'Aprobando...' : 'Aprobar Definitivamente'}</Button>
+          <div className="action-bar">
+            <Can permission="FINAL_REVIEW.APPROVE">
+              <Button variant="danger" onClick={() => setRejectModal(true)} disabled={saving}>Rechazar / Devolver</Button>
+              <Button onClick={() => setConfirmApprove(true)} disabled={saving || !allOk} title={!allOk ? `Faltan ${missing} requisitos` : undefined}>{saving ? 'Aprobando...' : 'Aprobar Definitivamente'}</Button>
+            </Can>
           </div>
 
+          <ConfirmDialog
+            open={confirmApprove}
+            title="Aprobar definitivamente"
+            desc="¿Aprobar definitivamente esta solicitud? Después de esta aprobación, pasará al procesamiento técnico."
+            confirmLabel="Aprobar definitivamente"
+            busy={saving}
+            onCancel={() => setConfirmApprove(false)}
+            onConfirm={() => { setConfirmApprove(false); void handleApprove(); }}
+          />
+
           {error && (
-            <div className="alert" style={{ marginTop: 8, background: '#fee2e2', borderColor: '#fca5a5', color: '#991b1b' }}>
-              {error}
-            </div>
+            <Alert tone="danger">{error}</Alert>
           )}
         </div>
 
@@ -151,22 +175,44 @@ export const FinalReviewPage: React.FC = () => {
             </div>
           </div>
         </Modal>
-      </div>
+      </Page>
     );
   }
 
   return (
-    <div className="stack">
-      <PageHeader title="Aprobación Final" subtitle="Solicitudes pendientes de aprobación definitiva" />
+    <Page
+      title="Validación Maestra"
+      desc={loading ? 'Verifica que la solicitud esté completa antes de pasar a la aprobación final.' : `${filtered.length} solicitud${filtered.length === 1 ? '' : 'es'} por validar.`}
+    >
+      <div className="toolbar" role="search">
+        <span className="grow"><SearchInput value={search} onChange={setSearch} placeholder="Buscar por número o descripción..." /></span>
+      </div>
 
-      <SearchInput value={search} onChange={setSearch} placeholder="Buscar por número o descripción..." />
-
-      {loading ? (
-        <div className="empty">Cargando...</div>
-      ) : filtered.length === 0 ? (
-        <EmptyState title="No hay solicitudes pendientes de aprobación final" desc="Todas las solicitudes han sido procesadas" />
-      ) : (
-        <div className="card">
+      {loading && (
+        <div className="card p16 stack-sm" aria-label="Cargando solicitudes">
+          <Skeleton height={16} width="30%" /><Skeleton height={40} /><Skeleton height={40} />
+        </div>
+      )}
+      {!loading && listError && <ErrorState title="No pudimos cargar las solicitudes pendientes." onRetry={() => {
+        setLoading(true);
+        setListError(null);
+        finalReviewService.getPendingReviews(companyId).then(
+          r => {
+            setRequests(r);
+            setLoading(false);
+          },
+          () => {
+            setRequests([]);
+            setListError('No pudimos cargar las solicitudes pendientes.');
+            setLoading(false);
+          },
+        );
+      }} />}
+      {!loading && !listError && filtered.length === 0 && (
+        <EmptyState title="No hay solicitudes pendientes de validación" desc="Todas las solicitudes han sido procesadas" />
+      )}
+      {!loading && !listError && filtered.length > 0 && (
+        <div className="card table-responsive">
           <table className="table">
             <thead>
               <tr>
@@ -184,19 +230,19 @@ export const FinalReviewPage: React.FC = () => {
             <tbody>
               {filtered.map(r => (
                 <tr key={r.id}>
-                  <td><strong>{r.requestNumber}</strong></td>
-                  <td className="ellipsis">{r.requestedDescription}</td>
-                  <td>{findName(grupos, r.groupId)}</td>
-                  <td>{findName(subgrupos, r.subgroupId)}</td>
-                  <td>{findName(marcas, r.brandId)}</td>
-                  <td>
+                  <td data-label="N°"><strong>#{r.requestNumber}</strong></td>
+                  <td data-label="Descripción" className="ellipsis">{r.requestedDescription}</td>
+                  <td data-label="Grupo">{findName(grupos, r.groupId)}</td>
+                  <td data-label="Subgrupo">{findName(subgrupos, r.subgroupId)}</td>
+                  <td data-label="Marca">{findName(marcas, r.brandId)}</td>
+                  <td data-label="Código Master">
                     <span className="master-code-display" style={{ fontSize: 12 }}>
                       {r.masterCode || '—'}
                     </span>
                   </td>
-                  <td>{usuarios.find(u => u.id === r.requesterId)?.displayName || '—'}</td>
-                  <td><StatusBadge status={r.status} /></td>
-                  <td>
+                  <td data-label="Solicitante">{usuarios.find(u => u.id === r.requesterId)?.displayName || '—'}</td>
+                  <td data-label="Estado"><StatusBadge status={r.status} /></td>
+                  <td data-label="Acción">
                     <Button size="sm" onClick={() => setSelected(r)}>Revisar</Button>
                   </td>
                 </tr>
@@ -205,6 +251,6 @@ export const FinalReviewPage: React.FC = () => {
           </table>
         </div>
       )}
-    </div>
+    </Page>
   );
 };

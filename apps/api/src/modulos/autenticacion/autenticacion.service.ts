@@ -5,7 +5,7 @@ import * as jwt from 'jsonwebtoken';
 import { PrismaService } from '../../comun/prisma/prisma.service';
 import { getInitialPassword } from './initial-password';
 import { getJwtSecret, getSessionTtlHours } from './auth.config';
-import { resolvePermissionsForRoles } from './permisos';
+import { resolveEffectivePermissions } from '../../comun/utilidades/permisos-efectivos';
 import { LoginDto } from './dto/login.dto';
 
 export interface AuthMembership {
@@ -112,14 +112,35 @@ export class AutenticacionService {
     return Array.from(byCompany.values());
   }
 
+  /**
+   * FASE 10F/10G — Permisos efectivos REALES desde BD:
+   *   UserRole (activo) → Role → RolePermission → Permission,
+   *   más overrides individuales (DENEGADO > CONCEDIDO > HEREDADO).
+   * Solo roles activos aportan roleCodes y permisos heredados.
+   */
   async getEffectivePermissions(userId: string, companyId?: string): Promise<{ roleCodes: string[]; permissions: string[] }> {
     const rows = await this.prisma.userRole.findMany({
       where: { userId, active: true, ...(companyId ? { companyId } : {}) },
-      include: { role: { select: { code: true } } },
+      include: {
+        role: {
+          select: {
+            code: true,
+            rolePermissions: { select: { permission: { select: { code: true } } } },
+          },
+        },
+      },
+    });
+    const overrides = await this.prisma.userPermissionOverride.findMany({
+      where: { userId },
+      include: { permission: { select: { code: true } } },
     });
     const roleCodes = Array.from(new Set(rows.map(r => r.role.code)));
-    // TODO(10F): reemplazar puente por UserRole→Role→RolePermission→Permission (+overrides).
-    return { roleCodes, permissions: resolvePermissionsForRoles(roleCodes) };
+    const inherited = rows.flatMap(r => (r.role.rolePermissions ?? []).map(rp => rp.permission.code));
+    const { permissions } = resolveEffectivePermissions(
+      inherited,
+      overrides.map(o => ({ code: o.permission.code, effect: o.effect })),
+    );
+    return { roleCodes, permissions };
   }
 
   async createSession(userId: string, ip?: string, userAgent?: string) {

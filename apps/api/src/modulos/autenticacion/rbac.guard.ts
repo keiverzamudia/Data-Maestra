@@ -4,10 +4,10 @@ import { REQUIRE_PERMISSION_KEY } from './require-permission.decorator';
 import type { RequestUser } from './current-user.decorator';
 
 /**
- * FASE 10E — Autorización sobre identidad real.
+ * FASE 10E/10F — Autorización sobre identidad real.
  * Lee request.user (colocado por JwtGuard). Sin usuario → 401.
- * Permisos: puente temporal TODO(10F) — los conjuntos por rol siguen en
- * permisos.ts porque role_permissions está vacía. 10F los moverá a BD.
+ * Permisos efectivos calculados en backend (UserRole→Role→RolePermission→
+ * Permission) y expuestos en request.user.permissions. Sin el permiso → 403.
  */
 @Injectable()
 export class RbacGuard implements CanActivate {

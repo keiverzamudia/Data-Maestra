@@ -55,7 +55,7 @@ export const api = {
   post: <T>(path: string, body?: unknown) => requestWithRetry<T>('POST', path, body),
   put: <T>(path: string, body?: unknown) => requestWithRetry<T>('PUT', path, body),
   patch: <T>(path: string, body?: unknown) => requestWithRetry<T>('PATCH', path, body),
-  delete: <T>(path: string) => requestWithRetry<T>('DELETE', path),
+  delete: <T>(path: string, body?: unknown) => requestWithRetry<T>('DELETE', path, body),
 };
 
 export type { ApiError };

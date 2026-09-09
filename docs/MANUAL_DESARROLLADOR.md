@@ -153,21 +153,22 @@ pnpm --filter @master-data/api run db:studio     # Abrir Prisma Studio
 
 ## 7. Autenticación
 
-**Estado actual:** Mock in-memory.
+**Estado actual (FASE 10M — COMPLETA): autenticación real.**
 
-- Usuarios hardcodeados en `apps/api/src/modulos/autenticacion/autenticacion.service.ts`
-- No hay JWT, no hay tokens
-- La sesión se cambia via `GET /auth/session?userId=u1`
-- RBAC funciona con permisos mock
-
-**Nota sobre usuarios:** El seed crea 6 usuarios (u1-u6), pero el mock de autenticación solo tiene 5 hardcodeados (u1-u5). El usuario u6 (s.admin, Super Admin) existe en la base de datos pero no está en el array USERS del auth service. Si se intenta usar u6 via el UserSwitcher, no funcionará correctamente.
+- JWT firmado + `Session` persistente + cookie HttpOnly `dm_session` (sin JWT en JS)
+- Contraseña inicial global configurable (`INITIAL_PASSWORD` o fallback dev); `passwordHash` NULL hasta el primer login
+- Cambio obligatorio (`mustChangePassword`) con revocación de sesiones
+- `GET /auth/session` expone `{ user, roleCodes, permissions, memberships }` (permisos efectivos ya resueltos)
+- 401 = sin sesión (limpia estado); 403 = sin permiso (NO hace logout)
 
 **Archivos:**
-- `apps/api/src/modulos/autenticacion/autenticacion.service.ts` — Usuarios, roles, permisos
-- `apps/api/src/modulos/autenticacion/rbac.guard.ts` — Guard RBAC
+- `apps/api/src/modulos/autenticacion/autenticacion.service.ts` — login, sesiones, permisos efectivos (roles + overrides)
+- `apps/api/src/modulos/autenticacion/jwt.guard.ts` — identidad (`request.user`)
+- `apps/api/src/modulos/autenticacion/rbac.guard.ts` — autorización (403)
 - `apps/api/src/modulos/autenticacion/require-permission.decorator.ts` — Decorador
-- `apps/web/src/contextos/SessionContext.tsx` — Estado de sesión frontend
-- `apps/web/src/componentes/ui/UserSwitcher.tsx` — Selector de usuario (desarrollo)
+- `apps/web/src/contextos/SessionContext.tsx` — única fuente frontend (`permissions`, `hasPermission`, `refreshSession`)
+- `apps/web/src/componentes/auth/Can.tsx` — `<Can>`, `<RequirePermission>`, `AccessDenied` (solo UX; el backend es la autoridad)
+- `apps/web/src/componentes/diseno/navigation.ts` — navegación dinámica por permisos (`visibleNav`)
 
 ---
 
@@ -181,10 +182,12 @@ pnpm --filter @master-data/api run db:studio     # Abrir Prisma Studio
 | ACCOUNTING | ACCOUNTING.APPROVE, ACCOUNTING.VIEW, REQUEST.VIEW, DASHBOARD.VIEW |
 | FINAL_REVIEWER | FINAL_REVIEW.APPROVE, REQUEST.VIEW, DASHBOARD.VIEW |
 | MASTER_DATA_ADMIN | ADMIN.MANAGE, DASHBOARD.VIEW, AUDIT.VIEW, IMPORT.RUN, IMPORT.VIEW |
-| AUDITOR | (definido en seed, sin uso activo) |
+| AUDITOR | (existe en catálogo; sin permisos asignados) |
 
-**Controllers protegidos:** solicitudes, almacen, contabilidad, revision-final, auditoria
-**Controllers sin guard:** auth, catalogos, salud, archivos
+**Modelo real (10F/10G):** `UserRole → Role → RolePermission → Permission` + `UserPermissionOverride` (DENEGADO > CONCEDIDO > HEREDADO). Sin puentes en memoria ni matrices en frontend. Administración en `/admin` (usuarios, roles, masiva) y auditoría con `AUDIT.VIEW`.
+
+**Controllers protegidos:** solicitudes, almacen, contabilidad, revision-final, auditoria, usuarios, roles, panel, profit, importaciones (todos con `JwtGuard + RbacGuard + @RequirePermission`)
+**Sin guard (públicos):** auth (login/usuarios-login), salud, catálogos públicos, archivos servidos
 
 ---
 

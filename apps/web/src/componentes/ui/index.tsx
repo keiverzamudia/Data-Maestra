@@ -39,4 +39,49 @@ export const EmptyState:React.FC<{title:string; desc?:string}> = ({title,desc})=
 export const SearchInput:React.FC<{value:string; onChange:(v:string)=>void; placeholder?:string}> = ({value,onChange,placeholder})=>(
   <input className="input" placeholder={placeholder||'Buscar...'} value={value} onChange={e=>onChange(e.target.value)} />
 );
+
+/* ── 11A Design System: componentes base reutilizables (tokens en app/tokens.css) ── */
+export const Alert:React.FC<{tone?:'success'|'warning'|'danger'|'info';children:React.ReactNode}> = ({tone='info',children})=>
+  <div className={`alert alert-${tone}`} role="alert">{children}</div>;
+
+export const Spinner:React.FC<{label?:string}> = ({label='Cargando...'})=>
+  <span role="status" aria-label={label}><span className="spinner" aria-hidden="true" /></span>;
+
+export const Skeleton:React.FC<{width?:string|number;height?:string|number;label?:string}> = ({width='100%',height=14,label='Cargando contenido...'})=>
+  <div className="skeleton" role="status" aria-label={label} style={{width,height}} />;
+
+export const ErrorState:React.FC<{title?:string;desc?:string;onRetry?:()=>void}> = ({title='No pudimos cargar la información.',desc,onRetry})=>
+  <div className="error-state" role="alert">
+    <div className="empty-title">{title}</div>
+    {desc && <div className="muted small">{desc}</div>}
+    {onRetry && <Button variant="secondary" onClick={onRetry}>Reintentar</Button>}
+  </div>;
+
+export const ConfirmDialog:React.FC<{open:boolean;title:string;desc?:string;confirmLabel?:string;onConfirm:()=>void;onCancel:()=>void;busy?:boolean}> = ({open,title,desc,confirmLabel='Confirmar',onConfirm,onCancel,busy})=>{
+  if(!open) return null;
+  return <div className="modal-overlay" onClick={onCancel}><div className="modal" role="alertdialog" aria-label={title} onClick={e=>e.stopPropagation()}><div className="modal-head"><h3>{title}</h3><button className="btn btn-ghost" onClick={onCancel} aria-label="Cerrar">✕</button></div><div className="modal-body"><div className="stack-sm">{desc && <p className="muted">{desc}</p>}<div style={{display:'flex',gap:8,justifyContent:'flex-end'}}><Button variant="secondary" onClick={onCancel} disabled={busy}>Cancelar</Button><Button onClick={onConfirm} disabled={busy}>{busy ? 'Procesando...' : confirmLabel}</Button></div></div></div></div></div>;
+};
+
+export const Drawer:React.FC<{open:boolean;onClose:()=>void;title:string;children:React.ReactNode}> = ({open,onClose,title,children})=>{
+  if(!open) return null;
+  return <div className="drawer-overlay" onClick={onClose}><div className="drawer" role="dialog" aria-label={title} onClick={e=>e.stopPropagation()}><div className="drawer-head"><h3>{title}</h3><button className="btn btn-ghost" onClick={onClose} aria-label="Cerrar">✕</button></div><div className="drawer-body">{children}</div></div></div>;
+};
+
+export const Field:React.FC<{label:string;required?:boolean;helper?:string;error?:string;children:React.ReactNode}> = ({label,required,helper,error,children})=>(
+  <label className={`field${required?' field-required':''}`}>
+    <span>{label}</span>
+    {children}
+    {error ? <span className="field-error" role="alert">{error}</span> : helper ? <span className="field-helper">{helper}</span> : null}
+  </label>
+);
+
+export const Page:React.FC<{title:string;desc?:string;actions?:React.ReactNode;children:React.ReactNode}> = ({title,desc,actions,children})=>(
+  <div className="page page-container">
+    <div className="page-head">
+      <div><h1 className="page-title">{title}</h1>{desc && <p className="page-desc">{desc}</p>}</div>
+      {actions && <div style={{display:'flex',gap:8}}>{actions}</div>}
+    </div>
+    {children}
+  </div>
+);
 export { ImageLightbox } from './ImageLightbox';

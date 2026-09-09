@@ -1,9 +1,10 @@
 import * as React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useSession } from '../../contextos/SessionContext';
 import { useCompany } from '../../contextos/CompanyContext';
 import { apiPanelService } from '../../servicios/api/api-panel-service';
-import { PageHeader, KpiCard, StatusBadge, EmptyState, Button } from '../../componentes/ui';
-import type { Request } from '../../tipos';
+import { Can } from '../../componentes/auth/Can';
+import { Page, KpiCard, EmptyState, ErrorState, Skeleton } from '../../componentes/ui';
 
 interface DashboardStats {
   pendingRequests: number;
@@ -28,9 +29,11 @@ interface ActivityItem {
   createdAt: string;
 }
 
+/** 11B — Dashboard operativo: qué está pasando y qué atender (datos reales). */
 export const DashboardPage: React.FC = () => {
   const { user } = useSession();
   const { companyId } = useCompany();
+  const navigate = useNavigate();
   const [stats, setStats] = React.useState<DashboardStats | null>(null);
   const [activity, setActivity] = React.useState<ActivityItem[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -46,39 +49,45 @@ export const DashboardPage: React.FC = () => {
       setStats(s);
       setActivity(a);
       setLoading(false);
-    }).catch((err) => {
-      console.error('Dashboard error:', err);
-      setError('No fue posible cargar los datos del panel.');
+    }).catch(() => {
+      setError('No pudimos cargar los datos del panel.');
       setLoading(false);
     });
   }, [companyId]);
 
   React.useEffect(() => { loadData(); }, [loadData]);
 
-  if (loading) return <div className="empty">Cargando...</div>;
-
-  if (error) {
+  if (loading) {
     return (
-      <div className="stack">
-        <PageHeader title="Dashboard" subtitle={`Bienvenido, ${user?.displayName ?? ''}`} />
-        <div className="card p16">
-          <div className="alert" style={{ background: '#fee2e2', borderColor: '#fca5a5', color: '#991b1b' }}>
-            {error}
-          </div>
-          <Button size="sm" style={{ marginTop: 12 }} onClick={loadData}>Reintentar</Button>
+      <Page title="Dashboard" desc="Resumen operativo de tus solicitudes y actividades pendientes.">
+        <div className="kpi-grid">
+          {[1, 2, 3, 4].map(i => <Skeleton key={i} height={84} />)}
         </div>
-      </div>
+        <div className="card p16"><Skeleton height={16} width="40%" /><Skeleton height={12} /><Skeleton height={12} /></div>
+      </Page>
     );
   }
 
-  if (!stats) return <div className="empty">Sin datos disponibles</div>;
+  if (error) {
+    return (
+      <Page title="Dashboard" desc={`Bienvenido, ${user?.displayName ?? ''}`}>
+        <ErrorState title="No pudimos cargar los datos del panel." onRetry={loadData} />
+      </Page>
+    );
+  }
+
+  if (!stats) {
+    return (
+      <Page title="Dashboard" desc={`Bienvenido, ${user?.displayName ?? ''}`}>
+        <EmptyState title="Sin datos disponibles" desc="Aún no hay información operativa para mostrar." />
+      </Page>
+    );
+  }
 
   const maxBar = Math.max(stats.pendingRequests, stats.inApproval, stats.completedRequests, stats.returnedRequests, 1);
 
   return (
-    <div className="stack">
-      <PageHeader title="Dashboard" subtitle={`Bienvenido, ${user?.displayName ?? ''}`} />
-
+    <Page title="Dashboard" desc="Resumen operativo de tus solicitudes y actividades pendientes.">
       <div className="kpi-grid">
         <KpiCard label="Solicitudes Totales" value={stats.totalRequests} />
         <KpiCard label="Pendientes" value={stats.pendingRequests} tone={stats.pendingRequests > 0 ? 'kpi-yellow' : ''} />
@@ -88,6 +97,36 @@ export const DashboardPage: React.FC = () => {
         <KpiCard label="Importaciones" value={stats.recentImports} />
       </div>
 
+      <div className="card p16">
+        <h3 className="h1" style={{ fontSize: 16 }}>Acciones rápidas</h3>
+        <div className="action-grid" style={{ marginTop: 8 }}>
+          <Can permission="REQUEST.CREATE">
+            <a className="action-card" href="/requester/new">
+              <span className="action-icon" aria-hidden="true">＋</span>
+              <span><strong>Crear solicitud</strong><br /><span className="muted small">Nuevo artículo a homologar</span></span>
+            </a>
+          </Can>
+          <Can permission="REQUEST.VIEW">
+            <a className="action-card" href="/requester">
+              <span className="action-icon" aria-hidden="true">◻</span>
+              <span><strong>Ver solicitudes</strong><br /><span className="muted small">{stats.pendingRequests} pendientes</span></span>
+            </a>
+          </Can>
+          <Can permission="WAREHOUSE.VIEW">
+            <a className="action-card" href="/warehouse">
+              <span className="action-icon" aria-hidden="true">▭</span>
+              <span><strong>Ir a Almacén</strong><br /><span className="muted small">Clasificación pendiente</span></span>
+            </a>
+          </Can>
+          <Can permission="ACCOUNTING.VIEW">
+            <a className="action-card" href="/accounting">
+              <span className="action-icon" aria-hidden="true">✓</span>
+              <span><strong>Ir a Contabilidad</strong><br /><span className="muted small">Aprobaciones contables</span></span>
+            </a>
+          </Can>
+        </div>
+      </div>
+
       <div className="grid2">
         <div className="card p16">
           <h3 className="h1" style={{ fontSize: 16 }}>Actividad Reciente</h3>
@@ -95,9 +134,9 @@ export const DashboardPage: React.FC = () => {
             <EmptyState title="Sin actividad reciente" desc="Las acciones aparecerán aquí" />
           ) : (
             <ul className="list">
-              {activity.map(a => (
-                <li key={a.id}>
-                  <strong>{a.requestNumber}</strong> — {a.description.slice(0, 50)}
+              {activity.slice(0, 8).map(a => (
+                <li key={a.id} className="clickable" onClick={() => navigate(`/requester/${a.id}`)}>
+                  <strong>#{a.requestNumber}</strong> — {a.description.slice(0, 50)}
                   <span className="muted small" style={{ marginLeft: 8 }}>
                     por {a.actor} · {new Date(a.createdAt).toLocaleDateString('es-VE')}
                   </span>
@@ -125,6 +164,6 @@ export const DashboardPage: React.FC = () => {
           </div>
         </div>
       </div>
-    </div>
+    </Page>
   );
 };

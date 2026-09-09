@@ -29,19 +29,33 @@ if ($existing) {
 if (Test-Path $logFile) { Remove-Item $logFile -Force }
 if (Test-Path $errFile) { Remove-Item $errFile -Force }
 
-# Iniciar Node completamente desacoplado
-# -WindowStyle Hidden crea un proceso fuera de la consola actual
-# Redirigimos stdout/stderr a archivos para diagnostico
-$startArgs = @{
-    FilePath     = $nodeExe
-    ArgumentList = $mainJs
-    WorkingDirectory = $apiDir
-    WindowStyle = "Hidden"
-    RedirectStandardOutput = $logFile
-    RedirectStandardError = $errFile
+# Iniciar Node completamente desacoplado mediante WMI Win32_Process.Create.
+# RAZÓN: Start-Process hereda el stdin del shell que lo invoca (WinPS 5.1 no
+# tiene -RedirectStandardInput). Un hijo de larga vida con ese pipe heredado
+# mantiene viva la espera del proceso lanzador aunque el script ya terminó.
+# Win32_Process.Create genera un proceso sin consola, sin ningún pipe heredado
+# (stdin NUL) y con stdout/stderr redirigidos a archivos por el propio hijo.
+# El script lanzador puede terminar (exit 0) mientras Node sigue vivo.
+$nodePath = (Get-Command $nodeExe -ErrorAction Stop).Source
+# Forma canónica cmd /S /C ""exe" args >> out 2>> err"": con /S se recorta
+# únicamente el par exterior y el interior queda balanceado. Sin /S, cmd
+# recortaría la primera y la última comilla rompiendo las rutas con espacios.
+$cmdLine = "cmd.exe /S /C `"`"$nodePath`" `"$mainJs`" >> `"$logFile`" 2>> `"$errFile`"`""
+
+try {
+    $created = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
+        CommandLine = $cmdLine
+        CurrentDirectory = $apiDir
+    } -ErrorAction Stop
+} catch {
+    Write-Host "ERROR: no se pudo crear el proceso desacoplado: $($_.Exception.Message)"
+    exit 1
 }
 
-$proc = Start-Process @startArgs -PassThru
+if (-not $created -or $created.ReturnValue -ne 0) {
+    Write-Host "ERROR: Win32_Process.Create devolvió $($created.ReturnValue)"
+    exit 1
+}
 
-Write-Host "API iniciada - PID: $($proc.Id)"
+Write-Host "API iniciada - PID: $($created.ProcessId) (proceso desacoplado, sin pipes heredados)"
 Write-Host "Logs: $logFile / $errFile"

@@ -84,4 +84,22 @@ describe('SessionContext 10E', () => {
       expect(screen.getByTestId('auth').textContent).toBe('false');
     });
   });
+
+  it('13. logout limpia permisos efectivos', async () => {
+    logoutMock.mockResolvedValue({ ok: true });
+    function PermProbe() {
+      const s = useSession();
+      return (
+        <div>
+          <span data-testid="has">{String(s.hasPermission('AUDIT.VIEW'))}</span>
+          <button onClick={() => s.logout()}>go-logout</button>
+        </div>
+      );
+    }
+    sessionMock.mockResolvedValue({ ...FULL, permissions: ['AUDIT.VIEW', 'REQUEST.VIEW'] });
+    render(<SessionProvider><PermProbe /></SessionProvider>);
+    await waitFor(() => expect(screen.getByTestId('has').textContent).toBe('true'));
+    fireEvent.click(screen.getByText('go-logout'));
+    await waitFor(() => expect(screen.getByTestId('has').textContent).toBe('false'));
+  });
 });

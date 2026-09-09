@@ -23,6 +23,7 @@ export const LoginPage: React.FC<Props> = ({ forcedChange }) => {
   const [showPass, setShowPass] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [searching, setSearching] = React.useState(false);
+  const [searchError, setSearchError] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   // Cambio obligatorio
   const [mustChange, setMustChange] = React.useState(!!forcedChange);
@@ -33,10 +34,12 @@ export const LoginPage: React.FC<Props> = ({ forcedChange }) => {
   const reqId = React.useRef(0);
 
   // Autocomplete server-side con debounce; descarta respuestas viejas.
+  // Sin filtrado en frontend: los candidatos son siempre los del servidor.
   React.useEffect(() => {
     if (selected || text.trim().length < 2) {
       setCandidates([]);
       setOpen(false);
+      setSearchError(null);
       if (text.trim().length < 2) setSearching(false);
       return;
     }
@@ -47,11 +50,13 @@ export const LoginPage: React.FC<Props> = ({ forcedChange }) => {
         const rows = await apiAuthService.buscarUsuarios(text.trim());
         if (reqId.current === my) {
           setCandidates(rows);
+          setSearchError(null);
           setOpen(true);
         }
       } catch {
         if (reqId.current === my) {
           setCandidates([]);
+          setSearchError('No se pudo buscar. Reintenta.');
           setOpen(false);
         }
       } finally {
@@ -69,6 +74,7 @@ export const LoginPage: React.FC<Props> = ({ forcedChange }) => {
     setConfirm('');
     setPassword('');
     setError(null);
+    setSearchError(null);
     setSelected(null);
     setText('');
   };
@@ -148,12 +154,20 @@ export const LoginPage: React.FC<Props> = ({ forcedChange }) => {
                     key={c.id}
                     className="btn btn-ghost"
                     style={{ display: 'block', width: '100%', textAlign: 'left' }}
-                    onClick={() => { setSelected(c); setOpen(false); setError(null); }}
+                    onClick={() => { setSelected(c); setOpen(false); setSearchError(null); setError(null); }}
                   >
                     {c.displayName}
                   </button>
                 ))}
               </div>
+            )}
+            {!selected && !searching && !searchError && open && candidates.length === 0 && text.trim().length >= 2 && (
+              <div className="card p16" style={{ marginTop: -4 }}>
+                <span className="muted small">Sin resultados</span>
+              </div>
+            )}
+            {!searching && searchError && (
+              <div className="alert" style={{ background: '#fee2e2', borderColor: '#fca5a5', color: '#991b1b' }}>{searchError}</div>
             )}
             <label>
               <span className="muted small">Contraseña</span>

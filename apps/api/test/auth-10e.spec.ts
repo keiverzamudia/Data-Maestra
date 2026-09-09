@@ -16,7 +16,7 @@ function createMocks() {
     ] as any[],
     sessions: [] as any[],
     userRoles: [
-      { userId: 'u-ok', companyId: 'c1', departmentId: 'd1', active: true, role: { code: 'REQUESTER' }, company: { id: 'c1', name: 'Emp', code: 'E' }, department: { id: 'd1', name: 'Compras', code: 'COMPRAS' } },
+      { userId: 'u-ok', companyId: 'c1', departmentId: 'd1', active: true, role: { code: 'REQUESTER', rolePermissions: [{ permission: { code: 'REQUEST.CREATE' } }, { permission: { code: 'REQUEST.VIEW' } }, { permission: { code: 'DASHBOARD.VIEW' } }] }, company: { id: 'c1', name: 'Emp', code: 'E' }, department: { id: 'd1', name: 'Compras', code: 'COMPRAS' } },
     ] as any[],
   };
   const prisma: any = {
@@ -59,6 +59,7 @@ function createMocks() {
       ) ?? null),
     },
     department: { findUnique: vi.fn(async ({ where }: any) => where.id === 'd1' ? { id: 'd1', companyId: 'c1' } : null) },
+    userPermissionOverride: { findMany: vi.fn(async () => []) },
     auditEvent: { create: vi.fn(async ({ data }: any) => ({ id: 'a1', ...data })) },
   };
   return { prisma, db };

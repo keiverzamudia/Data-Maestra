@@ -16,6 +16,7 @@ import { NotificacionesModule } from './modulos/notificaciones/notificaciones.mo
 import { PanelModule } from './modulos/panel/panel.module';
 import { ProfitModule } from './modulos/profit/profit.module';
 import { UsuariosModule } from './modulos/usuarios/usuarios.module';
+import { RolesModule } from './modulos/roles/roles.module';
 import { PrismaModule } from './comun/prisma/prisma.module';
 
 @Module({
@@ -40,6 +41,7 @@ import { PrismaModule } from './comun/prisma/prisma.module';
     PanelModule,
     ProfitModule,
     UsuariosModule,
+    RolesModule,
   ],
 })
 export class AppModule {}

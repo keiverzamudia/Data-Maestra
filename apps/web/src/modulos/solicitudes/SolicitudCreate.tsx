@@ -4,7 +4,7 @@ import { useSession } from '../../contextos/SessionContext';
 import { useCompany } from '../../contextos/CompanyContext';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
 import { requestService } from '../../servicios';
-import { PageHeader, Button, Input, Textarea, Select, Modal } from '../../componentes/ui';
+import { PageHeader, Button, Input, Textarea, Select, Modal, Alert } from '../../componentes/ui';
 import { WorkflowTimeline } from '../../componentes/workflow';
 import { compressImage, formatFileSize, validateImageFile, type CompressResult } from '../../utilidades/image';
 
@@ -215,9 +215,9 @@ export const RequestCreate: React.FC = () => {
               <div><span className="muted small">Autoriza</span><br /><strong>{managerName}</strong></div>
             </div>
             {myDepartments.length === 0 && (
-              <div className="alert" style={{ marginTop: 8, background: '#fee2e2', borderColor: '#fca5a5', color: '#991b1b' }}>
+              <Alert tone="danger">
                 Sin departamento asignado en esta empresa. Solicite a administración su asignación.
-              </div>
+              </Alert>
             )}
           </div>
 
@@ -287,7 +287,7 @@ export const RequestCreate: React.FC = () => {
               )}
             </div>
             {imageError && (
-              <p style={{ color: '#dc2626', fontSize: 12, marginTop: 8 }}>{imageError}</p>
+              <p className="field-error" style={{ marginTop: 8 }}>{imageError}</p>
             )}
           </div>
 
@@ -339,9 +339,7 @@ export const RequestCreate: React.FC = () => {
             <Button onClick={handleSubmit} disabled={sending || !departmentId}>{sending ? 'Enviando...' : 'Enviar Solicitud'}</Button>
           </div>
           {submitError && (
-            <div className="alert" style={{ marginTop: 8, background: '#fee2e2', borderColor: '#fca5a5', color: '#991b1b' }}>
-              {submitError}
-            </div>
+            <Alert tone="danger">{submitError}</Alert>
           )}
         </div>
       </Modal>

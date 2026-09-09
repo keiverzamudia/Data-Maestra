@@ -81,6 +81,27 @@ async function main() {
       await prisma.permission.create({ data: { code } });
     }
     console.log('Created 13 permissions');
+
+    // RolePermissions (10F): conjuntos reales por rol.
+    // AUDITOR queda sin permisos (mismo comportamiento efectivo que el puente 10E).
+    const rolePermissions = {
+      REQUESTER: ['REQUEST.CREATE', 'REQUEST.VIEW', 'DASHBOARD.VIEW'],
+      DEPARTMENT_MANAGER: ['MANAGER.APPROVE', 'REQUEST.VIEW', 'DASHBOARD.VIEW'],
+      WAREHOUSE: ['WAREHOUSE.CLASSIFY', 'WAREHOUSE.VIEW', 'REQUEST.VIEW', 'DASHBOARD.VIEW'],
+      ACCOUNTING: ['ACCOUNTING.APPROVE', 'ACCOUNTING.VIEW', 'REQUEST.VIEW', 'DASHBOARD.VIEW'],
+      FINAL_REVIEWER: ['FINAL_REVIEW.APPROVE', 'REQUEST.VIEW', 'DASHBOARD.VIEW'],
+      MASTER_DATA_ADMIN: ['ADMIN.MANAGE', 'DASHBOARD.VIEW', 'AUDIT.VIEW', 'IMPORT.RUN', 'IMPORT.VIEW'],
+    };
+    let rpCount = 0;
+    for (const [roleCode, perms] of Object.entries(rolePermissions)) {
+      const role = await prisma.role.findUnique({ where: { code: roleCode } });
+      for (const code of perms) {
+        const perm = await prisma.permission.findUnique({ where: { code } });
+        await prisma.rolePermission.create({ data: { roleId: role.id, permissionId: perm.id } });
+        rpCount += 1;
+      }
+    }
+    console.log(`Created ${rpCount} role permissions`);
     
     // User Roles
     await prisma.userRole.create({ data: { userId: 'u1', roleId: 'r1', companyId: c1.id } });

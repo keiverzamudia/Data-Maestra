@@ -1,9 +1,11 @@
 import * as React from 'react';
+import { Can } from '../../componentes/auth/Can';
 import { useCompany } from '../../contextos/CompanyContext';
 import { requestService } from '../../servicios';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
-import { PageHeader, Button, SearchInput, StatusBadge, PriorityBadge, EmptyState } from '../../componentes/ui';
-import { RequestDetail } from '../../componentes/workflow';
+import { Button, SearchInput, StatusBadge, PriorityBadge, EmptyState, Alert, ConfirmDialog, Skeleton, ErrorState } from '../../componentes/ui';
+import { Page } from '../../componentes/ui';
+import { RequestDetail, WorkflowStepper, WorkflowStatusInfo } from '../../componentes/workflow';
 import type { Request } from '../../tipos';
 
 export const ApprovalsPage: React.FC = () => {
@@ -15,17 +17,20 @@ export const ApprovalsPage: React.FC = () => {
   const [error, setError] = React.useState<string | null>(null);
   const [selected, setSelected] = React.useState<Request | null>(null);
   const [approving, setApproving] = React.useState(false);
+  const [confirmApproveId, setConfirmApproveId] = React.useState<string | null>(null);
+  const [listError, setListError] = React.useState<string | null>(null);
 
   const loadRequests = React.useCallback(() => {
     setLoading(true);
     setError(null);
+    setListError(null);
     requestService.list({ companyId: companyId || undefined, status: 'PENDIENTE_GERENTE' })
       .then(({ data }) => {
         setRequests(data);
         setLoading(false);
       })
       .catch(() => {
-        setError('No fue posible cargar las solicitudes.');
+        setListError('No pudimos cargar las solicitudes.');
         setLoading(false);
       });
   }, [companyId]);
@@ -58,50 +63,70 @@ export const ApprovalsPage: React.FC = () => {
 
   if (selected) {
     return (
-      <div className="stack">
-        <div className="flex-between">
-          <h2 className="h1">Solicitud {selected.requestNumber}</h2>
-          <Button variant="secondary" onClick={() => setSelected(null)}>Volver a la bandeja</Button>
-        </div>
+      <Page
+        title={`Aprobación Gerencial — ${selected.requestNumber}`}
+        desc={selected.requestedDescription}
+        actions={<Button variant="secondary" onClick={() => setSelected(null)}>Volver a la bandeja</Button>}
+      >
+        <WorkflowStepper status={selected.status} />
+        <WorkflowStatusInfo status={selected.status} />
 
         <RequestDetail request={selected} showWorkflow={false} />
 
         {error && (
-          <div className="alert" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            {error}
-            <Button size="sm" onClick={() => setError(null)}>Cerrar</Button>
-          </div>
+          <Alert tone="danger">{error}</Alert>
         )}
 
-        <div className="form-actions">
+        <div className="action-bar">
           <Button variant="secondary" onClick={() => setSelected(null)}>Volver</Button>
-          <Button onClick={() => handleApprove(selected.id)} disabled={approving}>
-            {approving ? 'Aprobando...' : 'Aprobar solicitud'}
-          </Button>
+          <Can permission="MANAGER.APPROVE">
+            <Button onClick={() => setConfirmApproveId(selected.id)} disabled={approving}>
+              {approving ? 'Aprobando...' : 'Aprobar solicitud'}
+            </Button>
+          </Can>
         </div>
-      </div>
+
+        <ConfirmDialog
+          open={confirmApproveId !== null}
+          title="Aprobar solicitud"
+          desc="¿Aprobar esta solicitud? Pasará a Almacén para su clasificación."
+          confirmLabel="Aprobar"
+          busy={approving}
+          onCancel={() => setConfirmApproveId(null)}
+          onConfirm={() => {
+            const id = confirmApproveId;
+            setConfirmApproveId(null);
+            if (id) void handleApprove(id);
+          }}
+        />
+      </Page>
     );
   }
 
   return (
-    <div className="stack">
-      <PageHeader title="Aprobaciones" subtitle="Solicitudes pendientes de aprobación gerencial" />
-
+    <Page
+      title="Aprobaciones"
+      desc={loading ? 'Solicitudes pendientes de aprobación gerencial.' : `${filtered.length} solicitud${filtered.length === 1 ? '' : 'es'} por aprobar.`}
+    >
       {error && (
-        <div className="alert" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          {error}
-          <Button size="sm" onClick={loadRequests}>Reintentar</Button>
-        </div>
+        <Alert tone="danger">{error}</Alert>
       )}
 
-      <SearchInput value={search} onChange={setSearch} placeholder="Buscar por número o descripción..." />
+      <div className="toolbar" role="search">
+        <span className="grow"><SearchInput value={search} onChange={setSearch} placeholder="Buscar por número o descripción..." /></span>
+      </div>
 
-      {loading ? (
-        <div className="empty">Cargando...</div>
-      ) : filtered.length === 0 ? (
+      {loading && (
+        <div className="card p16 stack-sm" aria-label="Cargando solicitudes">
+          <Skeleton height={16} width="30%" /><Skeleton height={40} /><Skeleton height={40} />
+        </div>
+      )}
+      {!loading && listError && <ErrorState title="No pudimos cargar las solicitudes." onRetry={loadRequests} />}
+      {!loading && !listError && filtered.length === 0 && (
         <EmptyState title="No hay solicitudes pendientes de aprobación" />
-      ) : (
-        <div className="card">
+      )}
+      {!loading && !listError && filtered.length > 0 && (
+        <div className="card table-responsive">
           <table className="table">
             <thead>
               <tr>
@@ -121,23 +146,25 @@ export const ApprovalsPage: React.FC = () => {
                 const dept = departamentos.find(d => d.id === r.departmentId);
                 return (
                   <tr key={r.id}>
-                    <td><strong>{r.requestNumber}</strong></td>
-                    <td className="ellipsis">{r.requestedDescription}</td>
-                    <td>{requester?.displayName || '—'}</td>
-                    <td>{dept?.name || '—'}</td>
-                    <td className="muted small">{new Date(r.createdAt).toLocaleDateString('es-VE')}</td>
-                    <td><PriorityBadge priority={r.priority} /></td>
-                    <td><StatusBadge status={r.status} /></td>
-                    <td>
+                    <td data-label="N°"><strong>#{r.requestNumber}</strong></td>
+                    <td data-label="Descripción" className="ellipsis">{r.requestedDescription}</td>
+                    <td data-label="Solicitante">{requester?.displayName || '—'}</td>
+                    <td data-label="Área">{dept?.name || '—'}</td>
+                    <td data-label="Fecha" className="muted small">{new Date(r.createdAt).toLocaleDateString('es-VE')}</td>
+                    <td data-label="Prioridad"><PriorityBadge priority={r.priority} /></td>
+                    <td data-label="Estado"><StatusBadge status={r.status} /></td>
+                    <td data-label="Acción">
                       <div style={{ display: 'flex', gap: 4 }}>
                         <Button size="sm" variant="secondary" onClick={() => setSelected(r)}>Ver</Button>
-                        <Button
-                          size="sm"
-                          onClick={() => handleApprove(r.id)}
-                          disabled={approving}
-                        >
-                          {approving ? 'Aprobando...' : 'Aprobar'}
-                        </Button>
+                        <Can permission="MANAGER.APPROVE">
+                          <Button
+                            size="sm"
+                            onClick={() => handleApprove(r.id)}
+                            disabled={approving}
+                          >
+                            {approving ? 'Aprobando...' : 'Aprobar'}
+                          </Button>
+                        </Can>
                       </div>
                     </td>
                   </tr>
@@ -147,6 +174,6 @@ export const ApprovalsPage: React.FC = () => {
           </table>
         </div>
       )}
-    </div>
+    </Page>
   );
 };

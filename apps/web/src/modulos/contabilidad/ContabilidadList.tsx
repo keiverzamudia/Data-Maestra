@@ -1,11 +1,13 @@
 import * as React from 'react';
+import { Can } from '../../componentes/auth/Can';
 import { useNavigate } from 'react-router-dom';
 import { useCompany } from '../../contextos/CompanyContext';
 import { accountingService } from '../../servicios';
 import { useCatalogos } from '../../hooks/useCatalogos';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
-import { PageHeader, Button, SearchInput, StatusBadge, EmptyState, Modal, Textarea, ImageLightbox } from '../../componentes/ui';
-import { WorkflowTimeline } from '../../componentes/workflow';
+import { Button, SearchInput, StatusBadge, EmptyState, Modal, Textarea, ImageLightbox, Alert, ConfirmDialog, Skeleton, ErrorState } from '../../componentes/ui';
+import { Page } from '../../componentes/ui';
+import { WorkflowStepper, WorkflowStatusInfo } from '../../componentes/workflow';
 import { InformacionContable, type ContabilidadEntry } from '../../componentes/contabilidad';
 import type { Request } from '../../tipos';
 
@@ -20,22 +22,34 @@ export const AccountingList: React.FC = () => {
   const [requests, setRequests] = React.useState<Request[]>([]);
   const [search, setSearch] = React.useState('');
   const [loading, setLoading] = React.useState(true);
+  const [listError, setListError] = React.useState<string | null>(null);
   const [selected, setSelected] = React.useState<Request | null>(null);
   const [entries, setEntries] = React.useState<ContabilidadEntry[]>([]);
   const [rejectModal, setRejectModal] = React.useState(false);
   const [rejectReason, setRejectReason] = React.useState('');
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [confirmApprove, setConfirmApprove] = React.useState(false);
   const [lightboxOpen, setLightboxOpen] = React.useState(false);
   const navigate = useNavigate();
 
-  React.useEffect(() => {
+  const loadList = React.useCallback(() => {
     setLoading(true);
-    accountingService.getPendingApprovals(companyId).then(r => {
-      setRequests(r);
-      setLoading(false);
-    });
+    setListError(null);
+    accountingService.getPendingApprovals(companyId).then(
+      r => {
+        setRequests(r);
+        setLoading(false);
+      },
+      () => {
+        setRequests([]);
+        setListError('No pudimos cargar las clasificaciones pendientes.');
+        setLoading(false);
+      },
+    );
   }, [companyId]);
+
+  React.useEffect(() => { loadList(); }, [loadList]);
 
   const filtered = search
     ? requests.filter(r => r.requestedDescription.toLowerCase().includes(search.toLowerCase()))
@@ -82,13 +96,13 @@ export const AccountingList: React.FC = () => {
     const dept = departamentos.find(d => d.id === selected.departmentId);
 
     return (
-      <div className="stack">
-        <PageHeader
-          title={`Aprobación Contable — ${selected.requestNumber}`}
-          action={<Button variant="secondary" onClick={() => setSelected(null)}>Volver</Button>}
-        />
-
-          <WorkflowTimeline status={selected.status} />
+      <Page
+        title={`Aprobación Contable — ${selected.requestNumber}`}
+        desc={selected.requestedDescription}
+        actions={<Button variant="secondary" onClick={() => setSelected(null)}>Volver</Button>}
+      >
+        <WorkflowStepper status={selected.status} />
+        <WorkflowStatusInfo status={selected.status} />
 
         <div className="grid2">
           <div className="stack">
@@ -112,7 +126,7 @@ export const AccountingList: React.FC = () => {
             )}
 
             <div className="card p16">
-              <h3 className="h1" style={{ fontSize: 16 }}>Clasificación de Almacén</h3>
+              <h3 className="h1" style={{ fontSize: 16 }}>Clasificación recibida (solo lectura)</h3>
               <div className="review-grid" style={{ marginTop: 8 }}>
                 <div><span className="muted small">Descripción</span><br /><strong>{selected.requestedDescription}</strong></div>
                 <div><span className="muted small">Solicitante</span><br /><strong>{requester?.displayName || '—'}</strong></div>
@@ -122,7 +136,9 @@ export const AccountingList: React.FC = () => {
                 <div><span className="muted small">Marca</span><br /><strong>{findName(marcas, selected.brandId)}</strong></div>
                 {selected.partNumber && <div><span className="muted small">Part Number</span><br /><strong>{selected.partNumber}</strong></div>}
               </div>
-              <p className="muted small" style={{ marginTop: 8 }}>⚠ La clasificación fue realizada por Almacén. Contabilidad NO puede modificar grupo, subgrupo, categoría ni marca.</p>
+              <Alert tone="warning">
+                La clasificación fue realizada por Almacén. Contabilidad revisa estos datos pero NO puede modificar grupo, subgrupo, categoría ni marca.
+              </Alert>
             </div>
 
             <div className="card p16">
@@ -134,15 +150,25 @@ export const AccountingList: React.FC = () => {
               <InformacionContable value={entries} onChange={setEntries} />
             </div>
 
-            <div className="form-actions">
-              <Button variant="danger" onClick={() => setRejectModal(true)} disabled={saving}>Rechazar</Button>
-              <Button onClick={handleApprove} disabled={saving || entries.length === 0}>{saving ? 'Procesando...' : 'Aprobar'}</Button>
+            <div className="action-bar">
+              <Can permission="ACCOUNTING.APPROVE">
+                <Button variant="danger" onClick={() => setRejectModal(true)} disabled={saving}>Rechazar</Button>
+                <Button onClick={() => setConfirmApprove(true)} disabled={saving || entries.length === 0}>{saving ? 'Procesando...' : 'Aprobar'}</Button>
+              </Can>
             </div>
 
+            <ConfirmDialog
+              open={confirmApprove}
+              title="Aprobar revisión contable"
+              desc="¿Aprobar esta solicitud? Pasará a Validación Maestra con los códigos contables indicados."
+              confirmLabel="Aprobar"
+              busy={saving}
+              onCancel={() => setConfirmApprove(false)}
+              onConfirm={() => { setConfirmApprove(false); void handleApprove(); }}
+            />
+
             {error && (
-              <div className="alert" style={{ marginTop: 8, background: '#fee2e2', borderColor: '#fca5a5', color: '#991b1b' }}>
-                {error}
-              </div>
+              <Alert tone="danger">{error}</Alert>
             )}
           </div>
 
@@ -173,22 +199,30 @@ export const AccountingList: React.FC = () => {
             </div>
           </div>
         </Modal>
-      </div>
+      </Page>
     );
   }
 
   return (
-    <div className="stack">
-      <PageHeader title="Contabilidad" subtitle="Clasificaciones pendientes de aprobación contable" />
+    <Page
+      title="Contabilidad"
+      desc={loading ? 'Revisa y aprueba las clasificaciones desde el punto de vista contable.' : `${filtered.length} clasificación${filtered.length === 1 ? '' : 'es'} por revisar.`}
+    >
+      <div className="toolbar" role="search">
+        <span className="grow"><SearchInput value={search} onChange={setSearch} placeholder="Buscar por descripción..." /></span>
+      </div>
 
-      <SearchInput value={search} onChange={setSearch} placeholder="Buscar por descripción..." />
-
-      {loading ? (
-        <div className="empty">Cargando...</div>
-      ) : filtered.length === 0 ? (
+      {loading && (
+        <div className="card p16 stack-sm" aria-label="Cargando clasificaciones">
+          <Skeleton height={16} width="30%" /><Skeleton height={40} /><Skeleton height={40} />
+        </div>
+      )}
+      {!loading && listError && <ErrorState title="No pudimos cargar las clasificaciones pendientes." onRetry={loadList} />}
+      {!loading && !listError && filtered.length === 0 && (
         <EmptyState title="No hay clasificaciones pendientes" desc="Todas las clasificaciones han sido procesadas" />
-      ) : (
-        <div className="card">
+      )}
+      {!loading && !listError && filtered.length > 0 && (
+        <div className="card table-responsive">
           <table className="table">
             <thead>
               <tr>
@@ -205,20 +239,20 @@ export const AccountingList: React.FC = () => {
             <tbody>
               {filtered.map(r => (
                 <tr key={r.id}>
-                  <td><strong>{r.requestNumber}</strong></td>
-                  <td className="ellipsis">{r.requestedDescription}</td>
-                  <td>{findName(grupos, r.groupId)}</td>
-                  <td>{findName(subgrupos, r.subgroupId)}</td>
-                  <td>{findName(marcas, r.brandId)}</td>
-                  <td>
+                  <td data-label="N°"><strong>#{r.requestNumber}</strong></td>
+                  <td data-label="Descripción" className="ellipsis">{r.requestedDescription}</td>
+                  <td data-label="Grupo">{findName(grupos, r.groupId)}</td>
+                  <td data-label="Subgrupo">{findName(subgrupos, r.subgroupId)}</td>
+                  <td data-label="Marca">{findName(marcas, r.brandId)}</td>
+                  <td data-label="Código Master">
                     <span className="master-code-display" style={{ fontSize: 12 }}>
                       {r.masterCode || (r.groupId && r.subgroupId
                         ? `${grupos.find(g => g.id === r.groupId)?.code || ''}${subgrupos.find(s => s.id === r.subgroupId)?.code || ''}000001`
                         : '—')}
                     </span>
                   </td>
-                  <td>{usuarios.find(u => u.id === r.requesterId)?.displayName || '—'}</td>
-                  <td>
+                  <td data-label="Solicitante">{usuarios.find(u => u.id === r.requesterId)?.displayName || '—'}</td>
+                  <td data-label="Acción">
                     <Button size="sm" onClick={() => { setSelected(r); setEntries([]); }}>Revisar</Button>
                   </td>
                 </tr>
@@ -227,6 +261,6 @@ export const AccountingList: React.FC = () => {
           </table>
         </div>
       )}
-    </div>
+    </Page>
   );
 };

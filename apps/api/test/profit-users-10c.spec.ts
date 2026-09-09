@@ -52,7 +52,7 @@ function createMocks(initialLocal: LocalUser[], profitUsers: { profitCode: strin
 }
 
 describe('FASE 10C — GET /usuarios?search= (autocompletado login 10D)', () => {
-  it('busca por displayName y nunca expone passwordHash', async () => {
+  it('busca por displayName, username y profitCode y nunca expone passwordHash', async () => {
     const rows = [
       { id: 'a', username: 'KZAMU', displayName: 'KEIBER ZAMUDIA', profitCode: 'KZAMU', active: true, mustChangePassword: true, lastLoginAt: null },
     ];
@@ -63,7 +63,11 @@ describe('FASE 10C — GET /usuarios?search= (autocompletado login 10D)', () => 
     const res = await ctrl.buscar('KEI', undefined);
     expect(prisma.user.findMany).toHaveBeenCalledTimes(1);
     const where = prisma.user.findMany.mock.calls[0][0].where;
-    expect(where.displayName).toEqual({ contains: 'KEI' });
+    expect(where.OR).toEqual([
+      { displayName: { contains: 'KEI' } },
+      { username: { contains: 'KEI' } },
+      { profitCode: { contains: 'KEI' } },
+    ]);
     const sel = prisma.user.findMany.mock.calls[0][0].select;
     expect(sel).not.toHaveProperty('passwordHash');
     expect(res[0].displayName).toBe('KEIBER ZAMUDIA');

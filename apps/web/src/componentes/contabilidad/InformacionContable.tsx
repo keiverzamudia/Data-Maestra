@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Button, Input } from '../ui';
+import { Button, Input, Alert } from '../ui';
 import { serializarDis, type ContabilidadPosition } from '../../utilidades/dis';
 import { apiProfitService, type ProfitAccount } from '../../servicios/api/api-profit-service';
 import {
@@ -156,7 +156,7 @@ export const InformacionContable: React.FC<Props> = ({ value, onChange }) => {
               className={`tab ${active === k ? 'tab-active' : ''}`}
               style={{ display: 'flex', alignItems: 'center', gap: 4 }}
             >
-              <span aria-hidden="true" style={{ fontWeight: 800, color: has ? '#16a34a' : '#94a3b8' }}>
+              <span aria-hidden="true" className={`account-dot ${has ? 'account-dot-on' : 'account-dot-off'}`}>
                 {has ? '●' : '○'}
               </span>
               {num}
@@ -183,19 +183,14 @@ export const InformacionContable: React.FC<Props> = ({ value, onChange }) => {
               role="listbox"
               aria-label="Cuentas encontradas"
               onScroll={handleScroll}
-              style={{
-                position: 'absolute', zIndex: 20, left: 0, right: 0, marginTop: 4,
-                background: '#fff', border: '1px solid var(--border)', borderRadius: 8,
-                maxHeight: 220, overflowY: 'auto', listStyle: 'none', padding: 4,
-                boxShadow: '0 10px 30px rgba(0,0,0,.12)',
-              }}
+              className="account-popup"
             >
               {loading && results.length === 0 && <li className="muted small" style={{ padding: 8 }}>Buscando en Profit…</li>}
               {error && (
                 <li style={{ padding: 8 }}>
-                  <div className="alert" style={{ background: '#fee2e2', borderColor: '#fca5a5', color: '#991b1b' }}>
+                  <Alert tone="danger">
                     No se pudieron cargar las cuentas de Profit: {error}
-                  </div>
+                  </Alert>
                   <div style={{ marginTop: 8 }}>
                     <Button variant="secondary" size="sm" onClick={retry}>Reintentar</Button>
                   </div>
@@ -210,14 +205,9 @@ export const InformacionContable: React.FC<Props> = ({ value, onChange }) => {
                     role="option"
                     aria-selected={current?.code === a.code}
                     onClick={() => selectAccount(a)}
-                    style={{
-                      display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px',
-                      border: 'none', borderRadius: 6, background: 'transparent', cursor: 'pointer',
-                    }}
-                    onMouseEnter={e => ((e.currentTarget.style.background = '#eff6ff'))}
-                    onMouseLeave={e => ((e.currentTarget.style.background = 'transparent'))}
+                    className="account-option"
                   >
-                    <div style={{ fontSize: 13, fontWeight: 700, fontFamily: 'monospace' }}>{a.code}</div>
+                    <div className="account-code">{a.code}</div>
                     <div className="muted small">{a.description}</div>
                   </button>
                 </li>
@@ -234,9 +224,9 @@ export const InformacionContable: React.FC<Props> = ({ value, onChange }) => {
               <div><span className="muted small">Descripción</span><br /><strong>{current.description}</strong></div>
             </div>
             {duplicate && (
-              <div className="alert" style={{ marginTop: 8 }}>
+              <Alert tone="warning">
                 ⚠ Esta cuenta ya está usada en {duplicate.position}. Cada posición debe tener su propia cuenta.
-              </div>
+              </Alert>
             )}
             <div style={{ marginTop: 8 }}>
               <Button variant="ghost" size="sm" onClick={removeCurrent}>Quitar cuenta</Button>

@@ -84,7 +84,19 @@ export interface ImportService {
 
 // ── Audit Service ──
 export interface AuditService {
-  getEvents(params?: { entityId?: string; action?: string; page?: number }): Promise<{ data: AuditEvent[]; total: number }>;
+  getEvents(params?: {
+    entityId?: string;
+    entityType?: string;
+    action?: string;
+    actorId?: string;
+    correlationId?: string;
+    search?: string;
+    from?: string;
+    to?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{ data: AuditEvent[]; total: number; page?: number; limit?: number; totalPages?: number }>;
+  getById?(id: string): Promise<AuditEvent>;
 }
 
 // ── Matching Service ──

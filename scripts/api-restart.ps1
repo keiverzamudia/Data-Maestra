@@ -19,6 +19,11 @@ Write-Host "=== 2. STOP API ==="
 Write-Host ""
 Write-Host "=== 3. START API (desacoplada) ==="
 & "$scriptsDir\api-start.ps1"
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "FAIL: no se pudo iniciar la API"
+    exit 1
+}
+$startedByUs = $true
 
 Write-Host ""
 Write-Host "=== 4. HEALTH CHECK ==="
@@ -28,10 +33,14 @@ $healthExit = $LASTEXITCODE
 if ($healthExit -eq 0) {
     Write-Host ""
     Write-Host "API READY - OpenCode puede continuar"
-} else {
-    Write-Host ""
-    Write-Host "FAIL: API no paso health check"
-    exit 1
+    exit 0
 }
 
-exit 0
+# Health finito agotado: detener SOLO la instancia que inició este script
+# (no tocar otros procesos) y terminar con error. Sin loops ni esperas.
+Write-Host ""
+Write-Host "FAIL: API no paso health check"
+if ($startedByUs) {
+    & "$scriptsDir\api-stop.ps1" | Out-Null
+}
+exit 1

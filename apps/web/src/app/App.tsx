@@ -12,6 +12,7 @@ import { AprobacionesPage } from '../modulos/aprobaciones';
 import { ImportacionesPage } from '../modulos/importaciones';
 import { AuditoriaPage } from '../modulos/auditoria';
 import { AdministracionPage } from '../modulos/administracion';
+import { RequirePermission } from '../componentes/auth/Can';
 
 export function App() {
   return (
@@ -41,43 +42,43 @@ function Gate() {
     <CompanyProvider>
       <AppLayout>
         <Routes>
-              <Route path="/" element={<PanelPage />} />
+              <Route path="/" element={<RequirePermission permission="DASHBOARD.VIEW"><PanelPage /></RequirePermission>} />
 
               {/* Solicitudes */}
-              <Route path="/requester" element={<SolicitudesList />} />
-              <Route path="/requester/new" element={<SolicitudCreate />} />
-              <Route path="/requester/:id" element={<SolicitudDetailPage />} />
+              <Route path="/requester" element={<RequirePermission permission="REQUEST.VIEW"><SolicitudesList /></RequirePermission>} />
+              <Route path="/requester/new" element={<RequirePermission permission="REQUEST.CREATE"><SolicitudCreate /></RequirePermission>} />
+              <Route path="/requester/:id" element={<RequirePermission permission="REQUEST.VIEW"><SolicitudDetailPage /></RequirePermission>} />
 
               {/* Almacen */}
-              <Route path="/warehouse" element={<AlmacenList />} />
-              <Route path="/warehouse/:id" element={<AlmacenClassify />} />
+              <Route path="/warehouse" element={<RequirePermission permission="WAREHOUSE.VIEW"><AlmacenList /></RequirePermission>} />
+              <Route path="/warehouse/:id" element={<RequirePermission permission="WAREHOUSE.VIEW"><AlmacenClassify /></RequirePermission>} />
 
               {/* Aprobaciones */}
-              <Route path="/approvals" element={<AprobacionesPage />} />
+              <Route path="/approvals" element={<RequirePermission permission="MANAGER.APPROVE"><AprobacionesPage /></RequirePermission>} />
 
               {/* Contabilidad */}
-              <Route path="/accounting" element={<ContabilidadList />} />
+              <Route path="/accounting" element={<RequirePermission permission="ACCOUNTING.VIEW"><ContabilidadList /></RequirePermission>} />
 
               {/* Revision Final */}
-              <Route path="/final-review" element={<RevisionFinalPage />} />
+              <Route path="/final-review" element={<RequirePermission permission="FINAL_REVIEW.APPROVE"><RevisionFinalPage /></RequirePermission>} />
 
               {/* Importaciones */}
-              <Route path="/imports" element={<ImportacionesPage />} />
+              <Route path="/imports" element={<RequirePermission permission="IMPORT.VIEW"><ImportacionesPage /></RequirePermission>} />
 
               {/* Auditoria */}
-              <Route path="/audit" element={<AuditoriaPage />} />
+              <Route path="/audit" element={<RequirePermission permission="AUDIT.VIEW"><AuditoriaPage /></RequirePermission>} />
 
               {/* Administracion */}
-              <Route path="/admin" element={<AdministracionPage />} />
+              <Route path="/admin" element={<RequirePermission permission="ADMIN.MANAGE"><AdministracionPage /></RequirePermission>} />
 
               {/* Legacy routes */}
-              <Route path="/requests" element={<SolicitudesList />} />
-              <Route path="/requests/new" element={<SolicitudCreate />} />
-              <Route path="/requests/:id" element={<SolicitudDetailPage />} />
-              <Route path="/matching" element={<ImportacionesPage />} />
-              <Route path="/data-quality" element={<ImportacionesPage />} />
-              <Route path="/master-items" element={<AdministracionPage />} />
-              <Route path="/source-items" element={<ImportacionesPage />} />
+              <Route path="/requests" element={<RequirePermission permission="REQUEST.VIEW"><SolicitudesList /></RequirePermission>} />
+              <Route path="/requests/new" element={<RequirePermission permission="REQUEST.CREATE"><SolicitudCreate /></RequirePermission>} />
+              <Route path="/requests/:id" element={<RequirePermission permission="REQUEST.VIEW"><SolicitudDetailPage /></RequirePermission>} />
+              <Route path="/matching" element={<RequirePermission permission="IMPORT.VIEW"><ImportacionesPage /></RequirePermission>} />
+              <Route path="/data-quality" element={<RequirePermission permission="IMPORT.VIEW"><ImportacionesPage /></RequirePermission>} />
+              <Route path="/master-items" element={<RequirePermission permission="ADMIN.MANAGE"><AdministracionPage /></RequirePermission>} />
+              <Route path="/source-items" element={<RequirePermission permission="IMPORT.VIEW"><ImportacionesPage /></RequirePermission>} />
             </Routes>
       </AppLayout>
     </CompanyProvider>

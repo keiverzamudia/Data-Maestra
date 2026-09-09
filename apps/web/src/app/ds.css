@@ -1,0 +1,118 @@
+/* 11A — Estilos del Design System. Clases usadas por componentes/ui. Tokens en tokens.css. */
+/* buttons: estados + variantes */
+.btn{transition:background var(--transition-fast),border-color var(--transition-fast),opacity var(--transition-fast)}
+.btn-primary:hover{background:var(--blue-hover)}
+.btn-primary:active{background:var(--blue-active)}
+.btn-secondary:hover{border-color:var(--muted)}
+.btn-ghost:hover{background:var(--border-soft)}
+.btn-danger:hover{filter:brightness(.92)}
+.btn-outline{background:transparent;border-color:var(--blue);color:var(--blue)}
+.btn-outline:hover{background:var(--blue-soft)}
+.btn-success{background:var(--success);color:#fff}
+.btn-success:hover{filter:brightness(.93)}
+.btn-loading{position:relative;pointer-events:none}
+.spinner{width:14px;height:14px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;display:inline-block;vertical-align:-2px;animation:ds-spin .7s linear infinite}
+@keyframes ds-spin{to{transform:rotate(360deg)}}
+/* alerts por tono */
+.alert-success{background:var(--success-bg);border-color:var(--success-bg);color:var(--success-text)}
+.alert-warning{background:var(--warning-bg);border-color:var(--warning-border);color:var(--warning-text)}
+.alert-danger{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger-text)}
+.alert-info{background:var(--info-bg);border-color:var(--info-bg);color:var(--info-text)}
+/* skeleton */
+.skeleton{background:linear-gradient(90deg,var(--border-soft) 25%,var(--border) 50%,var(--border-soft) 75%);background-size:200% 100%;animation:ds-shimmer 1.2s infinite;border-radius:var(--radius-sm);min-height:14px}
+@keyframes ds-shimmer{to{background-position:-200% 0}}
+/* drawer (panel lateral, hermano del modal) */
+.drawer-overlay{position:fixed;inset:0;background:var(--overlay);z-index:var(--z-modal);display:flex;justify-content:flex-end}
+.drawer{background:var(--card);width:min(560px,94vw);height:100%;display:flex;flex-direction:column;box-shadow:var(--shadow-md)}
+.drawer-head{display:flex;align-items:center;justify-content:space-between;padding:var(--sp-4);border-bottom:1px solid var(--border)}
+.drawer-body{padding:var(--sp-4);overflow:auto;flex:1}
+/* forms: field wrapper */
+.field{display:flex;flex-direction:column;gap:var(--sp-1);font-size:var(--text-sm);font-weight:600}
+.field-required::after{content:" *";color:var(--danger)}
+.field-helper{font-size:var(--text-sm);color:var(--muted);font-weight:400}
+.field-error{font-size:var(--text-sm);color:var(--danger);font-weight:400}
+.input-error{border-color:var(--danger)}
+.input:disabled{background:var(--border-soft);cursor:not-allowed}
+/* toast */
+.toast-host{position:fixed;bottom:var(--sp-4);right:var(--sp-4);z-index:var(--z-toast);display:flex;flex-direction:column;gap:var(--sp-2)}
+.toast{background:var(--text);color:#fff;padding:10px 14px;border-radius:var(--radius-sm);font-size:var(--text-md);box-shadow:var(--shadow-md)}
+.toast-success{background:var(--success-text)}
+.toast-danger{background:var(--danger-text)}
+/* table: selección */
+.table tr.row-selected{background:var(--blue-soft)}
+.table tbody tr{transition:background var(--transition-fast)}
+/* error state */
+.error-state{padding:var(--sp-5);text-align:center;color:var(--muted);display:flex;flex-direction:column;gap:var(--sp-2);align-items:center}
+/* page */
+.page{display:flex;flex-direction:column;gap:var(--sp-4)}
+.page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--sp-3);flex-wrap:wrap}
+.page-title{font-size:var(--text-h1);font-weight:700}
+.page-desc{color:var(--muted)}
+/* modal coherente con tokens */
+.modal-overlay{z-index:var(--z-modal)}
+.modal-body{max-height:70vh;overflow:auto}
+/* responsive base */
+@media(max-width:700px){
+  .content{padding:var(--sp-3)}
+  .header{padding:var(--sp-2) var(--sp-3)}
+  .form-actions{flex-wrap:wrap}
+}
+/* 11B — workflow stepper */
+.wf-stepper{list-style:none;display:flex;gap:var(--sp-2);flex-wrap:nowrap;overflow-x:auto;padding:var(--sp-1) 0;margin:0}
+.wf-step{display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:var(--radius-pill);background:var(--border-soft);font-size:var(--text-sm);white-space:nowrap;color:var(--muted)}
+.wf-done{background:var(--success-bg);color:var(--success-text)}
+.wf-current{background:var(--blue);color:var(--white);font-weight:700}
+.wf-error{background:var(--danger-bg);color:var(--danger-text);font-weight:700}
+.wf-dot{font-weight:800}
+@media(max-width:700px){
+  .wf-stepper{flex-direction:column;align-items:stretch;overflow:visible}
+  .wf-step{white-space:normal}
+}
+/* 11B — breadcrumb */
+.breadcrumb{display:flex;gap:6px;align-items:center;font-size:var(--text-sm);color:var(--muted);margin-bottom:var(--sp-2)}
+.breadcrumb a:hover{color:var(--blue)}
+.breadcrumb-current{color:var(--text);font-weight:600}
+/* 11B — tabla responsive: en móvil las filas se apilan con etiquetas */
+@media(max-width:700px){
+  .table-responsive table,.table-responsive thead,.table-responsive tbody,.table-responsive th,.table-responsive td,.table-responsive tr{display:block}
+  .table-responsive thead{display:none}
+  .table-responsive tr{border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:var(--sp-2);padding:var(--sp-2)}
+  .table-responsive td{border:none;padding:4px 0}
+  .table-responsive td[data-label]::before{content:attr(data-label) ": ";font-weight:600;color:var(--muted);font-size:var(--text-sm)}
+}
+/* 11B — dashboard: tarjetas de acción */
+.action-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:var(--sp-3)}
+.action-card{display:flex;gap:var(--sp-3);align-items:center;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--sp-4);transition:border-color var(--transition-fast),box-shadow var(--transition-fast)}
+a.action-card:hover,.action-card:hover{border-color:var(--blue);box-shadow:var(--shadow-md)}
+.action-icon{width:36px;height:36px;border-radius:var(--radius-sm);background:var(--blue-soft);color:var(--blue);display:grid;place-items:center;font-size:18px;flex-shrink:0}
+/* 11B — toolbar */
+.toolbar{display:flex;gap:var(--sp-2);flex-wrap:wrap;align-items:center}
+.toolbar .grow{flex:1;min-width:180px}
+@media(max-width:700px){.toolbar{flex-direction:column;align-items:stretch}.toolbar .grow{min-width:0}}
+/* 11C — checklist de validación */
+.checklist{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-2);margin-top:var(--sp-3)}
+@media(max-width:700px){.checklist{grid-template-columns:1fr}}
+.check{display:flex;align-items:center;gap:var(--sp-2);font-size:var(--text-md);padding:6px 8px;border-radius:var(--radius-sm);border:1px solid}
+.check-ok{background:var(--success-bg);border-color:var(--success-bg);color:var(--success-text)}
+.check-missing{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger-text)}
+.check-warn{background:var(--warning-bg);border-color:var(--warning-border);color:var(--warning-text)}
+.check-mark{font-weight:800}
+.check-label{font-weight:600}
+.check-state{margin-left:auto;font-size:11px;font-weight:700}
+/* 11C — nota de solo lectura */
+.read-only-note{margin-top:var(--sp-2)}
+/* 11C — barra de acciones operativa */
+.action-bar{display:flex;gap:var(--sp-2);justify-content:flex-end;flex-wrap:wrap;margin-top:var(--sp-4)}
+@media(max-width:700px){.action-bar .btn{flex:1;min-height:44px}}
+/* 11C — observación destacada (devoluciones) */
+.callout{border-left:4px solid var(--danger)}
+/* 11C — miniatura de evidencia */
+.evidence-thumb{max-width:100%;max-height:250px;border-radius:var(--radius-sm);margin-top:var(--sp-2);cursor:pointer;border:1px solid var(--border)}
+/* 11C — opción de cuenta contable */
+.account-option{display:block;width:100%;text-align:left;padding:8px 10px;border:none;border-radius:6px;background:transparent;cursor:pointer}
+.account-option:hover{background:var(--blue-soft)}
+.account-dot{font-weight:800}
+.account-dot-on{color:var(--success)}
+.account-dot-off{color:var(--sidebar-dim)}
+.account-popup{position:absolute;z-index:var(--z-panel);left:0;right:0;margin-top:4px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);max-height:220px;overflow-y:auto;list-style:none;padding:4px;box-shadow:var(--shadow-md)}
+.account-code{font-size:var(--text-md);font-weight:700;font-family:var(--font-mono)}

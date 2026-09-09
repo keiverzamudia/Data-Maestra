@@ -1,11 +1,13 @@
 import * as React from 'react';
+import { Can } from '../../componentes/auth/Can';
 import { useNavigate, useParams } from 'react-router-dom';
 import { warehouseService } from '../../servicios';
 import { useCatalogos } from '../../hooks/useCatalogos';
 import { useProfitCatalogos } from '../../hooks/useProfitCatalogos';
 import { analyzerProposals } from '../../mock/source-items';
-import { PageHeader, Button, Select, Textarea, Modal, ImageLightbox } from '../../componentes/ui';
-import { WorkflowTimeline, AnalyzerPanel, MasterCodePreview } from '../../componentes/workflow';
+import { Button, Select, Textarea, Modal, ImageLightbox, Alert, ConfirmDialog, Field, StatusBadge, Skeleton } from '../../componentes/ui';
+import { Page } from '../../componentes/ui';
+import { WorkflowStepper, WorkflowStatusInfo, AnalyzerPanel, MasterCodePreview } from '../../componentes/workflow';
 import type { Request } from '../../tipos';
 
 export const WarehouseClassify: React.FC = () => {
@@ -36,6 +38,7 @@ export const WarehouseClassify: React.FC = () => {
   const [application, setApplication] = React.useState('');
   const [returnModal, setReturnModal] = React.useState(false);
   const [returnReason, setReturnReason] = React.useState('');
+  const [confirmApprove, setConfirmApprove] = React.useState(false);
   const [saved, setSaved] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -146,16 +149,16 @@ export const WarehouseClassify: React.FC = () => {
     }
   };
 
-  if (!request || loadingProfit) return <div className="empty">Cargando...</div>;
+  if (!request || loadingProfit) return <Page title="Clasificación"><Skeleton height={20} width="40%" /><Skeleton height={36} /><Skeleton height={120} /></Page>;
 
   return (
-    <div className="stack">
-      <PageHeader
-        title={`Clasificación — ${request.requestNumber}`}
-        action={<Button variant="secondary" onClick={() => navigate('/warehouse')}>Volver</Button>}
-      />
-
-      <WorkflowTimeline status={request.status} />
+    <Page
+      title={`Clasificación — ${request.requestNumber}`}
+      desc={request.requestedDescription}
+      actions={<><StatusBadge status={request.status} /><Button variant="secondary" onClick={() => navigate('/warehouse')}>Volver</Button></>}
+    >
+      <WorkflowStepper status={request.status} />
+      <WorkflowStatusInfo status={request.status} />
 
       {/* Rejection note from accounting — E-05 fix: último RETURN/REJECT */}
       {request.status === 'PENDIENTE_ALMACEN' && request.approvals && (
@@ -166,13 +169,15 @@ export const WarehouseClassify: React.FC = () => {
           const lastRejection = candidates[0];
           if (lastRejection) {
             return (
-              <div className="card p16" style={{ borderLeft: '4px solid #dc2626' }}>
-                <h3 className="h1" style={{ fontSize: 16, color: '#dc2626' }}>Observación de Contabilidad</h3>
-                <p style={{ marginTop: 8, fontWeight: 600 }}>{lastRejection.comment}</p>
-                <p className="muted small" style={{ marginTop: 4 }}>
-                  {lastRejection.actor?.displayName || '—'} · {new Date(lastRejection.createdAt).toLocaleString('es-VE')}
-                </p>
-              </div>
+              <Alert tone="danger">
+                <div className="callout" style={{ paddingLeft: 8 }}>
+                  <strong>Observación de Contabilidad</strong>
+                  <p style={{ marginTop: 8, fontWeight: 600 }}>{lastRejection.comment}</p>
+                  <p className="muted small" style={{ marginTop: 4 }}>
+                    {lastRejection.actor?.displayName || '—'} · {new Date(lastRejection.createdAt).toLocaleString('es-VE')}
+                  </p>
+                </div>
+              </Alert>
             );
           }
           return null;
@@ -182,7 +187,8 @@ export const WarehouseClassify: React.FC = () => {
       <div className="grid2">
         <div className="stack">
           <div className="card p16">
-            <h3 className="h1" style={{ fontSize: 16 }}>Solicitud</h3>
+            <h3 className="h1" style={{ fontSize: 16 }}>Información recibida</h3>
+            <p className="muted small read-only-note">Datos de la solicitud. Solo lectura: Almacén no modifica la descripción original.</p>
             <div style={{ marginTop: 8 }}>
               <span className="muted small">Descripción original</span>
               <p style={{ marginTop: 4, fontWeight: 600 }}>{request.requestedDescription}</p>
@@ -221,31 +227,29 @@ export const WarehouseClassify: React.FC = () => {
             </p>
 
             {profitError && (
-              <div className="alert" style={{ marginBottom: 12, background: '#fee2e2', borderColor: '#fca5a5', color: '#991b1b' }}>
+              <Alert tone="danger">
                 No se pudieron cargar los catálogos de Profit: {profitError}
-              </div>
+              </Alert>
             )}
 
-            <div className="alert" style={{ marginBottom: 12 }}>
+            <Alert tone="info">
               El cambio de clasificación modifica el código propuesto.
-            </div>
+            </Alert>
 
             <div className="form-grid">
-              <label>
-                <span className="muted small">Grupo (Profit)</span>
+              <Field label="Grupo (Profit)" required>
                 <Select value={groupCode} onChange={e => { setGroupCode(e.target.value.trim()); setSubgroupCode(''); }}>
                   <option value="">Seleccionar grupo</option>
                   {pGrupos.map(g => <option key={g.co_lin.trim()} value={g.co_lin.trim()}>{g.co_lin.trim()} — {g.lin_des.trim()}</option>)}
                 </Select>
-              </label>
+              </Field>
 
-              <label>
-                <span className="muted small">Subgrupo (del grupo seleccionado)</span>
+              <Field label="Subgrupo (del grupo seleccionado)" required>
                 <Select value={subgroupCode} onChange={e => setSubgroupCode(e.target.value.trim())} disabled={!groupCode}>
                   <option value="">Seleccionar subgrupo</option>
                   {filteredSubgroups.map(s => <option key={`${s.co_lin.trim()}/${s.co_subl.trim()}`} value={s.co_subl.trim()}>{s.co_subl.trim()} — {s.subl_des.trim()}</option>)}
                 </Select>
-              </label>
+              </Field>
 
               <label>
                 <span className="muted small">Categoría (Profit, independiente)</span>
@@ -314,16 +318,26 @@ export const WarehouseClassify: React.FC = () => {
             </label>
           </div>
 
-          <div className="form-actions">
-            <Button variant="ghost" onClick={() => setReturnModal(true)} disabled={saving}>Devolver</Button>
-            <Button variant="secondary" onClick={handleSave} disabled={saving || saved}>{saving ? 'Guardando...' : saved ? 'Guardado' : 'Guardar Borrador'}</Button>
-            <Button onClick={handleApprove} disabled={saving || !groupCode || !subgroupCode}>{saving ? 'Procesando...' : 'Aprobar Clasificación'}</Button>
+          <div className="action-bar">
+            <Can permission="WAREHOUSE.CLASSIFY">
+              <Button variant="ghost" onClick={() => setReturnModal(true)} disabled={saving}>Devolver</Button>
+              <Button variant="secondary" onClick={handleSave} disabled={saving || saved}>{saving ? 'Guardando...' : saved ? 'Guardado' : 'Guardar Borrador'}</Button>
+              <Button onClick={() => setConfirmApprove(true)} disabled={saving || !groupCode || !subgroupCode}>{saving ? 'Procesando...' : 'Aprobar Clasificación'}</Button>
+            </Can>
           </div>
 
+          <ConfirmDialog
+            open={confirmApprove}
+            title="Aprobar clasificación"
+            desc="¿Aprobar esta clasificación? La solicitud pasará a Contabilidad para su revisión."
+            confirmLabel="Aprobar y enviar"
+            busy={saving}
+            onCancel={() => setConfirmApprove(false)}
+            onConfirm={() => { setConfirmApprove(false); void handleApprove(); }}
+          />
+
           {error && (
-            <div className="alert" style={{ marginTop: 8, background: '#fee2e2', borderColor: '#fca5a5', color: '#991b1b' }}>
-              {error}
-            </div>
+            <Alert tone="danger">{error}</Alert>
           )}
         </div>
 
@@ -358,7 +372,7 @@ export const WarehouseClassify: React.FC = () => {
       </Modal>
 
       {saved && (
-        <div className="alert" style={{ position: 'fixed', bottom: 20, right: 20, zIndex: 100 }}>
+        <div className="toast toast-success" role="status">
           ✓ Borrador guardado
         </div>
       )}
@@ -372,6 +386,6 @@ export const WarehouseClassify: React.FC = () => {
           downloadFilename={request.referencePhotoUri.split('/').pop()}
         />
       )}
-    </div>
+    </Page>
   );
 };
