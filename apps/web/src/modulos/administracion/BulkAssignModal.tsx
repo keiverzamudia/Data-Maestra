@@ -3,6 +3,7 @@ import { Modal, Button, Select, Alert, ConfirmDialog, Skeleton, Field } from '..
 import { apiUsuariosService, type AdminUser, type BulkAssignResult } from '../../servicios/api/api-usuarios-service';
 import { apiRolesService } from '../../servicios/api/api-roles-service';
 import type { Company, Department } from '../../tipos';
+import { getRoleLabel, getRoleDescription } from '../../utilidades/presentacion';
 
 interface Props {
   users: AdminUser[];
@@ -75,11 +76,11 @@ export const BulkAssignModal: React.FC<Props> = ({ users, empresas, departamento
             <Field label="Rol" required>
               <Select value={roleCode} onChange={e => { setRoleCode(e.target.value); setConfirming(false); }} aria-label="Rol">
                 <option value="">Seleccionar rol...</option>
-                {roles.map(r => <option key={r.code} value={r.code}>{r.code} — {r.name}</option>)}
+                {roles.map(r => <option key={r.code} value={r.code}>{getRoleLabel(r.code, r.name)}</option>)}
               </Select>
             </Field>
             {selectedRole && (
-              <p className="muted small">Rol: <strong>{selectedRole.code}</strong> ({selectedRole.name}) → {users.length} usuario{users.length === 1 ? '' : 's'}: {users.slice(0, 5).map(u => u.displayName).join(', ')}{users.length > 5 ? '…' : ''}</p>
+              <p className="muted small">Rol: <strong>{getRoleLabel(selectedRole.code, selectedRole.name)}</strong> → {users.length} usuario{users.length === 1 ? '' : 's'}: {users.slice(0, 5).map(u => u.displayName).join(', ')}{users.length > 5 ? '…' : ''}<br />{getRoleDescription(selectedRole.code)}</p>
             )}
             <Field label="Empresa" required>
               <Select value={companyId} onChange={e => { setCompanyId(e.target.value); setDepartmentId(''); setConfirming(false); }} aria-label="Empresa">
@@ -103,7 +104,7 @@ export const BulkAssignModal: React.FC<Props> = ({ users, empresas, departamento
             <ConfirmDialog
               open={confirming}
               title="Asignar rol"
-              desc={`¿Asignar el rol ${roleCode} a ${users.length} usuario${users.length === 1 ? '' : 's'}?`}
+              desc={`¿Asignar el rol ${selectedRole ? getRoleLabel(selectedRole.code, selectedRole.name) : roleCode} a ${users.length} usuario${users.length === 1 ? '' : 's'}?`}
               confirmLabel="Confirmar"
               busy={saving}
               onCancel={() => setConfirming(false)}

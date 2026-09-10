@@ -1,5 +1,5 @@
 // ── Organization ──
-export interface Company { id: string; name: string; code: string; active: boolean; }
+export interface Company { id: string; name: string; code: string; active: boolean; userCount?: number; departmentCount?: number; }
 export interface Department { id: string; companyId: string; name: string; code: string; managerId?: string; active: boolean; }
 export interface User { id: string; username: string; displayName: string; email: string; avatar?: string; active: boolean; roleCodes: string[]; companyIds: string[]; }
 export interface Role { id: string; code: string; name: string; description: string; }
@@ -26,11 +26,15 @@ export interface Request {
   groupId?: string; subgroupId?: string; categoryId?: string; unitId?: string; brandId?: string;
   manufacturer?: string; model?: string; partNumber?: string; application?: string;
   masterCode?: string;
+  /** Clasificación Profit del artículo (14C-FORM). */
+  articleType?: string; articleTypeManual?: boolean; taxType?: string; unitCode?: string;
   notes?: string; attributes?: Record<string,string>;
   accountingCodes?: { code: string; description: string; position?: string }[];
   createdAt: string; updatedAt: string;
   department?: DepartmentRef;
   approvals?: ApprovalRef[];
+  /** 13A — participación propia calculada server-side (solo lista/historial). */
+  miParticipacion?: { accion: string; fecha: string } | null;
 }
 export interface WorkflowStepDef { code: RequestStatus; name: string; order: number; slaHours?: number; }
 export interface WorkflowHistoryEntry { id: string; requestId: string; from: RequestStatus; to: RequestStatus; action: 'APPROVE'|'REJECT'|'RETURN'|'SUBMIT'; actorId: string; comment?: string; createdAt: string; }
@@ -75,4 +79,4 @@ export interface ImportRun { id: string; sourceId?: string; sourceName?: string;
 export interface AuditEvent { id: string; correlationId: string; requestId?: string; actorId: string; actorCompanyId?: string; entityType: string; entityId: string; action: string; beforeData?: unknown; afterData?: unknown; createdAt: string; }
 
 // ── Notifications ──
-export interface Notification { id: string; title: string; body: string; type: 'info'|'warning'|'success'|'error'; read: boolean; createdAt: string; link?: string; }
+export interface Notification { id: string; title: string; body: string; type: string; readAt: string | null; createdAt: string; link?: string; requestId?: string | null; }

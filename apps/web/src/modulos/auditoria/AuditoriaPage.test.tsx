@@ -60,7 +60,7 @@ describe('AuditoriaPage 10K', () => {
     getByIdMock.mockResolvedValue(structuredClone(PAGE1.data[0]));
     render(<AuditPage />);
     fireEvent.click(await screen.findByText('Ver'));
-    expect(await screen.findByText('Detalle de Evento')).toBeTruthy();
+    expect(await screen.findByRole('dialog')).toBeTruthy();
     expect(getByIdMock).toHaveBeenCalledWith('e1');
   });
 
@@ -90,7 +90,7 @@ describe('AuditoriaPage 10K', () => {
     });
     render(<AuditPage />);
     fireEvent.click(await screen.findByText('Ver'));
-    expect(await screen.findByText('Detalle de Evento')).toBeTruthy();
+    expect(await screen.findByRole('dialog')).toBeTruthy();
     expect(screen.getAllByText(/\[OCULTO\]/)).toHaveLength(2);
     expect(screen.queryByText(/abc123/)).toBeNull();
   });

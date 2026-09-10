@@ -1,7 +1,9 @@
 import * as React from 'react';
 import { apiAuditService, type AuditEntry, type AuditQuery } from '../../servicios/api/api-audit-service';
 import { useSession } from '../../contextos/SessionContext';
-import { Page, Input, Button, Badge, EmptyState, Modal, Skeleton, ErrorState, Field } from '../../componentes/ui';
+import { Page, Input, Button, Badge, EmptyState, Skeleton,
+ErrorState, Field, Drawer } from '../../componentes/ui';
+import { getAuditActionLabel } from '../../utilidades/presentacion';
 
 const SENSITIVE_KEYS = /password|passwd|pwd|secret|token|cookie|session|hash|credential|private|initial/i;
 
@@ -31,6 +33,14 @@ function safeParse(raw: string): unknown {
   } catch {
     return raw;
   }
+}
+
+function actionTone(action: string): 'green' | 'yellow' | 'red' | 'blue' | 'gray' {
+  if (/FAILED|ERROR|DENEGAD|RECHAZADO/.test(action)) return 'red';
+  if (/EXITOSO|GRANTED|CREAD[OA]|ACTIVAT|COMPLET/.test(action)) return 'green';
+  if (/RESET|REMOVED|REVOCAD|REMOVE|DEVUELTO/.test(action)) return 'yellow';
+  if (/SYNC|LOGIN|SESSION|LOGOUT/.test(action)) return 'blue';
+  return 'gray';
 }
 
 /** 10K — Auditoría real: API server-side con filtros, paginación y detalle. Solo AUDIT.VIEW. */
@@ -167,6 +177,10 @@ export const AuditPage: React.FC = () => {
       )}
       {!loading && !error && events.length > 0 && (
         <div className="stack-sm">
+          <div className="summary-strip" aria-label="Resumen de auditoría">
+            <div className="summary-item"><div className="summary-num">{total}</div><div className="summary-label">Eventos</div></div>
+            <div className="summary-item"><div className="summary-num">{events.length}</div><div className="summary-label">En esta página</div></div>
+          </div>
           <div className="card table-responsive">
             <table className="table">
               <thead>
@@ -184,10 +198,10 @@ export const AuditPage: React.FC = () => {
                 {events.map(ev => (
                   <tr key={ev.id}>
                     <td data-label="Fecha" className="muted small">{new Date(ev.createdAt).toLocaleString('es-VE')}</td>
-                    <td data-label="Actor">{actorName(ev)}</td>
-                    <td data-label="Acción"><Badge tone="gray">{ev.action}</Badge></td>
+                    <td data-label="Actor"><strong>{actorName(ev)}</strong></td>
+                    <td data-label="Acción"><Badge tone={actionTone(ev.action)}>{getAuditActionLabel(ev.action)}</Badge></td>
                     <td data-label="Afectado">{affectedName(ev)}</td>
-                    <td data-label="Módulo">{ev.entityType}</td>
+                    <td data-label="Módulo" className="cell-secondary">{ev.entityType}</td>
                     <td data-label="Correlation ID"><code className="code" style={{ fontSize: 11, padding: '2px 6px' }}>{ev.correlationId?.slice(0, 8) ?? '—'}</code></td>
                     <td data-label="Detalle"><Button size="sm" variant="secondary" onClick={() => void openDetail(ev.id)}>Ver</Button></td>
                   </tr>
@@ -203,26 +217,29 @@ export const AuditPage: React.FC = () => {
         </div>
       )}
 
-      <Modal open={!!selected || detailLoading} onClose={() => setSelected(null)} title="Detalle de Evento">
+      <Drawer open={!!selected || detailLoading} onClose={() => setSelected(null)} title={selected ? getAuditActionLabel(selected.action) : 'Detalle de evento'}>
         {detailLoading && !selected && <span className="muted small">Cargando detalle...</span>}
         {selected && (
           <div className="stack-sm">
-            <div className="review-grid">
-              <div><span className="muted small">Fecha</span><br />{new Date(selected.createdAt).toLocaleString('es-VE')}</div>
-              <div><span className="muted small">Actor</span><br />{actorName(selected)}</div>
-              <div><span className="muted small">Acción</span><br /><Badge tone="gray">{selected.action}</Badge></div>
-              <div><span className="muted small">Afectado</span><br />{affectedName(selected)}</div>
-              <div><span className="muted small">Módulo/Recurso</span><br />{selected.entityType}</div>
-              <div><span className="muted small">Correlation ID</span><br /><code>{selected.correlationId}</code></div>
+            <div className="card p16">
+              <Badge tone={actionTone(selected.action)}>{getAuditActionLabel(selected.action)}</Badge>
+              <div className="review-grid" style={{ marginTop: 8 }}>
+                <div><span className="muted small">Fecha</span><br />{new Date(selected.createdAt).toLocaleString('es-VE')}</div>
+                <div><span className="muted small">Actor</span><br /><strong>{actorName(selected)}</strong></div>
+                <div><span className="muted small">Afectado</span><br /><strong>{affectedName(selected)}</strong></div>
+                <div><span className="muted small">Módulo/Recurso</span><br />{selected.entityType}</div>
+                <div><span className="muted small">Correlation ID</span><br /><code>{selected.correlationId}</code></div>
+              </div>
             </div>
             <div>
               <span className="muted small">Contexto</span>
               <pre className="code" style={{ marginTop: 4 }}>{pretty(selected.afterData ?? selected.beforeData)}</pre>
               <p className="muted small" style={{ marginTop: 4 }}>Los valores sensibles se muestran como [OCULTO].</p>
             </div>
+            <Button variant="secondary" onClick={() => setSelected(null)}>Cerrar</Button>
           </div>
         )}
-      </Modal>
+      </Drawer>
     </Page>
   );
 };

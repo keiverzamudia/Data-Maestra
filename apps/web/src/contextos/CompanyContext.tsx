@@ -27,9 +27,11 @@ export const CompanyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     let cancelled = false;
     apiOrganizacionService.getEmpresas().then(data => {
       if (!cancelled) {
-        setEmpresas(data);
-        if (data.length > 0 && !companyId) {
-          setCompanyId(data[0]!.id);
+        // 12I — el selector operativo solo ofrece empresas activas.
+        const active = data.filter(c => c.active);
+        setEmpresas(active);
+        if (active.length > 0 && !companyId) {
+          setCompanyId(active[0]!.id);
         }
         setLoading(false);
       }

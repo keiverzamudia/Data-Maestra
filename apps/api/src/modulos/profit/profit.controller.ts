@@ -33,6 +33,20 @@ export class ProfitController {
     return this.profitAdapter.getUnits();
   }
 
+  @Get('article-types')
+  @RequirePermission('DASHBOARD.VIEW')
+  @ApiOperation({ summary: 'List article types from Profit CK_art_TIPO + usage (READ-ONLY)' })
+  getArticleTypes() {
+    return this.profitAdapter.getArticleTypes();
+  }
+
+  @Get('tax-types')
+  @RequirePermission('DASHBOARD.VIEW')
+  @ApiOperation({ summary: 'List tax rates from Profit tabulado (READ-ONLY)' })
+  getTaxTypes() {
+    return this.profitAdapter.getTaxTypes();
+  }
+
   @Get('categories')
   @RequirePermission('DASHBOARD.VIEW')
   @ApiOperation({ summary: 'List categories from Profit cat_art (READ-ONLY)' })
@@ -94,5 +108,19 @@ export class ProfitController {
   @ApiOperation({ summary: 'Get article with group/subgroup/unit from Profit (READ-ONLY)' })
   getArticleDetails(@Param('code') code: string) {
     return this.profitAdapter.getArticleWithDetails(code);
+  }
+
+  @Get('groups/:code/standard')
+  @RequirePermission('ACCOUNTING.VIEW')
+  @ApiOperation({ summary: 'Get group accounting standard from lin_art.dis_cen (READ-ONLY)' })
+  getGroupStandard(@Param('code') code: string) {
+    return this.profitAdapter.getGroupAccountingStandard(code);
+  }
+
+  @Get('groups/:code/default-type')
+  @RequirePermission('DASHBOARD.VIEW')
+  @ApiOperation({ summary: 'Get dominant article type of a Profit line as default suggestion (READ-ONLY)' })
+  getLineDefaultType(@Param('code') code: string) {
+    return this.profitAdapter.getLineDefaultType(code);
   }
 }

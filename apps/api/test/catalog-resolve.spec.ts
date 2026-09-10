@@ -131,7 +131,7 @@ describe('SolicitudesService.classify con códigos Profit (FASE 8F)', () => {
       $transaction: (fn: any) => fn(tx),
     };
     const catalogos = new CatalogosService({} as any);
-    const service = new SolicitudesService(prisma, catalogos as any);
+    const service = new SolicitudesService(prisma, catalogos as any, { notifyRequestStep: async () => [] } as any, { emitMany: () => {} } as any);
 
     const result = await service.classify(
       'req-1',

@@ -14,5 +14,9 @@ export function flattenRequestData(raw: any) {
     partNumber: requestData.partNumber,
     application: requestData.application,
     masterCode: requestData.masterCode,
+    articleType: requestData.articleType,
+    articleTypeManual: requestData.articleTypeManual,
+    taxType: requestData.taxType,
+    unitCode: requestData.unitCode,
   };
 }

@@ -62,7 +62,7 @@ describe('Flujo Completo de Datos — Solicitante, Área, Autorizador', () => {
 
   beforeEach(() => {
     prisma = createPrismaMock();
-    service = new SolicitudesService(prisma as any);
+    service = new SolicitudesService(prisma as any, undefined as any, { notifyRequestStep: async () => [] } as any, { emitMany: () => {} } as any);
   });
 
   it('TEST A: Solicitud tiene solicitante y departamento', async () => {

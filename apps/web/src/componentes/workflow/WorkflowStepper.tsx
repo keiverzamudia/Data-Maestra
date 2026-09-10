@@ -53,12 +53,12 @@ export function workflowInfo(status: RequestStatus): { title: string; desc: stri
   return STATUS_INFO[status] ?? { title: status, desc: '' };
 }
 
-export const WorkflowStepper: React.FC<{ status: RequestStatus }> = ({ status }) => {
+export const WorkflowStepper: React.FC<{ status: RequestStatus; compact?: boolean }> = ({ status, compact }) => {
   const current = stepIndex(status);
   const terminal = status === 'DEVUELTO' || status === 'RECHAZADO';
   const profitError = status === 'ERROR_PROFIT';
   return (
-    <ol className="wf-stepper" aria-label={`Etapa actual: ${workflowInfo(status).title}`}>
+    <ol className={`wf-stepper${compact ? ' wf-compact' : ''}`} aria-label={`Etapa actual: ${workflowInfo(status).title}`}>
       {MAIN_FLOW.map((step, i) => {
         const done = current >= 0 && i < current;
         const isCurrent = i === current && !terminal && !profitError;

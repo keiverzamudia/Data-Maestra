@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useSession } from '../../contextos/SessionContext';
 import { apiAuthService, type LoginCandidate } from '../../servicios/api/api-auth-service';
-import { PageHeader, Button, Input } from '../../componentes/ui';
+import { Button, Input, Alert } from '../../componentes/ui';
 
 interface Props {
   /** Gate lo usa cuando la sesión vigente exige cambio obligatorio. */
@@ -128,105 +128,134 @@ export const LoginPage: React.FC<Props> = ({ forcedChange }) => {
   const changeTitle = user ? `Cambio obligatorio — ${user.displayName}` : 'Debes cambiar tu contraseña';
 
   return (
-    <div className="login-wrap">
-      <div className="card p16 login-card">
-        <PageHeader title="Data-Maestra" subtitle="Gestión inteligente de datos maestros" />
-        {!mustChange ? (
-          <div className="stack-sm">
-            <h3 className="h1" style={{ fontSize: 16 }}>Bienvenido</h3>
-            <p className="muted small">Ingresa con tu usuario corporativo</p>
-            <label>
-              <span className="muted small">Usuario</span>
-              <Input
-                value={selected ? selected.displayName : text}
-                onChange={e => { setText(e.target.value); setSelected(null); }}
-                onFocus={() => candidates.length && setOpen(true)}
-                placeholder="Escribe tu nombre…"
-                autoComplete="off"
-                disabled={loading}
-              />
-            </label>
-            {searching && <span className="muted small">Buscando…</span>}
-            {open && candidates.length > 0 && (
-              <div className="card p16" style={{ marginTop: -4 }}>
-                {candidates.map(c => (
-                  <button
-                    key={c.id}
-                    className="btn btn-ghost"
-                    style={{ display: 'block', width: '100%', textAlign: 'left' }}
-                    onClick={() => { setSelected(c); setOpen(false); setSearchError(null); setError(null); }}
-                  >
-                    {c.displayName}
-                  </button>
-                ))}
-              </div>
-            )}
-            {!selected && !searching && !searchError && open && candidates.length === 0 && text.trim().length >= 2 && (
-              <div className="card p16" style={{ marginTop: -4 }}>
-                <span className="muted small">Sin resultados</span>
-              </div>
-            )}
-            {!searching && searchError && (
-              <div className="alert" style={{ background: '#fee2e2', borderColor: '#fca5a5', color: '#991b1b' }}>{searchError}</div>
-            )}
-            <label>
-              <span className="muted small">Contraseña</span>
-              <div style={{ display: 'flex', gap: 8 }}>
+    <div className="login-page">
+      <aside className="login-brand" aria-label="Data-Maestra">
+        <div className="login-brand-top">
+          <span className="login-brand-mark" aria-hidden="true">DM</span>
+          <span className="login-brand-name">Data-Maestra</span>
+        </div>
+        <h1 className="login-tagline">Gestión inteligente de datos maestros</h1>
+        <p className="login-brand-desc">
+          Plataforma corporativa para normalizar, homologar y aprobar artículos
+          de todas las empresas antes de registrarlos en Profit.
+        </p>
+        <svg className="login-motif" viewBox="0 0 320 84" aria-hidden="true">
+          <line x1="28" y1="30" x2="128" y2="30" className="motif-line" />
+          <line x1="192" y1="30" x2="292" y2="30" className="motif-line" />
+          <rect x="12" y="14" width="32" height="32" rx="6" className="motif-node" />
+          <rect x="128" y="14" width="32" height="32" rx="6" className="motif-node motif-node-main" />
+          <rect x="276" y="14" width="32" height="32" rx="6" className="motif-node" />
+          <text x="28" y="62" textAnchor="middle" className="motif-cap">Origen</text>
+          <text x="144" y="62" textAnchor="middle" className="motif-cap">Norma</text>
+          <text x="292" y="62" textAnchor="middle" className="motif-cap">Maestro</text>
+        </svg>
+        <ul className="login-points">
+          <li><strong>Normalización</strong><span>Estandariza descripciones y atributos.</span></li>
+          <li><strong>Gobernanza</strong><span>Cada artículo pasa por aprobación responsable.</span></li>
+          <li><strong>Validación</strong><span>Almacén, contabilidad y revisión final verifican.</span></li>
+          <li><strong>Trazabilidad</strong><span>Cada acción queda en auditoría.</span></li>
+        </ul>
+        <p className="login-brand-foot">Acceso corporativo</p>
+      </aside>
+      <main className="login-auth">
+        <div className="login-form">
+          {!mustChange ? (
+            <div className="stack-sm">
+              <h2 className="login-title">Iniciar sesión</h2>
+              <p className="muted small">Ingresa con tu usuario corporativo</p>
+              <label>
+                <span className="muted small">Usuario</span>
                 <Input
-                  type={showPass ? 'text' : 'password'}
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') handleLogin(); }}
-                  placeholder="Contraseña"
-                  disabled={loading || !selected}
+                  value={selected ? selected.displayName : text}
+                  onChange={e => { setText(e.target.value); setSelected(null); }}
+                  onFocus={() => candidates.length && setOpen(true)}
+                  placeholder="Escribe tu nombre…"
+                  autoComplete="off"
+                  disabled={loading}
                 />
-                <Button variant="secondary" onClick={() => setShowPass(v => !v)} disabled={loading}>
-                  {showPass ? 'Ocultar' : 'Ver'}
-                </Button>
-              </div>
-            </label>
-            <Button onClick={handleLogin} disabled={loading || !selected || !password}>
-              {loading ? 'Verificando…' : 'Iniciar sesión'}
-            </Button>
-            {error && <div className="alert" style={{ background: '#fee2e2', borderColor: '#fca5a5', color: '#991b1b' }}>{error}</div>}
-            <p className="muted small">Acceso corporativo. Si es tu primer ingreso deberás cambiar tu contraseña.</p>
-          </div>
-        ) : !changed ? (
-          <div className="stack-sm">
-            <h3 className="h1" style={{ fontSize: 16 }}>{forcedChange ? changeTitle : 'Debes cambiar tu contraseña'}</h3>
-            <p className="muted small">Debes cambiar tu contraseña antes de continuar.</p>
-            <label>
-              <span className="muted small">Contraseña actual</span>
-              <Input type="password" value={current} onChange={e => setCurrent(e.target.value)} disabled={loading} />
-            </label>
-            <label>
-              <span className="muted small">Nueva contraseña (mínimo 8 caracteres)</span>
-              <Input type="password" value={next} onChange={e => setNext(e.target.value)} disabled={loading} />
-            </label>
-            <label>
-              <span className="muted small">Confirmar nueva contraseña</span>
-              <Input
-                type="password"
-                value={confirm}
-                onChange={e => setConfirm(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') handleChange(); }}
-                disabled={loading}
-              />
-            </label>
-            <Button onClick={handleChange} disabled={loading || !current || !next || !confirm}>
-              {loading ? 'Actualizando…' : 'Cambiar contraseña'}
-            </Button>
-            {error && <div className="alert" style={{ background: '#fee2e2', borderColor: '#fca5a5', color: '#991b1b' }}>{error}</div>}
-          </div>
-        ) : (
-          <div className="stack-sm">
-            <div className="alert" style={{ background: '#dcfce7', borderColor: '#86efac', color: '#166534' }}>
-              Contraseña actualizada correctamente. Tus sesiones fueron cerradas: ingresa de nuevo.
+              </label>
+              {searching && <span className="muted small">Buscando…</span>}
+              {open && candidates.length > 0 && (
+                <div className="card p16" style={{ marginTop: -4 }}>
+                  {candidates.map(c => (
+                    <button
+                      key={c.id}
+                      className="btn btn-ghost"
+                      style={{ display: 'block', width: '100%', textAlign: 'left' }}
+                      onClick={() => { setSelected(c); setOpen(false); setSearchError(null); setError(null); }}
+                    >
+                      {c.displayName}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {!selected && !searching && !searchError && open && candidates.length === 0 && text.trim().length >= 2 && (
+                <div className="card p16" style={{ marginTop: -4 }}>
+                  <span className="muted small">Sin resultados</span>
+                </div>
+              )}
+              {!searching && searchError && (
+                <Alert tone="danger">{searchError}</Alert>
+              )}
+              <label>
+                <span className="muted small">Contraseña</span>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Input
+                    type={showPass ? 'text' : 'password'}
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleLogin(); }}
+                    placeholder="Contraseña"
+                    disabled={loading || !selected}
+                  />
+                  <Button variant="secondary" onClick={() => setShowPass(v => !v)} disabled={loading}>
+                    {showPass ? 'Ocultar' : 'Ver'}
+                  </Button>
+                </div>
+              </label>
+              <Button onClick={handleLogin} disabled={loading || !selected || !password}>
+                {loading ? 'Verificando…' : 'Iniciar sesión'}
+              </Button>
+              {error && <Alert tone="danger">{error}</Alert>}
+              <p className="muted small">Acceso corporativo. Si es tu primer ingreso deberás cambiar tu contraseña.</p>
             </div>
-            <Button onClick={resetToLogin}>Volver al login</Button>
-          </div>
-        )}
-      </div>
+          ) : !changed ? (
+            <div className="stack-sm">
+              <h2 className="login-title">{forcedChange ? changeTitle : 'Debes cambiar tu contraseña'}</h2>
+              <p className="muted small">Debes cambiar tu contraseña antes de continuar.</p>
+              <label>
+                <span className="muted small">Contraseña actual</span>
+                <Input type="password" value={current} onChange={e => setCurrent(e.target.value)} disabled={loading} />
+              </label>
+              <label>
+                <span className="muted small">Nueva contraseña (mínimo 8 caracteres)</span>
+                <Input type="password" value={next} onChange={e => setNext(e.target.value)} disabled={loading} />
+              </label>
+              <label>
+                <span className="muted small">Confirmar nueva contraseña</span>
+                <Input
+                  type="password"
+                  value={confirm}
+                  onChange={e => setConfirm(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleChange(); }}
+                  disabled={loading}
+                />
+              </label>
+              <Button onClick={handleChange} disabled={loading || !current || !next || !confirm}>
+                {loading ? 'Actualizando…' : 'Cambiar contraseña'}
+              </Button>
+              {error && <Alert tone="danger">{error}</Alert>}
+            </div>
+          ) : (
+            <div className="stack-sm">
+              <Alert tone="success">
+                Contraseña actualizada correctamente. Tus sesiones fueron cerradas: ingresa de nuevo.
+              </Alert>
+              <Button onClick={resetToLogin}>Volver al login</Button>
+            </div>
+          )}
+        </div>
+      </main>
     </div>
   );
 };

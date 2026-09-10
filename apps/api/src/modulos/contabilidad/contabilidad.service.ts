@@ -1,6 +1,7 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ServiceUnavailableException } from '@nestjs/common';
 import { PrismaService } from '../../comun/prisma/prisma.service';
 import { SolicitudesService } from '../solicitudes/solicitud.service';
+import { ProfitAdapterService } from '../profit/profit-adapter.service';
 import { flattenRequestData } from '../../comun/utilidades/flatten-request-data';
 
 const REQUEST_INCLUDE = {
@@ -10,6 +11,11 @@ const REQUEST_INCLUDE = {
   requestData: true,
   accountingCodes: true,
   workflowInstance: true,
+  // 12E — trazabilidad: quién aprobó cada etapa (actor real, sin usuario conectado).
+  approvals: {
+    include: { actor: { select: { id: true, username: true, displayName: true } } },
+    orderBy: { createdAt: 'desc' },
+  },
 } as const;
 
 @Injectable()
@@ -17,6 +23,7 @@ export class ContabilidadService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly requestsService: SolicitudesService,
+    private readonly profit: ProfitAdapterService,
   ) {}
 
   async findPendingApproval() {
@@ -46,6 +53,8 @@ export class ContabilidadService {
     accountingCodes: Array<{ code: string; description: string; position?: string }>,
     userId: string,
     companyId: string,
+    // 12G — observaciones opcionales de la decisión; van como comentario del approval.
+    comment?: string,
   ) {
     const request = await this.findOneForReview(id);
 
@@ -54,6 +63,11 @@ export class ContabilidadService {
     }
 
     this.validateAccountingCodes(accountingCodes);
+
+    // 12C — el grupo debe tener estándar en Profit (lin_art.dis_cen); si no,
+    // la aprobación se bloquea hasta configurarlo en Profit. Sin conteo fijo:
+    // mínimo 1 posición, máximo c1..c10.
+    await this.requireGroupStandard(request.groupId);
 
     if (accountingCodes.length > 0) {
       await this.prisma.requestAccountingCode.createMany({
@@ -66,17 +80,19 @@ export class ContabilidadService {
       });
     }
 
-    return this.requestsService.approve(id, { action: 'APPROVE', comment: 'Accounting approved' }, userId, companyId);
+    return this.requestsService.approve(id, { action: 'APPROVE', comment: comment?.trim() || 'Accounting approved' }, userId, companyId);
   }
 
   /**
-   * Valida posiciones c1..c10 (Fase 8E):
-   * - máximo 10, una sola cuenta por posición, posición válida c1..c10,
-   * - código y descripción no vacíos y del mismo registro (esto último
-   *   lo garantiza la UI al seleccionar el objeto Cuenta completo).
+   * Valida posiciones c1..c10 (8E, regla 12C):
+   * - mínimo 1 posición, máximo 10, una sola cuenta por posición,
+   * - posición válida c1..c10, código y descripción no vacíos.
    * Sin `position` (llamadas anteriores a 8E) se acepta por compatibilidad.
    */
   private validateAccountingCodes(codes: Array<{ code: string; description: string; position?: string }>) {
+    if (codes.length < 1) {
+      throw new BadRequestException('Se requiere mínimo 1 posición contable (c1..c10).');
+    }
     if (codes.length > 10) {
       throw new BadRequestException('Máximo 10 posiciones contables (c1..c10).');
     }
@@ -97,8 +113,38 @@ export class ContabilidadService {
     }
   }
 
-  async reject(id: string, comment?: string, userId?: string, companyId?: string) {
-    const request = await this.findOneForReview(id);
+  /**
+   * 12C — Exige estándar contable del grupo en Profit antes de aprobar.
+   * Resuelve el código Profit del grupo local y consulta lin_art.dis_cen en vivo.
+   * Sin estándar → 400 con guía (configurar en Profit y reverificar).
+   * Profit inaccesible → 503 (fail-closed con mensaje explícito).
+   */
+  private async requireGroupStandard(groupId?: string | null) {
+    if (!groupId) {
+      throw new BadRequestException('La solicitud no tiene grupo clasificado.');
+    }
+    const group = await this.prisma.catalogGroup.findUnique({ where: { id: groupId } });
+    const groupCode = group?.sourceCode?.trim() || group?.code?.trim();
+    if (!groupCode) {
+      throw new BadRequestException('El grupo no tiene código Profit asociado.');
+    }
+    let standard;
+    try {
+      standard = await this.profit.getGroupAccountingStandard(groupCode);
+    } catch (err: any) {
+      throw new ServiceUnavailableException(
+        `No se pudo consultar Profit para el grupo ${groupCode}: ${err?.message ?? 'sin respuesta'}. Reintente.`,
+      );
+    }
+    if (!standard.configured) {
+      throw new BadRequestException(
+        `El grupo ${groupCode} no tiene información contable configurada en Profit. ` +
+        `Configúrela directamente en Profit y verifique nuevamente.`,
+      );
+    }
+  }
+
+  async reject(id: string, comment?: string, userId?: string, companyId?: string) {    const request = await this.findOneForReview(id);
 
     if (request.status !== 'PENDIENTE_CONTABILIDAD') {
       throw new NotFoundException(`Request ${id} is not pending accounting approval`);

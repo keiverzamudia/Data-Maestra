@@ -33,7 +33,9 @@ export const NAV: NavEntry[] = [
   {
     key: 'admin', label: 'Administración', icon: '⚙',
     children: [
-      { key: 'admin-users', to: '/admin', label: 'Usuarios', permission: 'ADMIN.MANAGE' },
+      { key: 'admin-personas', to: '/admin', label: 'Personas y acceso', permission: 'ADMIN.MANAGE' },
+      { key: 'admin-organizacion', to: '/admin/organizacion', label: 'Organización', permission: 'ADMIN.MANAGE' },
+      { key: 'admin-roles', to: '/admin/roles', label: 'Roles y permisos', permission: 'ADMIN.MANAGE' },
       { key: 'audit', to: '/audit', label: 'Auditoría', permission: 'AUDIT.VIEW' },
     ],
   },

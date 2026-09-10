@@ -17,9 +17,9 @@ export const auditEvents: AuditEvent[] = [
 ];
 
 export const notifications: Notification[] = [
-  { id: 'n1', title: 'Solicitud requiere aprobación', body: 'REQ-1001 pendiente de gerente (SLA 12h restantes)', type: 'warning', read: false, createdAt: '2026-03-21T08:00:00Z', link: '/requests/rq1' },
-  { id: 'n2', title: 'Solicitud devuelta', body: 'REQ-1005 devuelta por Almacén: falta marca', type: 'error', read: false, createdAt: '2026-03-20T10:00:00Z', link: '/requests/rq5' },
-  { id: 'n3', title: 'Match pendiente', body: '2 candidatos requieren revisión', type: 'info', read: false, createdAt: '2026-03-21T07:00:00Z', link: '/matching' },
-  { id: 'n4', title: 'Importación completada', body: 'Profit Empresa A: 12 nuevos, 3 errores', type: 'warning', read: true, createdAt: '2026-03-21T06:05:00Z', link: '/imports' },
-  { id: 'n5', title: 'Master activado', body: 'M-2026-000004 activado correctamente', type: 'success', read: true, createdAt: '2026-03-18T15:00:00Z', link: '/master-items/mi4' },
+  { id: 'n1', title: 'Solicitud requiere aprobación', body: 'REQ-1001 pendiente de gerente (SLA 12h restantes)', type: 'warning', readAt: null, createdAt: '2026-03-21T08:00:00Z', link: '/requests/rq1' },
+  { id: 'n2', title: 'Solicitud devuelta', body: 'REQ-1005 devuelta por Almacén: falta marca', type: 'error', readAt: null, createdAt: '2026-03-20T10:00:00Z', link: '/requests/rq5' },
+  { id: 'n3', title: 'Match pendiente', body: '2 candidatos requieren revisión', type: 'info', readAt: null, createdAt: '2026-03-21T07:00:00Z', link: '/matching' },
+  { id: 'n4', title: 'Importación completada', body: 'Profit Empresa A: 12 nuevos, 3 errores', type: 'warning', readAt: '2026-03-21T09:00:00Z', createdAt: '2026-03-21T06:05:00Z', link: '/imports' },
+  { id: 'n5', title: 'Master activado', body: 'M-2026-000004 activado correctamente', type: 'success', readAt: '2026-03-21T09:00:00Z', createdAt: '2026-03-18T15:00:00Z', link: '/master-items/mi4' },
 ];

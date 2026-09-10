@@ -70,6 +70,8 @@ function Gate() {
 
               {/* Administracion */}
               <Route path="/admin" element={<RequirePermission permission="ADMIN.MANAGE"><AdministracionPage /></RequirePermission>} />
+              <Route path="/admin/organizacion" element={<RequirePermission permission="ADMIN.MANAGE"><AdministracionPage section="organizacion" /></RequirePermission>} />
+              <Route path="/admin/roles" element={<RequirePermission permission="ADMIN.MANAGE"><AdministracionPage section="roles" /></RequirePermission>} />
 
               {/* Legacy routes */}
               <Route path="/requests" element={<RequirePermission permission="REQUEST.VIEW"><SolicitudesList /></RequirePermission>} />

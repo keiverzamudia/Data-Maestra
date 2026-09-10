@@ -39,10 +39,10 @@ export class ContabilidadController {
   async approve(
     @CurrentUser() user: RequestUser,
     @Param('id') id: string,
-    @Body() body: { accountingCodes?: Array<{ code: string; description: string; position?: string }> },
+    @Body() body: { accountingCodes?: Array<{ code: string; description: string; position?: string }>; comment?: string },
   ) {
     const companyId = await this.authService.resolveCompanyContext(user.id);
-    return this.accountingService.approve(id, body.accountingCodes ?? [], user.id, companyId);
+    return this.accountingService.approve(id, body.accountingCodes ?? [], user.id, companyId, body.comment);
   }
 
   @Post(':id/reject')

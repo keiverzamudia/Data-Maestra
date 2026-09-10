@@ -46,11 +46,23 @@ export class UsuariosController {
   // Protección temporal 10C (ver sincronizarProfit). 10D definirá el acceso
   // público necesario para la búsqueda del login.
   @RequirePermission('ADMIN.MANAGE')
-  @ApiOperation({ summary: 'Search local users (never exposes passwordHash)' })
+  @ApiOperation({ summary: 'Search local users paginated with global totals (never exposes passwordHash)' })
   @ApiQuery({ name: 'search', required: false, description: 'Filter by displayName, username or profitCode (contains)' })
   @ApiQuery({ name: 'profitCode', required: false, description: 'Filter by profitCode exact (admin)' })
-  async buscar(@Query('search') search?: string, @Query('profitCode') profitCode?: string) {
-    return this.usuariosService.searchLocal(search, profitCode);
+  @ApiQuery({ name: 'page', required: false, description: 'Page number (min 1)' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Page size (25, 50 or 100)' })
+  async buscar(
+    @Query('search') search?: string,
+    @Query('profitCode') profitCode?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.usuariosService.searchAdmin({
+      search,
+      profitCode,
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
   }
 
   // =====================================================================

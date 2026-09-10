@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { warehouseService } from '../../servicios';
 import { useCatalogos } from '../../hooks/useCatalogos';
 import { useProfitCatalogos } from '../../hooks/useProfitCatalogos';
+import type { DryRunResult } from '../../contratos';
 import { analyzerProposals } from '../../mock/source-items';
 import { Button, Select, Textarea, Modal, ImageLightbox, Alert, ConfirmDialog, Field, StatusBadge, Skeleton } from '../../componentes/ui';
 import { Page } from '../../componentes/ui';
@@ -13,8 +14,9 @@ import type { Request } from '../../tipos';
 export const WarehouseClassify: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  // Catálogo local (unidades + traducción ID→código para solicitudes existentes).
-  const { grupos: localGrupos, subgrupos: localSubgrupos, categorias: localCategorias, marcas: localMarcas, unidades } = useCatalogos();
+  // Catálogo local (traducción ID→código para solicitudes existentes; la unidad
+  // de venta ahora viene de Profit: pUnidades).
+  const { grupos: localGrupos, subgrupos: localSubgrupos, categorias: localCategorias, marcas: localMarcas } = useCatalogos();
   const [request, setRequest] = React.useState<Request | null>(null);
   // Códigos Profit directos (FASE 8F): el subgrupo se identifica por (grupo, subgrupo).
   const [groupCode, setGroupCode] = React.useState('');
@@ -28,12 +30,24 @@ export const WarehouseClassify: React.FC = () => {
   const [legacyCategoryId, setLegacyCategoryId] = React.useState('');
   const [legacyBrandId, setLegacyBrandId] = React.useState('');
   const [unitId, setUnitId] = React.useState('');
+  // FASE 14C-FORM: tipo (Profit, nunca manual), impuesto (tipo_imp, no co_imp),
+  // unidad Profit (valida trigger TrigI_art). articleTypeManual = override de
+  // Warehouse sobre el default sugerido de la línea (§18).
+  const [articleType, setArticleType] = React.useState('');
+  const [articleTypeManual, setArticleTypeManual] = React.useState(false);
+  const [groupDefaultType, setGroupDefaultType] = React.useState<string | null>(null);
+  const [taxType, setTaxType] = React.useState('');
+  const [taxTouched, setTaxTouched] = React.useState(false);
+  const [unitCode, setUnitCode] = React.useState('');
+  const [dryRun, setDryRun] = React.useState<DryRunResult | null>(null);
+  const [validating, setValidating] = React.useState(false);
+  // manualRef=true si Warehouse eligió el tipo a mano (§18: no sobrescribir).
+  const manualRef = React.useRef(false);
   const {
     grupos: pGrupos, subgrupos: pSubgrupos, categorias: pCategorias, marcas: pMarcas,
+    tipos: pTipos, tasas: pTasas, unidadesProfit: pUnidades, defaultType: lineDefaultType,
     loading: loadingProfit, error: profitError,
   } = useProfitCatalogos(groupCode || undefined);
-  const [manufacturer, setManufacturer] = React.useState('');
-  const [model, setModel] = React.useState('');
   const [partNumber, setPartNumber] = React.useState('');
   const [application, setApplication] = React.useState('');
   const [returnModal, setReturnModal] = React.useState(false);
@@ -86,8 +100,10 @@ export const WarehouseClassify: React.FC = () => {
           setBrandName(brand.name);
           if (r.brandId) setLegacyBrandId(r.brandId);
           if (r.unitId) setUnitId(r.unitId);
-          if (r.manufacturer) setManufacturer(r.manufacturer);
-          if (r.model) setModel(r.model);
+          // 14C-FORM: prefill de clasificación Profit guardada (nunca pisa al usuario).
+          if (r.articleType) { setArticleType(r.articleType); setArticleTypeManual(!!r.articleTypeManual); manualRef.current = !!r.articleTypeManual; }
+          if (r.taxType) { setTaxType(r.taxType); setTaxTouched(true); }
+          if (r.unitCode) setUnitCode(r.unitCode);
           if (r.partNumber) setPartNumber(r.partNumber);
           if (r.application) setApplication(r.application);
         }
@@ -95,9 +111,44 @@ export const WarehouseClassify: React.FC = () => {
     }
   }, [id, idToCode]);
 
+  // El dry-run caduca si cambia cualquier dato clasificado.
+  React.useEffect(() => { setDryRun(null); }, [groupCode, subgroupCode, articleType, unitCode, taxType]);
+
   const analyzerProposal = id ? analyzerProposals[id] : null;
   // El backend ya filtra subgrupos por grupo (co_lin); la lista es del grupo.
   const filteredSubgroups = pSubgrupos;
+
+  // Tasa derivada por regla confirmada 14B (C/V→1, S→6). Sugerencia con
+  // excepciones reales: desviarse muestra advertencia, no bloquea.
+  const derivedTax = articleType === 'S' ? '6' : articleType ? '1' : '';
+  const effectiveTax = taxType || derivedTax;
+  const taxWarning = effectiveTax && derivedTax && effectiveTax !== derivedTax
+    ? `El tipo ${articleType} suele usar tasa ${derivedTax}; se indicó ${effectiveTax} (excepción válida en Profit, verificar).`
+    : null;
+
+  // Default de tipo por línea (§6-§7: sugerido, nunca obligatorio).
+  // lineDefaultType llega con los catálogos ya filtrados por grupo.
+  React.useEffect(() => {
+    setGroupDefaultType(groupCode ? lineDefaultType : null);
+    if (groupCode && !manualRef.current) setArticleType(lineDefaultType ?? '');
+  }, [groupCode, lineDefaultType]);
+
+  const handleGroupChange = (code: string) => {
+    setGroupCode(code);
+    setSubgroupCode('');
+    // §18: con override manual se conserva el tipo; sin él se liberará al
+    // nuevo default cuando llegue la sugerencia de la línea.
+    if (!manualRef.current) setArticleType('');
+  };
+
+  const handleTypeChange = (code: string) => {
+    setArticleType(code);
+    const manual = !!code && code !== groupDefaultType;
+    manualRef.current = manual;
+    setArticleTypeManual(manual);
+    // §19: el impuesto sigue al tipo salvo edición manual previa.
+    if (!taxTouched) setTaxType('');
+  };
 
   const buildPayload = () => ({
     groupCode, subgroupCode,
@@ -109,9 +160,29 @@ export const WarehouseClassify: React.FC = () => {
     categoryId: !categoryCode && legacyCategoryId ? legacyCategoryId : undefined,
     brandId: !brandCode && legacyBrandId ? legacyBrandId : undefined,
     unitId: unitId || undefined,
-    manufacturer: manufacturer || undefined, model: model || undefined,
+    // 14C-FORM: clasificación Profit del artículo.
+    articleType: articleType || undefined,
+    articleTypeManual,
+    taxType: effectiveTax || undefined,
+    unitCode: unitCode || undefined,
     partNumber: partNumber || undefined, application: application || undefined,
   });
+
+  const canApprove = !!groupCode && !!subgroupCode && !!articleType && !!unitCode;
+
+  const handleValidate = async () => {
+    if (!id || validating) return;
+    setValidating(true);
+    setError(null);
+    try {
+      const result = await warehouseService.validateArticle(id, buildPayload());
+      setDryRun(result);
+    } catch (err: any) {
+      setError(err?.message || 'Error al validar el artículo.');
+    } finally {
+      setValidating(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!id || saving) return;
@@ -237,8 +308,30 @@ export const WarehouseClassify: React.FC = () => {
             </Alert>
 
             <div className="form-grid">
+              <Field label="Tipo de artículo (Profit)" required>
+                <Select value={articleType} onChange={e => handleTypeChange(e.target.value.trim())}>
+                  <option value="">Seleccionar tipo</option>
+                  <optgroup label="Funcionales">
+                    {pTipos.filter(t => t.functional).map(t => (
+                      <option key={t.code.trim()} value={t.code.trim()}>{t.code.trim()} — {t.label}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Reservados (válidos en Profit, sin uso confirmado)">
+                    {pTipos.filter(t => !t.functional).map(t => (
+                      <option key={t.code.trim()} value={t.code.trim()}>{t.code.trim()} — {t.label}</option>
+                    ))}
+                  </optgroup>
+                </Select>
+                {groupDefaultType && !articleTypeManual && articleType && (
+                  <span className="muted small" style={{ marginTop: 4 }}>Sugerido por la línea {groupCode}.</span>
+                )}
+                {articleTypeManual && (
+                  <span className="muted small" style={{ marginTop: 4 }}>El tipo fue seleccionado manualmente.</span>
+                )}
+              </Field>
+
               <Field label="Grupo (Profit)" required>
-                <Select value={groupCode} onChange={e => { setGroupCode(e.target.value.trim()); setSubgroupCode(''); }}>
+                <Select value={groupCode} onChange={e => handleGroupChange(e.target.value.trim())}>
                   <option value="">Seleccionar grupo</option>
                   {pGrupos.map(g => <option key={g.co_lin.trim()} value={g.co_lin.trim()}>{g.co_lin.trim()} — {g.lin_des.trim()}</option>)}
                 </Select>
@@ -252,7 +345,7 @@ export const WarehouseClassify: React.FC = () => {
               </Field>
 
               <label>
-                <span className="muted small">Categoría (Profit, independiente)</span>
+                <span className="muted small">Categoría (Profit, independiente — 01 = NO APLICA)</span>
                 <Select
                   value={categoryCode}
                   onChange={e => {
@@ -288,23 +381,28 @@ export const WarehouseClassify: React.FC = () => {
                 )}
               </label>
 
-              <label>
-                <span className="muted small">Unidad de Medida</span>
-                <Select value={unitId} onChange={e => setUnitId(e.target.value)}>
+              <Field label="Unidad de venta (Profit)" required>
+                <Select value={unitCode} onChange={e => setUnitCode(e.target.value.trim())}>
                   <option value="">Seleccionar unidad</option>
-                  {unidades.map(u => <option key={u.id} value={u.id}>{u.code} — {u.name}</option>)}
+                  {pUnidades.map(u => <option key={u.co_uni.trim()} value={u.co_uni.trim()}>{u.co_uni.trim()} — {u.des_uni.trim()}</option>)}
                 </Select>
-              </label>
+              </Field>
 
-              <label>
-                <span className="muted small">Fabricante</span>
-                <input className="input" value={manufacturer} onChange={e => setManufacturer(e.target.value)} placeholder="Fabricante" />
-              </label>
-
-              <label>
-                <span className="muted small">Modelo</span>
-                <input className="input" value={model} onChange={e => setModel(e.target.value)} placeholder="Modelo" />
-              </label>
+              <Field label="Impuesto (tipo_imp Profit)">
+                <Select
+                  value={effectiveTax}
+                  onChange={e => { setTaxType(e.target.value.trim()); setTaxTouched(true); }}
+                >
+                  <option value="">Derivar por regla</option>
+                  {pTasas.map(t => <option key={t.tipo.trim()} value={t.tipo.trim()}>{t.tipo.trim()} — {t.descripcio}</option>)}
+                </Select>
+                {taxWarning && (
+                  <span className="muted small" style={{ marginTop: 4 }}>{taxWarning}</span>
+                )}
+                {!taxWarning && derivedTax && (
+                  <span className="muted small" style={{ marginTop: 4 }}>Valor que utilizará Profit: tasa {effectiveTax}.</span>
+                )}
+              </Field>
 
               <label>
                 <span className="muted small">Part Number</span>
@@ -322,8 +420,46 @@ export const WarehouseClassify: React.FC = () => {
             <Can permission="WAREHOUSE.CLASSIFY">
               <Button variant="ghost" onClick={() => setReturnModal(true)} disabled={saving}>Devolver</Button>
               <Button variant="secondary" onClick={handleSave} disabled={saving || saved}>{saving ? 'Guardando...' : saved ? 'Guardado' : 'Guardar Borrador'}</Button>
-              <Button onClick={() => setConfirmApprove(true)} disabled={saving || !groupCode || !subgroupCode}>{saving ? 'Procesando...' : 'Aprobar Clasificación'}</Button>
+              <Button variant="secondary" onClick={handleValidate} disabled={validating || saving}>{validating ? 'Validando...' : 'Validar artículo'}</Button>
+              <Button onClick={() => setConfirmApprove(true)} disabled={saving || !canApprove}>{saving ? 'Procesando...' : 'Aprobar Clasificación'}</Button>
             </Can>
+          </div>
+          {!canApprove && (
+            <p className="muted small" style={{ marginTop: 8 }}>
+              Para aprobar se requieren grupo, subgrupo, tipo de artículo y unidad Profit.
+            </p>
+          )}
+
+          {/* Datos listos para Profit (§23): solo lectura, sin botón de escritura. */}
+          <div className="card p16" style={{ marginTop: 12 }}>
+            <h3 className="h1" style={{ fontSize: 16 }}>Datos listos para Profit</h3>
+            <p className="muted small" style={{ marginTop: 4, marginBottom: 12 }}>
+              Verificación previa a la futura escritura. No escribe en Profit.
+            </p>
+            {!dryRun ? (
+              <p className="muted small">Pulse «Validar artículo» para ejecutar la validación completa.</p>
+            ) : (
+              <div className="stack-sm">
+                <p style={{ fontWeight: 700, color: dryRun.ready ? 'var(--success, green)' : 'var(--danger, red)' }}>
+                  {dryRun.ready ? 'ARTÍCULO LISTO' : 'ARTÍCULO NO LISTO'}
+                </p>
+                {dryRun.checks.map(c => (
+                  <div key={c.key} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+                    <span aria-hidden>{c.status === 'COMPLETO' ? '✓' : c.status === 'NO_APLICA' ? '–' : '✗'}</span>
+                    <div>
+                      <strong>{c.label}:</strong> {c.status}
+                      {c.detail && <span className="muted small"> — {c.detail}</span>}
+                    </div>
+                  </div>
+                ))}
+                {dryRun.warnings.map((w, i) => (
+                  <Alert key={i} tone="info">{w}</Alert>
+                ))}
+                {dryRun.wouldProvision.length > 0 && (
+                  <p className="muted small">Al guardar se completarían en catálogo local: {dryRun.wouldProvision.join(', ')}.</p>
+                )}
+              </div>
+            )}
           </div>
 
           <ConfirmDialog

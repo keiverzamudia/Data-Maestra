@@ -55,7 +55,7 @@ describe('SolicitudesService', () => {
 
   beforeEach(() => {
     prisma = createPrismaMock();
-    service = new SolicitudesService(prisma as any);
+    service = new SolicitudesService(prisma as any, undefined as any, { notifyRequestStep: async () => [] } as any, { emitMany: () => {} } as any);
   });
 
   describe('create', () => {

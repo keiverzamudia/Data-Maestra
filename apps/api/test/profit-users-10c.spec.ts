@@ -56,11 +56,18 @@ describe('FASE 10C — GET /usuarios?search= (autocompletado login 10D)', () => 
     const rows = [
       { id: 'a', username: 'KZAMU', displayName: 'KEIBER ZAMUDIA', profitCode: 'KZAMU', active: true, mustChangePassword: true, lastLoginAt: null },
     ];
-    const prisma: any = { user: { findMany: vi.fn(async () => rows) }, profitUserSyncRun: {}, $transaction: vi.fn() };
+    const prisma: any = {
+      user: {
+        findMany: vi.fn(async () => rows),
+        count: vi.fn(async () => rows.length),
+      },
+      profitUserSyncRun: {},
+      $transaction: vi.fn(),
+    };
     const svc = new UsuariosService(prisma, {} as any, {} as any);
     const auth: any = { getSession: () => ({ id: 'u5', company: { id: 'c1' } }) };
     const ctrl = new UsuariosController(svc, auth);
-    const res = await ctrl.buscar('KEI', undefined);
+    const res = await ctrl.buscar('KEI', undefined, undefined, undefined);
     expect(prisma.user.findMany).toHaveBeenCalledTimes(1);
     const where = prisma.user.findMany.mock.calls[0][0].where;
     expect(where.OR).toEqual([
@@ -70,8 +77,10 @@ describe('FASE 10C — GET /usuarios?search= (autocompletado login 10D)', () => 
     ]);
     const sel = prisma.user.findMany.mock.calls[0][0].select;
     expect(sel).not.toHaveProperty('passwordHash');
-    expect(res[0].displayName).toBe('KEIBER ZAMUDIA');
-    expect(res[0].profitCode).toBe('KZAMU');
+    expect(res.items[0].displayName).toBe('KEIBER ZAMUDIA');
+    expect(res.items[0].profitCode).toBe('KZAMU');
+    expect(res.total).toBe(1);
+    expect(res.filteredTotal).toBe(1);
   });
 
   it('sincronizar pasa el actor real (@CurrentUser) a la auditoría', async () => {

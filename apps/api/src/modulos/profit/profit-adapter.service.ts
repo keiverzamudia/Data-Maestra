@@ -1,5 +1,9 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import {
+  ARTICLE_TYPE_LABELS,
+  FUNCTIONAL_ARTICLE_TYPES,
+} from './article-taxonomy';
 
 export interface ProfitArticle {
   co_art: string;
@@ -47,6 +51,37 @@ export interface ProfitBrand {
 export interface ProfitAccount {
   code: string;
   description: string;
+}
+
+/** Posición del estándar contable de un grupo Profit (origen: lin_art.dis_cen). */
+export interface ProfitGroupStandardPosition {
+  position: string;
+  code: string;
+  description: string;
+  inCatalog: boolean;
+}
+
+export interface ProfitGroupStandard {
+  groupCode: string;
+  configured: boolean;
+  positions: ProfitGroupStandardPosition[];
+}
+
+/**
+ * Tipo de artículo Profit (FASE 14C-FORM §5). Fuente maestra: CHECK
+ * `CK_art_TIPO` + uso real en `dbo.art`. Sin tabla catálogo ni lista manual.
+ */
+export interface ProfitArticleType {
+  code: string;
+  label: string;
+  functional: boolean;
+  usageCount: number;
+}
+
+/** Tasa de impuesto Profit (origen: dbo.tabulado, FK de art.tipo_imp). */
+export interface ProfitTaxType {
+  tipo: string;
+  descripcio: string;
 }
 
 /** Persona de Profit: código externo estable + nombre visible. Sin secretos. */
@@ -262,6 +297,52 @@ export class ProfitAdapterService {
     return rows[0] ?? null;
   }
 
+  /**
+   * Tipos de artículo Profit (FASE 14C-FORM §5, READ-ONLY). Fuente maestra:
+   * definición del CHECK `CK_art_TIPO` cruzada con el uso real en `dbo.art`.
+   * Sin lista manual: si Profit amplía el CHECK, aparece solo.
+   */
+  async getArticleTypes(): Promise<ProfitArticleType[]> {
+    const defRows = await this.query<{ definition: string }>(
+      `SELECT definition FROM sys.check_constraints WHERE name = 'CK_art_TIPO'`,
+    );
+    const definition = defRows[0]?.definition ?? '';
+    const codes: string[] = [...new Set(
+      [...definition.matchAll(/'([A-Z0-9])'/g)].map((m) => m[1]).filter((c): c is string => !!c),
+    )];
+    const usage = await this.query<{ tipo: string; n: number }>(
+      `SELECT CAST(tipo AS VARCHAR(5)) AS tipo, COUNT(*) AS n FROM dbo.art GROUP BY CAST(tipo AS VARCHAR(5))`,
+    );
+    const usageByCode = new Map(usage.map((u) => [(u.tipo ?? '').trim(), u.n]));
+    return codes.map((code) => ({
+      code,
+      label: (ARTICLE_TYPE_LABELS as Record<string, string>)[code] ?? `Tipo ${code}`,
+      functional: (FUNCTIONAL_ARTICLE_TYPES as readonly string[]).includes(code),
+      usageCount: usageByCode.get(code) ?? 0,
+    }));
+  }
+
+  /**
+   * Tipo dominante de una línea Profit (sugerencia de default, FASE 14C-FORM §6).
+   * No impone nada: el tipo pertenece a la solicitud.
+   */
+  async getLineDefaultType(co_lin: string): Promise<{ groupCode: string; defaultType: string | null }> {
+    // @ts-ignore
+    const mssql: any = await import('mssql');
+    const rows = await this.query<{ tipo: string; n: number }>(
+      `SELECT TOP 1 CAST(tipo AS VARCHAR(5)) AS tipo, COUNT(*) AS n FROM dbo.art WHERE LTRIM(RTRIM(co_lin)) = LTRIM(RTRIM(@co_lin)) GROUP BY CAST(tipo AS VARCHAR(5)) ORDER BY COUNT(*) DESC`,
+      { co_lin: { type: mssql.VarChar(6), value: co_lin } },
+    );
+    return { groupCode: co_lin.trim(), defaultType: (rows[0]?.tipo ?? '').trim() || null };
+  }
+
+  /** Tasas de impuesto Profit (origen: dbo.tabulado, READ-ONLY). */
+  async getTaxTypes(): Promise<ProfitTaxType[]> {
+    return this.query<ProfitTaxType>(
+      `SELECT LTRIM(RTRIM(CAST(tipo AS VARCHAR(10)))) AS tipo, LTRIM(RTRIM(descripcio)) AS descripcio FROM dbo.tabulado ORDER BY tipo`,
+    );
+  }
+
   async getCategories(): Promise<ProfitCategory[]> {
     return this.query<ProfitCategory>(`SELECT co_cat, cat_des FROM dbo.cat_art ORDER BY co_cat`);
   }
@@ -303,7 +384,6 @@ export class ProfitAdapterService {
   async getBrands(): Promise<ProfitBrand[]> {
     return this.query<ProfitBrand>(`SELECT co_col, des_col FROM dbo.colores ORDER BY co_col`);
   }
-
   async getBrand(co_col: string): Promise<ProfitBrand | null> {
     // @ts-ignore
     const mssql: any = await import('mssql');
@@ -323,6 +403,55 @@ export class ProfitAdapterService {
       this.getUnit(article.uni_venta.trim()),
     ]);
     return { article, group, subgroup, unit };
+  }
+
+  /**
+   * 12C — Estándar contable de un grupo (READ-ONLY).
+   * Fuente maestra: dbo.lin_art.dis_cen (`<DIS> {c1:..} </DIS>`, con espacios).
+   * Normaliza espacios/saltos/CHAR padding y omite posiciones vacías (`{c8:}`).
+   * Descripciones desde C_DIST.dbo.sccuenta; lo no encontrado se marca
+   * inCatalog:false (cuentas obsoletas con uso vivo, ver 12A) sin bloquear.
+   */
+  async getGroupAccountingStandard(groupCode: string): Promise<ProfitGroupStandard> {
+    // @ts-ignore
+    const mssql: any = await import('mssql');
+    const code = (groupCode ?? '').trim();
+    const rows = await this.query<{ dis: string | null }>(
+      `SELECT CAST(dis_cen AS VARCHAR(2000)) AS dis FROM dbo.lin_art WHERE LTRIM(RTRIM(co_lin)) = LTRIM(RTRIM(@co))`,
+      { co: { type: mssql.VarChar(6), value: code } },
+    );
+    const raw = (rows[0]?.dis ?? '').replace(/\r/g, '');
+    const body = /^<DIS>(.*)<\/DIS>$/s.exec(raw.trim())?.[1] ?? '';
+    const parsed = new Map<string, string>();
+    const re = /\{(c\d{1,2}):([^}]*)\}/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(body)) !== null) {
+      const key = m[1]!;
+      if (!/^c([1-9]|10)$/.test(key) || parsed.has(key)) continue;
+      const account = (m[2] ?? '').trim();
+      if (account) parsed.set(key, account);
+    }
+    const positions: ProfitGroupStandardPosition[] = [];
+    for (const [position, account] of [...parsed.entries()].sort((a, b) => parseInt(a[0].slice(1), 10) - parseInt(b[0].slice(1), 10))) {
+      const found = await this.getAccountByCode(account);
+      positions.push({
+        position,
+        code: account,
+        description: found?.description ?? '',
+        inCatalog: !!found,
+      });
+    }
+    return { groupCode: code, configured: positions.length > 0, positions };
+  }
+
+  async getAccountByCode(code: string): Promise<ProfitAccount | null> {
+    // @ts-ignore
+    const mssql: any = await import('mssql');
+    const rows = await this.query<ProfitAccount>(
+      `SELECT TOP 1 LTRIM(RTRIM(co_cue)) AS code, LTRIM(RTRIM(des_cue)) AS description FROM C_DIST.dbo.sccuenta WHERE LTRIM(RTRIM(co_cue)) = LTRIM(RTRIM(@code))`,
+      { code: { type: mssql.VarChar(40), value: (code ?? '').trim() } },
+    );
+    return rows[0] ?? null;
   }
 
   /**

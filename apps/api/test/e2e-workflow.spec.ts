@@ -67,7 +67,7 @@ describe('E2E Workflow — BORRADOR to APROBADO_FINAL', () => {
 
   beforeEach(() => {
     prisma = createPrismaMock();
-    service = new SolicitudesService(prisma as any);
+    service = new SolicitudesService(prisma as any, undefined as any, { notifyRequestStep: async () => [] } as any, { emitMany: () => {} } as any);
   });
 
   it('completes full workflow', async () => {
@@ -108,7 +108,7 @@ describe('Refresh/Persistence', () => {
 
   beforeEach(() => {
     prisma = createPrismaMock();
-    solicitudesService = new SolicitudesService(prisma as any);
+    solicitudesService = new SolicitudesService(prisma as any, undefined as any, { notifyRequestStep: async () => [] } as any, { emitMany: () => {} } as any);
     almacenService = new AlmacenService(prisma as any, solicitudesService);
   });
 

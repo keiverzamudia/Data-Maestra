@@ -59,23 +59,59 @@ export class SolicitudesController {
 
   @Get()
   @RequirePermission('REQUEST.VIEW')
-  @ApiOperation({ summary: 'List requests' })
+  @ApiOperation({ summary: 'List requests (role-scoped, paginated)' })
   @ApiQuery({ name: 'companyId', required: false })
   @ApiQuery({ name: 'status', required: false })
   @ApiQuery({ name: 'search', required: false })
+  @ApiQuery({ name: 'scope', required: false, description: 'activas | historial' })
+  @ApiQuery({ name: 'bucket', required: false, description: 'proceso | completadas | rechazadas' })
+  @ApiQuery({ name: 'requesterId', required: false })
+  @ApiQuery({ name: 'departmentId', required: false })
+  @ApiQuery({ name: 'dateFrom', required: false })
+  @ApiQuery({ name: 'dateTo', required: false })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false, description: '25, 50 or 100' })
   findAll(
+    @CurrentUser() user: RequestUser,
     @Query('companyId') companyId?: string,
     @Query('status') status?: string,
     @Query('search') search?: string,
+    @Query('scope') scope?: string,
+    @Query('bucket') bucket?: string,
+    @Query('requesterId') requesterId?: string,
+    @Query('departmentId') departmentId?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
-    return this.requestsService.findAll({ companyId, status, search });
+    return this.requestsService.findScoped(user.id, {
+      companyId,
+      status,
+      search,
+      scope,
+      bucket,
+      requesterId,
+      departmentId,
+      dateFrom,
+      dateTo,
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
+  }
+
+  @Get('resumen')
+  @RequirePermission('REQUEST.VIEW')
+  @ApiOperation({ summary: 'Scoped counters (server-side)' })
+  resumen(@CurrentUser() user: RequestUser) {
+    return this.requestsService.resumen(user.id);
   }
 
   @Get(':id')
   @RequirePermission('REQUEST.VIEW')
-  @ApiOperation({ summary: 'Get request by ID' })
-  findOne(@Param('id') id: string) {
-    return this.requestsService.findOne(id);
+  @ApiOperation({ summary: 'Get request by ID (scoped)' })
+  findOne(@CurrentUser() user: RequestUser, @Param('id') id: string) {
+    return this.requestsService.findOne(id, user.id);
   }
 
   @Post(':id/submit')
@@ -132,8 +168,8 @@ export class SolicitudesController {
 
   @Get(':id/history')
   @RequirePermission('REQUEST.VIEW')
-  @ApiOperation({ summary: 'Get workflow history' })
-  getHistory(@Param('id') id: string) {
-    return this.requestsService.getHistory(id);
+  @ApiOperation({ summary: 'Get workflow history (scoped)' })
+  getHistory(@CurrentUser() user: RequestUser, @Param('id') id: string) {
+    return this.requestsService.getHistory(id, user.id);
   }
 }

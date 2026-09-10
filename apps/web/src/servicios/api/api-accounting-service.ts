@@ -10,8 +10,12 @@ export const apiAccountingService: AccountingService = {
     return api.get<Request[]>(`/api/v1/accounting/pending${qs ? `?${qs}` : ''}`);
   },
 
-  async approveAccounting(id, codes: AccountingCode[]) {
-    await api.post(`/api/v1/accounting/${id}/approve`, { accountingCodes: codes });
+  async getAccountingDetail(id: string) {
+    return api.get<Request>(`/api/v1/accounting/${encodeURIComponent(id)}`);
+  },
+
+  async approveAccounting(id, codes: AccountingCode[], comment?: string) {
+    await api.post(`/api/v1/accounting/${id}/approve`, { accountingCodes: codes, comment });
   },
 
   async rejectAccounting(id, comment) {

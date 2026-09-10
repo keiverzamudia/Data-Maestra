@@ -1,13 +1,14 @@
 import * as React from 'react';
-import { Page, Button, Input, Tabs, Alert, Skeleton, ErrorState, EmptyState } from '../../componentes/ui';
-import { useCatalogos } from '../../hooks/useCatalogos';
+import { Page, Button, Input, Alert, Skeleton, ErrorState, EmptyState } from '../../componentes/ui';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
 import { useSession } from '../../contextos/SessionContext';
 import { apiUsuariosService, type AdminUser, type ProfitSyncResult } from '../../servicios/api/api-usuarios-service';
 import { apiRolesService, type AdminRole } from '../../servicios/api/api-roles-service';
+import { getRoleLabel, getRoleDescription } from '../../utilidades/presentacion';
 import { UserAdminModal } from './UserAdminModal';
 import { BulkAssignModal } from './BulkAssignModal';
 import { RoleAdminModal } from './RoleAdminModal';
+import { OrganizacionSection } from './OrganizacionSection';
 import type { Company, Department, Role } from '../../tipos';
 
 const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
@@ -27,6 +28,9 @@ const UsuariosSection: React.FC<{ empresas: Company[]; departamentos: Department
   const { hasPermission } = useSession();
   const [text, setText] = React.useState('');
   const [users, setUsers] = React.useState<AdminUser[]>([]);
+  const [totals, setTotals] = React.useState({ total: 0, filteredTotal: 0, activeTotal: 0, inactiveTotal: 0 });
+  const [page, setPage] = React.useState(1);
+  const [limit, setLimit] = React.useState(25);
   const [adminId, setAdminId] = React.useState<string | null>(null);
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [bulkOpen, setBulkOpen] = React.useState(false);
@@ -39,14 +43,15 @@ const UsuariosSection: React.FC<{ empresas: Company[]; departamentos: Department
 
   const canAdmin = hasPermission('ADMIN.MANAGE');
 
-  const load = React.useCallback(async (search: string, my: number) => {
+  const load = React.useCallback(async (search: string, pg: number, lim: number, my: number) => {
     try {
-      const rows = await apiUsuariosService.buscar(search.trim());
+      const res = await apiUsuariosService.buscar(search.trim(), pg, lim);
       if (reqId.current === my) {
-        setUsers(rows);
+        setUsers(res.items);
+        setTotals({ total: res.total, filteredTotal: res.filteredTotal, activeTotal: res.activeTotal, inactiveTotal: res.inactiveTotal });
         setError(null);
         // La selección solo cubre resultados visibles.
-        setSelected(prev => new Set([...prev].filter(id => rows.some(r => r.id === id))));
+        setSelected(prev => new Set([...prev].filter(id => res.items.some(r => r.id === id))));
       }
     } catch (err: any) {
       if (reqId.current === my) {
@@ -61,11 +66,15 @@ const UsuariosSection: React.FC<{ empresas: Company[]; departamentos: Department
   const refreshTable = React.useCallback(() => {
     const my = ++reqId.current;
     setLoading(true);
-    void load(textRef.current, my);
+    void load(textRef.current, pageRef.current, limitRef.current, my);
   }, [load]);
 
   const textRef = React.useRef('');
+  const pageRef = React.useRef(1);
+  const limitRef = React.useRef(25);
   React.useEffect(() => { textRef.current = text; }, [text]);
+  React.useEffect(() => { pageRef.current = page; }, [page]);
+  React.useEffect(() => { limitRef.current = limit; }, [limit]);
 
   const toggleOne = (id: string) => {
     setSelected(prev => {
@@ -86,16 +95,36 @@ const UsuariosSection: React.FC<{ empresas: Company[]; departamentos: Department
   const selectedUsers = users.filter(u => selected.has(u.id));
 
   // Búsqueda server-side con debounce; descarta respuestas viejas.
+  // La búsqueda reinicia a la página 1 sin alterar los totales globales.
   React.useEffect(() => {
     if (!canAdmin) {
       setLoading(false);
       return;
     }
     setLoading(true);
+    setPage(1);
     const my = ++reqId.current;
-    const t = setTimeout(() => { void load(text, my); }, 300);
+    const t = setTimeout(() => { void load(text, 1, limitRef.current, my); }, 300);
     return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text, canAdmin, load]);
+
+  const goPage = (pg: number) => {
+    setPage(pg);
+    setLoading(true);
+    const my = ++reqId.current;
+    void load(textRef.current, pg, limitRef.current, my);
+  };
+
+  const changeLimit = (lim: number) => {
+    setLimit(lim);
+    setPage(1);
+    setLoading(true);
+    const my = ++reqId.current;
+    void load(textRef.current, 1, lim, my);
+  };
+
+  const totalPages = Math.max(Math.ceil(totals.filteredTotal / limit), 1);
 
   const handleSync = async () => {
     if (syncing) return;
@@ -107,7 +136,7 @@ const UsuariosSection: React.FC<{ empresas: Company[]; departamentos: Department
       setSyncResult(res);
       // Refrescar tabla tras sincronización exitosa.
       const my = ++reqId.current;
-      await load(text, my);
+      await load(textRef.current, pageRef.current, limitRef.current, my);
     } catch (err: any) {
       setSyncError(err?.message || 'No se pudo sincronizar con Profit.');
     } finally {
@@ -117,14 +146,14 @@ const UsuariosSection: React.FC<{ empresas: Company[]; departamentos: Department
 
   if (!canAdmin) {
     return (
-      <Section title="Usuarios">
+      <Section title="Personas y acceso">
         <p className="muted">Sin permiso para administrar usuarios. Se requiere ADMIN.MANAGE.</p>
       </Section>
     );
   }
 
   return (
-    <Section title="Usuarios">
+    <Section title="Personas y acceso">
       <div className="stack-sm">
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <Input
@@ -138,12 +167,17 @@ const UsuariosSection: React.FC<{ empresas: Company[]; departamentos: Department
           <Button onClick={handleSync} disabled={syncing}>
             {syncing ? 'Sincronizando...' : 'Sincronizar usuarios desde Profit'}
           </Button>
-          {selected.size > 0 && (
-            <Button variant="secondary" onClick={() => setBulkOpen(true)}>
-              Asignar rol ({selected.size} usuario{selected.size === 1 ? '' : 's'} seleccionado{selected.size === 1 ? '' : 's'})
-            </Button>
-          )}
         </div>
+        {!loading && !error && (
+          <div className="summary-strip" aria-label="Resumen de usuarios">
+            <div className="summary-item"><div className="summary-num">{totals.total}</div><div className="summary-label">Total usuarios</div></div>
+            <div className="summary-item"><div className="summary-num">{totals.activeTotal}</div><div className="summary-label">Activos</div></div>
+            <div className="summary-item"><div className="summary-num">{totals.inactiveTotal}</div><div className="summary-label">Inactivos</div></div>
+          </div>
+        )}
+        {!loading && !error && (text.trim() || totals.filteredTotal !== totals.total) && (
+          <p className="muted small" role="status">Mostrando {users.length} de {totals.filteredTotal} resultados (total global: {totals.total} usuarios).</p>
+        )}
         {syncResult && (
           <Alert tone="success">
             Sincronización completada — Creados: {syncResult.created} · Actualizados: {syncResult.updated} · Ausentes/inactivados: {syncResult.missing} · Errores: {syncResult.errors}
@@ -166,24 +200,39 @@ const UsuariosSection: React.FC<{ empresas: Company[]; departamentos: Department
         {!loading && !error && users.length > 0 && (
           <div className="card table-responsive">
           <table className="table">
-            <thead><tr><th><input type="checkbox" checked={users.length > 0 && users.every(u => selected.has(u.id))} onChange={toggleAllVisible} aria-label="Seleccionar todos" /></th><th>Nombre</th><th>Usuario</th><th>Código Profit</th><th>Empresa</th><th>Departamento</th><th>Estado</th><th>Cambio de contraseña</th><th>Rol</th><th>Acción</th></tr></thead>
+            <thead><tr><th><input type="checkbox" checked={users.length > 0 && users.every(u => selected.has(u.id))} onChange={toggleAllVisible} aria-label="Seleccionar todos" /></th><th>Nombre</th><th>Código Profit</th><th>Organización</th><th>Estado</th><th>Rol</th><th>Acción</th></tr></thead>
             <tbody>
               {users.map(u => (
                 <tr key={u.id} className={selected.has(u.id) ? 'row-selected' : ''}>
                   <td><input type="checkbox" checked={selected.has(u.id)} onChange={() => toggleOne(u.id)} aria-label={`Seleccionar ${u.displayName}`} /></td>
-                  <td data-label="Nombre"><strong>{u.displayName}</strong></td>
-                  <td data-label="Usuario">{u.username}</td>
+                  <td data-label="Nombre" className="cell-primary">{u.displayName}<br /><span className="cell-secondary">{u.username}</span></td>
                   <td data-label="Código Profit">{u.profitCode || '—'}</td>
-                  <td data-label="Empresa">{uniq(u.userRoles.map(m => m.company?.code || m.company?.name))}</td>
-                  <td data-label="Departamento">{uniq(u.userRoles.map(m => m.department?.code || m.department?.name))}</td>
+                  <td data-label="Organización" className="cell-secondary">{uniq(u.userRoles.map(m => m.company?.code || m.company?.name))}{uniq(u.userRoles.map(m => m.department?.code || m.department?.name)) !== '—' ? ` / ${uniq(u.userRoles.map(m => m.department?.code || m.department?.name))}` : ''}</td>
                   <td data-label="Estado"><span className={`badge ${u.active ? 'badge-green' : 'badge-yellow'}`}>{u.active ? 'Activo' : 'Inactivo'}</span></td>
-                  <td data-label="Cambio de contraseña">{u.mustChangePassword ? 'Pendiente' : 'Al día'}</td>
-                  <td data-label="Rol">{uniq(u.userRoles.map(m => m.role?.code))}</td>
+                  <td data-label="Rol">{uniq(u.userRoles.map(m => (m.role ? getRoleLabel(m.role.code, m.role.name) : null)))}</td>
                   <td data-label="Acción"><Button size="sm" variant="secondary" onClick={() => setAdminId(u.id)}>Administrar</Button></td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </div>
+        )}
+        {!loading && !error && totals.filteredTotal > 0 && (
+          <div className="pager" role="navigation" aria-label="Paginación de usuarios">
+            <label className="muted small">Por página
+              <select className="input" value={limit} onChange={e => changeLimit(Number(e.target.value))} aria-label="Usuarios por página" style={{ width: 'auto', marginLeft: 6 }}>
+                {[25, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </label>
+            <span className="muted small">Página {page} de {totalPages}</span>
+            <Button size="sm" variant="secondary" onClick={() => goPage(page - 1)} disabled={page <= 1}>Anterior</Button>
+            <Button size="sm" variant="secondary" onClick={() => goPage(page + 1)} disabled={page >= totalPages}>Siguiente</Button>
+          </div>
+        )}
+        {selected.size > 0 && (
+          <div className="selection-bar" role="toolbar" aria-label="Acciones masivas">
+            <span><strong>{selected.size}</strong> usuario{selected.size === 1 ? '' : 's'} seleccionado{selected.size === 1 ? '' : 's'}</span>
+            <Button variant="secondary" onClick={() => setBulkOpen(true)}>Asignar rol</Button>
           </div>
         )}
         {adminId && (
@@ -268,8 +317,8 @@ const RolesSection: React.FC = () => {
             <tbody>
               {roles.map(r => (
                 <tr key={r.code}>
-                  <td data-label="Rol"><strong><code>{r.code}</code></strong><br /><span className="muted small">{r.name}</span></td>
-                  <td data-label="Descripción" className="muted small">{r.description || '—'}</td>
+                  <td data-label="Rol"><strong>{getRoleLabel(r.code, r.name)}</strong></td>
+                  <td data-label="Descripción" className="muted small">{getRoleDescription(r.code) ?? r.description ?? '—'}</td>
                   <td data-label="Usuarios">{r.userCount} usuario{r.userCount === 1 ? '' : 's'}</td>
                   <td data-label="Permisos">{r.permissionCount} permiso{r.permissionCount === 1 ? '' : 's'}</td>
                   <td data-label="Acciones"><Button size="sm" variant="secondary" onClick={() => setAdminCode(r.code)}>Administrar</Button></td>
@@ -286,126 +335,31 @@ const RolesSection: React.FC = () => {
     </Section>
   );
 };
+export type AdminSection = 'personas' | 'organizacion' | 'roles';
 
-export const AdminPage: React.FC = () => {
-  const [tab, setTab] = React.useState(0);
-  const { grupos, subgrupos, categorias, marcas, unidades } = useCatalogos();
+export const AdminPage: React.FC<{ section?: AdminSection }> = ({ section = 'personas' }) => {
   const { empresas, departamentos, usuarios, roles: rolesData } = useOrganizacion();
-  const tabs = ['Usuarios', 'Roles', 'Empresas', 'Departamentos', 'Catálogos', 'Configuración'];
+  const reloadOrg = () => {
+    // useOrganizacion carga una vez; las secciones refrescan su estado local.
+  };
+
+  if (section === 'organizacion') {
+    return (
+      <OrganizacionSection empresas={empresas} departamentos={departamentos} usuarios={usuarios} onChanged={reloadOrg} />
+    );
+  }
+
+  if (section === 'roles') {
+    return (
+      <Page title="Roles y permisos" desc="Roles del sistema con su descripción funcional y permisos.">
+        <RolesSection />
+      </Page>
+    );
+  }
 
   return (
-    <Page title="Administración" desc="Gestiona usuarios, roles y permisos del sistema.">
-      <Tabs tabs={tabs} active={tab} onChange={setTab} />
-
-      {tab === 0 && <UsuariosSection empresas={empresas} departamentos={departamentos} roles={rolesData} />}
-
-      {tab === 1 && (
-        <RolesSection />
-      )}
-
-      {tab === 2 && (
-        <Section title="Empresas">
-          {empresas.length === 0 ? (
-            <EmptyState title="Sin empresas" desc="No hay empresas registradas." />
-          ) : (
-          <div className="card table-responsive">
-          <table className="table">
-            <thead><tr><th>Código</th><th>Nombre</th><th>Estado</th></tr></thead>
-            <tbody>
-              {empresas.map(c => (
-                <tr key={c.id}>
-                  <td data-label="Código"><code>{c.code}</code></td>
-                  <td data-label="Nombre"><strong>{c.name}</strong></td>
-                  <td data-label="Estado"><span className={`badge ${c.active ? 'badge-green' : 'badge-yellow'}`}>{c.active ? 'Activa' : 'Inactiva'}</span></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          </div>
-          )}
-        </Section>
-      )}
-
-      {tab === 3 && (
-        <Section title="Departamentos">
-          {departamentos.length === 0 ? (
-            <EmptyState title="Sin departamentos" desc="No hay departamentos registrados." />
-          ) : (
-          <div className="card table-responsive">
-          <table className="table">
-            <thead><tr><th>Código</th><th>Nombre</th><th>Empresa</th><th>Gerente</th></tr></thead>
-            <tbody>
-              {departamentos.map(d => (
-                <tr key={d.id}>
-                  <td data-label="Código"><code>{d.code}</code></td>
-                  <td data-label="Nombre"><strong>{d.name}</strong></td>
-                  <td data-label="Empresa">{empresas.find(c => c.id === d.companyId)?.name || '—'}</td>
-                  <td data-label="Gerente">{usuarios.find(u => u.id === d.managerId)?.displayName || '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          </div>
-          )}
-        </Section>
-      )}
-
-      {tab === 4 && (
-        <div className="stack">
-          <Section title="Grupos">
-            <div className="kpi-grid">
-              {grupos.map(g => (
-                <div key={g.id} className="kpi">
-                  <div className="kpi-label">{g.code}</div>
-                  <div className="kpi-value" style={{ fontSize: 14 }}>{g.name}</div>
-                </div>
-              ))}
-            </div>
-          </Section>
-          <Section title="Subgrupos">
-            <div className="kpi-grid">
-              {subgrupos.map(s => (
-                <div key={s.id} className="kpi">
-                  <div className="kpi-label">{s.code}</div>
-                  <div className="kpi-value" style={{ fontSize: 14 }}>{s.name}</div>
-                </div>
-              ))}
-            </div>
-          </Section>
-          <Section title="Marcas">
-            <div className="kpi-grid">
-              {marcas.map(b => (
-                <div key={b.id} className="kpi">
-                  <div className="kpi-label">{b.normalizedName}</div>
-                  <div className="kpi-value" style={{ fontSize: 14 }}>{b.name}</div>
-                </div>
-              ))}
-            </div>
-          </Section>
-          <Section title="Unidades de Medida">
-            <div className="kpi-grid">
-              {unidades.map(u => (
-                <div key={u.id} className="kpi">
-                  <div className="kpi-label">{u.code}</div>
-                  <div className="kpi-value" style={{ fontSize: 14 }}>{u.name}</div>
-                </div>
-              ))}
-            </div>
-          </Section>
-        </div>
-      )}
-
-      {tab === 5 && (
-        <Section title="Configuración">
-          <div className="stack-sm">
-            <div className="review-grid">
-              <div><span className="muted small">Fuente de datos</span><br /><strong>API real</strong></div>
-              <div><span className="muted small">Entorno</span><br /><strong>Desarrollo</strong></div>
-              <div><span className="muted small">Backend</span><br /><strong>Conectado</strong></div>
-            </div>
-          </div>
-        </Section>
-      )}
+    <Page title="Personas y acceso" desc="Personas, empresa, departamento, roles, permisos y acceso.">
+      <UsuariosSection empresas={empresas} departamentos={departamentos} roles={rolesData} />
     </Page>
   );
 };

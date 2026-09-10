@@ -19,6 +19,16 @@ export interface ResolvedClassification {
   provisioned: string[];
 }
 
+/** Resultado de verificación sin escritura (dry-run, FASE 14C-FORM §24). */
+export interface ClassificationCheck {
+  groupId?: string;
+  subgroupId?: string;
+  categoryId?: string;
+  brandId?: string;
+  /** Acciones que ESCRIBIRÍA resolveClassification (provisión local). */
+  wouldProvision: string[];
+}
+
 @Injectable()
 export class CatalogosService {
   constructor(private readonly prisma: PrismaService) {}
@@ -85,6 +95,49 @@ export class CatalogosService {
     }
 
     return { groupId: group.id, subgroupId: subgroup.id, categoryId, brandId, provisioned };
+  }
+
+  /**
+   * Verifica códigos Profit contra el espejo local SIN escribir (dry-run).
+   * Misma lógica de existencia/combinación que resolveClassification, pero la
+   * provisión de categoría/marca faltante se reporta en `wouldProvision`.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async checkClassification(db: any, codes: ClassificationCodes): Promise<ClassificationCheck> {
+    const groupCode = codes.groupCode.trim();
+    const subgroupCode = codes.subgroupCode.trim();
+
+    const group = await db.catalogGroup.findUnique({ where: { code: groupCode } });
+    if (!group) {
+      throw new BadRequestException(`Grupo Profit inexistente en catálogo local: ${groupCode}`);
+    }
+
+    const subgroup = await db.catalogSubgroup.findFirst({
+      where: { groupId: group.id, code: subgroupCode },
+    });
+    if (!subgroup) {
+      throw new BadRequestException(
+        `Subgrupo ${subgroupCode} no pertenece al grupo ${groupCode} (combinación inválida)`,
+      );
+    }
+
+    const wouldProvision: string[] = [];
+    let categoryId: string | undefined;
+    if (codes.categoryCode?.trim()) {
+      const existing = await db.catalogCategory.findFirst({ where: { code: codes.categoryCode.trim() } });
+      if (existing) categoryId = existing.id;
+      else wouldProvision.push(`category:${codes.categoryCode.trim()}`);
+    }
+
+    let brandId: string | undefined;
+    if (codes.brandCode?.trim()) {
+      const normalized = (codes.brandName?.trim() || codes.brandCode.trim()).toUpperCase();
+      const existing = await db.brand.findFirst({ where: { normalizedName: normalized } });
+      if (existing) brandId = existing.id;
+      else wouldProvision.push(`brand:${normalized}`);
+    }
+
+    return { groupId: group.id, subgroupId: subgroup.id, categoryId, brandId, wouldProvision };
   }
 
   findAllGroups() {

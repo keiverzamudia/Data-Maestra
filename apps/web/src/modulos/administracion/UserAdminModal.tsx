@@ -2,6 +2,7 @@ import * as React from 'react';
 import { Drawer, Button, Select, Alert, ConfirmDialog, Skeleton, ErrorState, Field } from '../../componentes/ui';
 import { apiUsuariosService, type AdminUserDetail } from '../../servicios/api/api-usuarios-service';
 import type { Company, Department, Role } from '../../tipos';
+import { getRoleLabel, getRoleDescription, getPermissionLabel } from '../../utilidades/presentacion';
 
 interface Props {
   userId: string;
@@ -101,7 +102,7 @@ export const UserAdminModal: React.FC<Props> = ({ userId, empresas, departamento
                 <div key={m.id} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                   <span><strong>{m.company.code}</strong> <span className="muted small">{m.company.name}</span></span>
                   <span className="muted small">· {m.department ? `${m.department.code}` : 'Sin departamento'}</span>
-                  <span className="muted small">· {m.role.code}</span>
+                  <span className="muted small">· {getRoleLabel(m.role.code, m.role.name)}</span>
                   <Button size="sm" variant="secondary" disabled={!!saving} onClick={() => void run(`rm-${m.id}`, () => apiUsuariosService.quitarRol(detail.id, { roleCode: m.role.code, companyId: m.company.id, departmentId: m.department?.id ?? null }), 'Guardado correctamente')}>
                     Quitar
                   </Button>
@@ -123,9 +124,12 @@ export const UserAdminModal: React.FC<Props> = ({ userId, empresas, departamento
                 <Field label="Rol" required>
                   <Select value={roleCode} onChange={e => setRoleCode(e.target.value)} aria-label="Rol">
                     <option value="">Rol...</option>
-                    {roles.map(r => <option key={r.id} value={r.code}>{r.code}</option>)}
+                    {roles.map(r => <option key={r.id} value={r.code}>{getRoleLabel(r.code, r.name)}</option>)}
                   </Select>
                 </Field>
+                {roleCode && getRoleDescription(roleCode) && (
+                  <p className="muted small">{getRoleDescription(roleCode)}</p>
+                )}
                 <Button size="sm" disabled={!!saving || !companyId || !roleCode} onClick={() => void run('assign', () => apiUsuariosService.asignarRol(detail.id, { roleCode, companyId, departmentId: departmentId || null }), 'Rol asignado correctamente')}>
                   Asignar
                 </Button>
@@ -135,7 +139,7 @@ export const UserAdminModal: React.FC<Props> = ({ userId, empresas, departamento
 
           <div className="card p16">
             <h3 className="h1" style={{ fontSize: 15 }}>3. Roles</h3>
-            <p style={{ marginTop: 8 }}><strong>{detail.roleCodes.length ? detail.roleCodes.join(', ') : '—'}</strong></p>
+            <p style={{ marginTop: 8 }}><strong>{detail.roleCodes.length ? detail.roleCodes.map(c => getRoleLabel(c)).join(', ') : '—'}</strong></p>
             <p className="muted small">Los roles se asignan y quitan desde la sección Organización (cada asignación lleva su empresa y departamento).</p>
           </div>
 
@@ -149,7 +153,7 @@ export const UserAdminModal: React.FC<Props> = ({ userId, empresas, departamento
                     const ov = overrideOf(p.code);
                     return (
                       <tr key={p.code}>
-                        <td><code>{p.code}</code></td>
+                        <td>{getPermissionLabel(p.code)}</td>
                         <td>{sourceLabel[p.source]}</td>
                         <td>{p.granted ? 'Concedido' : 'No concedido'}</td>
                         <td>

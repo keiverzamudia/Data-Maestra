@@ -16,7 +16,8 @@ export interface SessionUser {
 
 // ── Request Service ──
 export interface RequestService {
-  list(params?: { companyId?: string; status?: string; search?: string; page?: number }): Promise<{ data: Request[]; total: number }>;
+  list(params?: { companyId?: string; status?: string; search?: string; page?: number; scope?: string; bucket?: string; requesterId?: string; departmentId?: string; dateFrom?: string; dateTo?: string; limit?: number }): Promise<{ data: Request[]; total: number; filteredTotal?: number; page?: number; limit?: number }>;
+  resumen(): Promise<{ activas: number; historial: number; completadas: number; rechazadas: number; enProceso: number }>;
   getById(id: string): Promise<Request | undefined>;
   create(data: Partial<Request>): Promise<Request>;
   submit(id: string): Promise<Request>;
@@ -33,6 +34,24 @@ export interface WarehouseService {
   approveClassification(id: string): Promise<void>;
   returnRequest(id: string, comment: string): Promise<void>;
   rejectRequest(id: string, comment: string): Promise<void>;
+  /** Dry-run "Validar artículo": verifica sin escribir (14C-FORM §24). */
+  validateArticle(id: string, data: ClassificationData): Promise<DryRunResult>;
+}
+
+export type DryRunStatus = 'COMPLETO' | 'FALTA' | 'ERROR' | 'NO_APLICA';
+
+export interface DryRunCheck {
+  key: string;
+  label: string;
+  status: DryRunStatus;
+  detail?: string;
+}
+
+export interface DryRunResult {
+  ready: boolean;
+  checks: DryRunCheck[];
+  warnings: string[];
+  wouldProvision: string[];
 }
 
 export interface ClassificationData {
@@ -48,16 +67,23 @@ export interface ClassificationData {
   brandCode?: string;
   brandName?: string;
   unitId?: string;
-  manufacturer?: string;
-  model?: string;
   partNumber?: string;
   application?: string;
+  /** Tipo Profit art.tipo (dominio CK_art_TIPO). Fuente: Profit, nunca lista manual. */
+  articleType?: string;
+  /** true si Warehouse cambió manualmente el default sugerido de la línea. */
+  articleTypeManual?: boolean;
+  /** Tasa Profit art.tipo_imp (tabulado 1-9). No usar co_imp. */
+  taxType?: string;
+  /** Unidad Profit co_uni (uni_venta=suni_venta; valida trigger TrigI_art). */
+  unitCode?: string;
 }
 
 // ── Accounting Service ──
 export interface AccountingService {
   getPendingApprovals(companyId?: string): Promise<Request[]>;
-  approveAccounting(id: string, codes: AccountingCode[]): Promise<void>;
+  getAccountingDetail(id: string): Promise<Request>;
+  approveAccounting(id: string, codes: AccountingCode[], comment?: string): Promise<void>;
   rejectAccounting(id: string, comment: string): Promise<void>;
 }
 
@@ -71,6 +97,7 @@ export interface AccountingCode {
 // ── Final Review Service ──
 export interface FinalReviewService {
   getPendingReviews(companyId?: string): Promise<Request[]>;
+  getReviewDetail(id: string): Promise<Request>;
   approveReview(id: string): Promise<void>;
   rejectReview(id: string, comment: string): Promise<void>;
 }

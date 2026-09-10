@@ -77,10 +77,17 @@ export const RequestDetail: React.FC<{ request: Request; showWorkflow?: boolean 
         </div>
       )}
 
-      {(request.groupId || request.subgroupId || request.brandId) && (
+      {(request.groupId || request.subgroupId || request.brandId || request.articleType) && (
         <div className="card p16">
           <h3 className="h1" style={{ fontSize: 16 }}>Clasificación</h3>
           <div className="review-grid" style={{ marginTop: 8 }}>
+            {request.articleType && (
+              <div>
+                <span className="muted small">Tipo (Profit)</span>
+                <br />
+                <strong>{request.articleType}{request.articleTypeManual ? ' (manual)' : ''}</strong>
+              </div>
+            )}
             <div>
               <span className="muted small">Grupo</span>
               <br />
@@ -104,8 +111,15 @@ export const RequestDetail: React.FC<{ request: Request; showWorkflow?: boolean 
             <div>
               <span className="muted small">Unidad</span>
               <br />
-              <strong>{findName(unidades, request.unitId)}</strong>
+              <strong>{request.unitCode || findName(unidades, request.unitId)}</strong>
             </div>
+            {request.taxType && (
+              <div>
+                <span className="muted small">Impuesto (tipo_imp)</span>
+                <br />
+                <strong>{request.taxType}</strong>
+              </div>
+            )}
             {request.manufacturer && (
               <div>
                 <span className="muted small">Fabricante</span>

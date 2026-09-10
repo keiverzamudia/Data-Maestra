@@ -4,6 +4,7 @@
 :root{
   /* brand */
   --blue:#2563eb; --blue-hover:#1d4ed8; --blue-active:#1e40af; --blue-soft:#eff6ff;
+  --brand-deep:#1e3a8a;
   /* surfaces */
   --bg:#f1f5f9; --card:#ffffff; --white:#ffffff; --surface-soft:#f8fafc; --overlay:rgba(0,0,0,.4);
   --code-bg:#0f172a; --code-text:#e2e8f0;

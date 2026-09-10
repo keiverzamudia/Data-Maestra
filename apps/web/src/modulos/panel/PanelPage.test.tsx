@@ -35,7 +35,7 @@ describe('DashboardPage 11B', () => {
 
   it('render normal con métricas reales y actividad', async () => {
     render(<MemoryRouter><DashboardPage /></MemoryRouter>);
-    expect(await screen.findByText('Solicitudes Totales')).toBeTruthy();
+    expect(await screen.findByText('Solicitudes totales')).toBeTruthy();
     expect(screen.getByText('#101')).toBeTruthy();
     expect(screen.getByText('Crear solicitud')).toBeTruthy();
   });

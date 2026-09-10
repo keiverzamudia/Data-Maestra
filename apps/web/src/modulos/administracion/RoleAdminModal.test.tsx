@@ -38,7 +38,7 @@ describe('RoleAdminModal 10I', () => {
 
   it('carga el detalle del rol', async () => {
     render(<RoleAdminModal roleCode="REQUESTER" onClose={() => {}} onChanged={() => {}} />);
-    expect(await screen.findByText('Administrar rol — REQUESTER')).toBeTruthy();
+    expect(await screen.findByText('Administrar rol — Solicitante')).toBeTruthy();
     expect(await screen.findByText('Juan Pérez')).toBeTruthy();
     expect(detalleMock).toHaveBeenCalledWith('REQUESTER');
   });
@@ -46,8 +46,8 @@ describe('RoleAdminModal 10I', () => {
   it('muestra permisos asignados y permite asignar', async () => {
     const changed = vi.fn();
     render(<RoleAdminModal roleCode="REQUESTER" onClose={() => {}} onChanged={changed} />);
-    await screen.findByText('REQUEST.CREATE');
-    const box = screen.getByLabelText('Permiso REQUEST.CREATE') as HTMLInputElement;
+    await screen.findByText('Crear solicitudes');
+    const box = screen.getByLabelText('Permiso Crear solicitudes') as HTMLInputElement;
     expect(box.checked).toBe(false);
     concederMock.mockResolvedValue({ ok: true, created: true });
     fireEvent.click(box);
@@ -57,8 +57,8 @@ describe('RoleAdminModal 10I', () => {
 
   it('permite quitar un permiso asignado', async () => {
     render(<RoleAdminModal roleCode="REQUESTER" onClose={() => {}} onChanged={() => {}} />);
-    await screen.findByText('REQUEST.VIEW');
-    const box = screen.getByLabelText('Permiso REQUEST.VIEW') as HTMLInputElement;
+    await screen.findByText('Consultar solicitudes');
+    const box = screen.getByLabelText('Permiso Consultar solicitudes') as HTMLInputElement;
     expect(box.checked).toBe(true);
     quitarMock.mockResolvedValue({ ok: true, removed: true });
     fireEvent.click(box);
@@ -74,9 +74,9 @@ describe('RoleAdminModal 10I', () => {
 
   it('filtra permisos por búsqueda', async () => {
     render(<RoleAdminModal roleCode="REQUESTER" onClose={() => {}} onChanged={() => {}} />);
-    await screen.findByText('REQUEST.CREATE');
+    await screen.findByText('Crear solicitudes');
     fireEvent.change(screen.getByPlaceholderText('Buscar permiso...'), { target: { value: 'create' } });
     expect(screen.queryByText('REQUEST.VIEW')).toBeNull();
-    expect(screen.getByText('REQUEST.CREATE')).toBeTruthy();
+    expect(screen.getByText('Crear solicitudes')).toBeTruthy();
   });
 });

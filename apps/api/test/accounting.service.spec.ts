@@ -11,6 +11,9 @@ function createPrismaMock() {
     requestAccountingCode: {
       createMany: vi.fn(),
     },
+    catalogGroup: {
+      findUnique: vi.fn(async () => ({ id: 'g1', code: 'FER', sourceCode: 'FER' })),
+    },
   };
 }
 
@@ -20,15 +23,29 @@ function createSolicitudesServiceMock() {
   };
 }
 
+function createProfitMock(configured = true) {
+  return {
+    getGroupAccountingStandard: vi.fn(async (code: string) => ({
+      groupCode: code,
+      configured,
+      positions: configured
+        ? [{ position: 'c1', code: '1.1.04.03.01.006', description: 'Inventario', inCatalog: true }]
+        : [],
+    })),
+  };
+}
+
 describe('ContabilidadService', () => {
   let service: ContabilidadService;
   let prisma: ReturnType<typeof createPrismaMock>;
   let SolicitudesService: ReturnType<typeof createSolicitudesServiceMock>;
+  let profit: ReturnType<typeof createProfitMock>;
 
   beforeEach(() => {
     prisma = createPrismaMock();
     SolicitudesService = createSolicitudesServiceMock();
-    service = new ContabilidadService(prisma as any, SolicitudesService as any);
+    profit = createProfitMock();
+    service = new ContabilidadService(prisma as any, SolicitudesService as any, profit as any);
   });
 
   describe('findPendingApproval', () => {
@@ -97,19 +114,46 @@ describe('ContabilidadService', () => {
       expect(result.status).toBe('PENDIENTE_VALIDACION_MAESTRA');
     });
 
-    it('allows approve with empty accounting codes', async () => {
+    it('12C — rechaza aprobar sin posiciones (mínimo 1)', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
         status: 'PENDIENTE_CONTABILIDAD',
         requestData: { groupId: 'g1' },
         accountingCodes: [],
       });
-      SolicitudesService.approve.mockResolvedValue({ id: 'req-1', status: 'PENDIENTE_VALIDACION_MAESTRA' });
 
-      const result = await service.approve('req-1', [], 'user-1', 'c1');
-
+      await expect(service.approve('req-1', [], 'user-1', 'c1')).rejects.toThrow(/mínimo 1/);
       expect(prisma.requestAccountingCode.createMany).not.toHaveBeenCalled();
-      expect(result.status).toBe('PENDIENTE_VALIDACION_MAESTRA');
+    });
+
+    it('12C — bloquea aprobar si el grupo no tiene estándar en Profit', async () => {
+      prisma.request.findUnique.mockResolvedValue({
+        id: 'req-1',
+        status: 'PENDIENTE_CONTABILIDAD',
+        requestData: { groupId: 'g1' },
+        accountingCodes: [],
+      });
+      service = new ContabilidadService(prisma as any, SolicitudesService as any, createProfitMock(false) as any);
+
+      await expect(
+        service.approve('req-1', [{ code: '1.1.04.03.01.006', description: 'Inventario' }], 'user-1', 'c1'),
+      ).rejects.toThrow(/no tiene información contable configurada en Profit/);
+      expect(SolicitudesService.approve).not.toHaveBeenCalled();
+    });
+
+    it('12C — Profit inaccesible bloquea con 503 explícito', async () => {
+      prisma.request.findUnique.mockResolvedValue({
+        id: 'req-1',
+        status: 'PENDIENTE_CONTABILIDAD',
+        requestData: { groupId: 'g1' },
+        accountingCodes: [],
+      });
+      const failing = { getGroupAccountingStandard: vi.fn(async () => { throw new Error('timeout'); }) };
+      service = new ContabilidadService(prisma as any, SolicitudesService as any, failing as any);
+
+      await expect(
+        service.approve('req-1', [{ code: '1.1.04.03.01.006', description: 'Inventario' }], 'user-1', 'c1'),
+      ).rejects.toThrow(/No se pudo consultar Profit/);
     });
 
     it('throws NotFoundException when request is not PENDIENTE_CONTABILIDAD', async () => {
@@ -123,6 +167,32 @@ describe('ContabilidadService', () => {
       await expect(
         service.approve('req-1', [{ code: '5010-01', description: 'Test' }], 'user-1', 'c1'),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it('12G — observaciones viajan como comentario del approval', async () => {
+      prisma.request.findUnique.mockResolvedValue({
+        id: 'req-1',
+        status: 'PENDIENTE_CONTABILIDAD',
+        requestData: { groupId: 'g1' },
+        accountingCodes: [],
+      });
+      prisma.requestAccountingCode.createMany.mockResolvedValue({ count: 1 });
+      SolicitudesService.approve.mockResolvedValue({ id: 'req-1', status: 'PENDIENTE_VALIDACION_MAESTRA' });
+
+      await service.approve(
+        'req-1',
+        [{ code: '5010-01', description: 'Repuestos' }],
+        'user-1',
+        'c1',
+        'Revisado contra estándar FER',
+      );
+
+      expect(SolicitudesService.approve).toHaveBeenCalledWith(
+        'req-1',
+        { action: 'APPROVE', comment: 'Revisado contra estándar FER' },
+        'user-1',
+        'c1',
+      );
     });
 
     it('persists c1..c10 positions (Fase 8E)', async () => {

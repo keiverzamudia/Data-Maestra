@@ -40,6 +40,15 @@ export class AlmacenController {
     return this.warehouseService.classify(id, body, user.id, companyId);
   }
 
+  @Post(':id/validate')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('WAREHOUSE.CLASSIFY')
+  @ApiOperation({ summary: 'Dry-run "Validar artículo": verifica sin escribir (14C-FORM §24)' })
+  @ApiParam({ name: 'id', description: 'Request ID' })
+  async dryRun(@Param('id') id: string, @Body() body: Record<string, unknown>) {
+    return this.warehouseService.dryRun(id, body);
+  }
+
   @Post(':id/approve')
   @HttpCode(HttpStatus.OK)
   @RequirePermission('WAREHOUSE.CLASSIFY')

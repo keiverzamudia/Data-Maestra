@@ -67,11 +67,24 @@ export interface AdminUserDetail {
   permissionCatalog: string[];
 }
 
+export interface AdminUserPage {
+  items: AdminUser[];
+  total: number;
+  filteredTotal: number;
+  activeTotal: number;
+  inactiveTotal: number;
+  page: number;
+  limit: number;
+}
+
 /** Administración de usuarios (requiere ADMIN.MANAGE en backend). */
 export const apiUsuariosService = {
-  async buscar(search: string): Promise<AdminUser[]> {
-    const qs = search ? `?search=${encodeURIComponent(search)}` : '';
-    return api.get<AdminUser[]>(`/api/v1/usuarios${qs}`);
+  async buscar(search: string, page = 1, limit = 25): Promise<AdminUserPage> {
+    const params = new URLSearchParams();
+    if (search) params.set('search', search);
+    params.set('page', String(page));
+    params.set('limit', String(limit));
+    return api.get<AdminUserPage>(`/api/v1/usuarios?${params.toString()}`);
   },
 
   async sincronizarProfit(): Promise<ProfitSyncResult> {

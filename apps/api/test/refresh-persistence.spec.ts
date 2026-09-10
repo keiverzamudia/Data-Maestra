@@ -72,7 +72,7 @@ describe('Refresh/Persistence', () => {
 
   beforeEach(() => {
     prisma = createPrismaMock();
-    solicitudesService = new SolicitudesService(prisma as any);
+    solicitudesService = new SolicitudesService(prisma as any, undefined as any, { notifyRequestStep: async () => [] } as any, { emitMany: () => {} } as any);
     almacenService = new AlmacenService(prisma as any, solicitudesService);
   });
 

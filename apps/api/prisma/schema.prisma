@@ -218,6 +218,9 @@ model CatalogGroup {
   active       Boolean @default(true)
   sourceSystem String? @map("source_system")
   sourceCode   String? @map("source_code")
+  // Tipo Profit sugerido para artículos nuevos de esta línea (FASE 14C-FORM §6:
+  // sugerencia, no obligación; el tipo pertenece a la solicitud).
+  defaultArticleType String? @map("default_article_type")
 
   subgroups   CatalogSubgroup[]
   masterItems MasterItem[]
@@ -357,6 +360,13 @@ model RequestData {
   partNumber       String? @map("part_number")
   application      String?
   masterCode       String? @map("master_code")
+  // Clasificación Profit del artículo (FASE 14C-FORM): tipo char(1) del dominio
+  // CK_art_TIPO, impuesto tipo_imp (tabulado 1-9), unidad Profit co_uni.
+  // articleTypeManual=true indica override de Warehouse sobre el default de línea.
+  articleType       String?  @map("article_type")
+  articleTypeManual Boolean  @default(false) @map("article_type_manual")
+  taxType           String?  @map("tax_type")
+  unitCode          String?  @map("unit_code")
 
   request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
@@ -528,17 +538,22 @@ model SourceItem {
 model Notification {
   id        String   @id @default(uuid())
   userId    String   @map("user_id")
+  requestId String?  @map("request_id")
   title     String
   body      String
   type      String   @default("info")
-  read      Boolean  @default(false)
+  readAt    DateTime? @map("read_at")
   link      String?
+  // 12F — idempotencia por (request, tipo, destinatario); NULL en históricas.
+  dedupKey  String?  @unique @map("dedup_key")
+  metadata  String?
   createdAt DateTime @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id])
 
   @@index([userId])
-  @@index([userId, read])
+  @@index([userId, readAt])
+  @@index([requestId])
   @@index([createdAt])
   @@map("notifications")
 }

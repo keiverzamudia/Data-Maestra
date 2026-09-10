@@ -10,6 +10,12 @@ export const mockAccountingService: AccountingService = {
     if (companyId) d = d.filter(r => r.companyId === companyId);
     return d;
   },
+  async getAccountingDetail(id) {
+    await delay();
+    const r = requests.find(x => x.id === id);
+    if (!r) throw new Error('No encontrada');
+    return r;
+  },
   async approveAccounting(id, codes) {
     await delay();
     const r = requests.find(x => x.id === id);

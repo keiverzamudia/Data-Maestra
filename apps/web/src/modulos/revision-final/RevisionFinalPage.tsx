@@ -6,7 +6,7 @@ import { useCatalogos } from '../../hooks/useCatalogos';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
 import { Button, SearchInput, StatusBadge, EmptyState, Modal, Textarea, Alert, ConfirmDialog, Skeleton, ErrorState } from '../../componentes/ui';
 import { Page } from '../../componentes/ui';
-import { WorkflowStepper, WorkflowStatusInfo, RequestDetail } from '../../componentes/workflow';
+import { WorkflowStepper, WorkflowStatusInfo, RequestDetail, StageTrace } from '../../componentes/workflow';
 import type { Request } from '../../tipos';
 
 function findName(list: { id: string; name: string }[], id?: string) {
@@ -27,6 +27,8 @@ export const FinalReviewPage: React.FC = () => {
   const [error, setError] = React.useState<string | null>(null);
   const [listError, setListError] = React.useState<string | null>(null);
   const [confirmApprove, setConfirmApprove] = React.useState(false);
+  // 12E — mensaje de cierre tras aprobar (sin afirmar registro en Profit).
+  const [justApproved, setJustApproved] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     setLoading(true);
@@ -51,12 +53,23 @@ export const FinalReviewPage: React.FC = () => {
       )
     : requests;
 
+  const openDetail = (r: Request) => {
+    setSelected(r);
+    setError(null);
+    // Detalle con aprobaciones (trazabilidad real); si falla, se usa la fila.
+    finalReviewService.getReviewDetail(r.id).then(
+      d => setSelected(d),
+      () => {},
+    );
+  };
+
   const handleApprove = async () => {
     if (!selected || saving) return;
     setSaving(true);
     setError(null);
     try {
       await finalReviewService.approveReview(selected.id);
+      setJustApproved(`✓ Aprobación final completada — la solicitud ${selected.requestNumber} cumple con los estándares requeridos para continuar con su registro en Profit. Siguiente etapa: Registrando en Profit.`);
       setSelected(null);
       finalReviewService.getPendingReviews(companyId).then(setRequests);
     } catch (err: any) {
@@ -84,53 +97,33 @@ export const FinalReviewPage: React.FC = () => {
   };
 
   if (selected) {
-    const checklist = [
-      { label: 'Solicitante', ok: !!selected.requesterId },
-      { label: 'Departamento', ok: !!selected.departmentId },
-      { label: 'Empresa', ok: !!selected.companyId },
-      { label: 'Descripción (≥10)', ok: (selected.requestedDescription?.length ?? 0) >= 10 },
-      { label: 'Propósito', ok: !!selected.purpose?.trim() },
-      { label: 'Grupo', ok: !!selected.groupId },
-      { label: 'Subgrupo', ok: !!selected.subgroupId },
-      { label: 'Unidad', ok: !!selected.unitId },
-      { label: 'Código Maestro', ok: !!selected.masterCode && /^[A-Z0-9]+-[0-9]{5}$/.test(selected.masterCode) },
-      { label: 'Código Contable (≥1)', ok: (selected.accountingCodes?.length ?? 0) >= 1 },
-      { label: 'Imagen referencial', ok: !!selected.referencePhotoUri, warn: true },
-    ];
-    const required = checklist.filter(c => !c.warn);
-    const missing = required.filter(c => !c.ok).length;
-    const allOk = missing === 0;
+    // 12E — Aprobación Final es cierre: sin checklist (responsabilidad de Contabilidad).
+    // Solo lectura + trazabilidad real del historial.
+    const accCount = selected.accountingCodes?.length ?? 0;
 
     return (
       <Page
         title={`Validación Maestra — ${selected.requestNumber}`}
-        desc={allOk ? `${required.length} de ${required.length} requisitos completos` : `Faltan ${missing} requisitos`}
+        desc="Solicitud lista para aprobación final"
         actions={<Button variant="secondary" onClick={() => setSelected(null)}>Volver</Button>}
       >
         <WorkflowStepper status={selected.status} />
         <WorkflowStatusInfo status={selected.status} />
 
         <div className="card p16">
-          <h3 className="h1" style={{ fontSize: 14 }}>Checklist de Validación Maestra</h3>
-          <Alert tone="info">
-            Validación solo lectura. No edite grupo, subgrupo, descripción, marca, unidad ni código maestro. Si encuentra inconsistencia, devuelva al área responsable.
-          </Alert>
-          <div className="checklist" style={{ marginTop: 8 }}>
-            {checklist.map(item => {
-              const isWarn = (item as any).warn && !item.ok;
-              const cls = item.ok ? 'check-ok' : isWarn ? 'check-warn' : 'check-missing';
-              return (
-                <div key={item.label} className={`check ${cls}`}>
-                  <span className="check-mark" aria-hidden="true">{item.ok ? '✓' : isWarn ? '⚠' : '✕'}</span>
-                  <span className="check-label">{item.label}</span>
-                  <span className="check-state">{item.ok ? 'COMPLETO' : isWarn ? 'REVISAR' : 'FALTANTE'}</span>
-                </div>
-              );
-            })}
+          <h3 className="h1" style={{ fontSize: 14 }}>Cierre de validaciones</h3>
+          <p className="muted" style={{ marginTop: 4 }}>
+            Las validaciones requeridas de Almacén, Contabilidad y Validación Maestra han sido completadas.
+            Esta es la última aprobación humana antes del registro en Profit.
+          </p>
+          <div style={{ marginTop: 8 }}>
+            <StageTrace approvals={selected.approvals} accCount={accCount} validationCurrent />
           </div>
           <div style={{ marginTop: 8 }}>
-            <Alert tone={allOk ? 'success' : 'danger'}>
-              {allOk ? '✓ Expediente completo — puede aprobar definitivamente.' : `✕ Faltan ${missing} requisitos obligatorios. Complete por el área responsable antes de aprobar.`}
+            <Alert tone={accCount > 0 ? 'success' : 'warning'}>
+              {accCount > 0
+                ? `Contabilidad ✓ VALIDADA — ${accCount} posición${accCount === 1 ? '' : 'es'} contable${accCount === 1 ? '' : 's'}.`
+                : 'Contabilidad — sin información contable registrada en esta solicitud (casos anteriores a la validación contable).'}
             </Alert>
           </div>
         </div>
@@ -141,15 +134,15 @@ export const FinalReviewPage: React.FC = () => {
           <div className="action-bar">
             <Can permission="FINAL_REVIEW.APPROVE">
               <Button variant="danger" onClick={() => setRejectModal(true)} disabled={saving}>Rechazar / Devolver</Button>
-              <Button onClick={() => setConfirmApprove(true)} disabled={saving || !allOk} title={!allOk ? `Faltan ${missing} requisitos` : undefined}>{saving ? 'Aprobando...' : 'Aprobar Definitivamente'}</Button>
+              <Button onClick={() => setConfirmApprove(true)} disabled={saving}>{saving ? 'Aprobando...' : '✓ Aprobar y pasar a Profit'}</Button>
             </Can>
           </div>
 
           <ConfirmDialog
             open={confirmApprove}
-            title="Aprobar definitivamente"
-            desc="¿Aprobar definitivamente esta solicitud? Después de esta aprobación, pasará al procesamiento técnico."
-            confirmLabel="Aprobar definitivamente"
+            title="Aprobar y pasar a Profit"
+            desc="Esta solicitud ha completado las validaciones de Almacén, Contabilidad y Validación Maestra. Al aprobar, quedará validada y lista para continuar con su registro en Profit. El registro en Profit aún no se ha realizado."
+            confirmLabel="✓ Aprobar y pasar a Profit"
             busy={saving}
             onCancel={() => setConfirmApprove(false)}
             onConfirm={() => { setConfirmApprove(false); void handleApprove(); }}
@@ -182,11 +175,17 @@ export const FinalReviewPage: React.FC = () => {
   return (
     <Page
       title="Validación Maestra"
-      desc={loading ? 'Verifica que la solicitud esté completa antes de pasar a la aprobación final.' : `${filtered.length} solicitud${filtered.length === 1 ? '' : 'es'} por validar.`}
+      desc={loading ? 'Última aprobación humana antes del registro en Profit.' : `${filtered.length} solicitud${filtered.length === 1 ? '' : 'es'} lista${filtered.length === 1 ? '' : 's'} para aprobación final.`}
     >
       <div className="toolbar" role="search">
         <span className="grow"><SearchInput value={search} onChange={setSearch} placeholder="Buscar por número o descripción..." /></span>
       </div>
+
+      {justApproved && (
+        <div style={{ marginTop: 12 }}>
+          <Alert tone="success">{justApproved}</Alert>
+        </div>
+      )}
 
       {loading && (
         <div className="card p16 stack-sm" aria-label="Cargando solicitudes">
@@ -243,7 +242,7 @@ export const FinalReviewPage: React.FC = () => {
                   <td data-label="Solicitante">{usuarios.find(u => u.id === r.requesterId)?.displayName || '—'}</td>
                   <td data-label="Estado"><StatusBadge status={r.status} /></td>
                   <td data-label="Acción">
-                    <Button size="sm" onClick={() => setSelected(r)}>Revisar</Button>
+                    <Button size="sm" onClick={() => openDetail(r)}>Revisar</Button>
                   </td>
                 </tr>
               ))}

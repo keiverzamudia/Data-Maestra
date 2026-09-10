@@ -1,5 +1,5 @@
 import { requests } from '../../mock/requests';
-import type { WarehouseService, ClassificationData } from '../../contratos';
+import type { WarehouseService, ClassificationData, DryRunResult } from '../../contratos';
 
 const delay = (ms = 150) => new Promise(r => setTimeout(r, ms));
 
@@ -35,5 +35,23 @@ export const mockWarehouseService: WarehouseService = {
     await delay();
     const r = requests.find(x => x.id === id);
     if (r) { r.status = 'RECHAZADO'; r.notes = comment; r.updatedAt = new Date().toISOString(); }
+  },
+  /** Mock del dry-run: validación local aproximada, sin Profit real. */
+  async validateArticle(id, data: ClassificationData): Promise<DryRunResult> {
+    await delay();
+    const r = requests.find(x => x.id === id);
+    const checks: DryRunResult['checks'] = [
+      { key: 'estado', label: 'Estado clasificable', status: r ? 'COMPLETO' : 'ERROR', detail: r?.status },
+      { key: 'descripcion', label: 'Descripción', status: (r?.requestedDescription?.trim().length ?? 0) >= 3 ? 'COMPLETO' : 'ERROR' },
+      { key: 'grupo', label: 'Grupo Profit', status: data.groupCode ? 'COMPLETO' : 'FALTA' },
+      { key: 'subgrupo', label: 'Subgrupo del grupo', status: data.subgroupCode ? 'COMPLETO' : 'FALTA' },
+      { key: 'tipo', label: 'Tipo de artículo', status: data.articleType ? 'COMPLETO' : 'FALTA' },
+      { key: 'unidad', label: 'Unidad Profit', status: data.unitCode ? 'COMPLETO' : 'FALTA', detail: 'Mock: sin verificación viva' },
+      { key: 'impuesto', label: 'Impuesto (tipo_imp)', status: 'COMPLETO', detail: 'Mock: derivado por regla' },
+      { key: 'duplicidad', label: 'Duplicidad', status: 'NO_APLICA', detail: 'Mock: no verificable' },
+    ];
+    const ready = ['estado', 'descripcion', 'grupo', 'subgrupo', 'tipo', 'unidad']
+      .every(k => checks.find(c => c.key === k)?.status === 'COMPLETO');
+    return { ready, checks, warnings: ['Modo mock: sin verificación viva contra Profit'], wouldProvision: [] };
   },
 };

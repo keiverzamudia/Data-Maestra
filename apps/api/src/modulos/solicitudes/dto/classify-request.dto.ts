@@ -1,4 +1,4 @@
-import { IsString, IsOptional } from 'class-validator';
+import { IsString, IsOptional, IsIn, IsBoolean } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class ClassifyRequestDto {
@@ -57,16 +57,6 @@ export class ClassifyRequestDto {
   @IsOptional()
   unitId?: string;
 
-  @ApiPropertyOptional({ example: 'Siemens' })
-  @IsString()
-  @IsOptional()
-  manufacturer?: string;
-
-  @ApiPropertyOptional({ example: 'SITRANS TH520' })
-  @IsString()
-  @IsOptional()
-  model?: string;
-
   @ApiPropertyOptional({ example: '7MF0543-1AA00-0AA0' })
   @IsString()
   @IsOptional()
@@ -76,4 +66,26 @@ export class ClassifyRequestDto {
   @IsString()
   @IsOptional()
   application?: string;
+
+  @ApiPropertyOptional({ example: 'C', description: 'Tipo Profit art.tipo (dominio CK_art_TIPO: V/F/C/S/M/N/E)' })
+  @IsString()
+  @IsIn(['V', 'F', 'C', 'S', 'M', 'N', 'E'])
+  @IsOptional()
+  articleType?: string;
+
+  @ApiPropertyOptional({ description: 'true si Warehouse cambió manualmente el default de línea (14C-FORM §18)' })
+  @IsBoolean()
+  @IsOptional()
+  articleTypeManual?: boolean;
+
+  @ApiPropertyOptional({ example: '1', description: 'Tasa Profit art.tipo_imp (tabulado 1-9). No usar co_imp.' })
+  @IsString()
+  @IsIn(['1', '2', '3', '4', '5', '6', '7', '8', '9'])
+  @IsOptional()
+  taxType?: string;
+
+  @ApiPropertyOptional({ example: 'UND', description: 'Unidad Profit co_uni (uni_venta=suni_venta; valida trigger TrigI_art)' })
+  @IsString()
+  @IsOptional()
+  unitCode?: string;
 }

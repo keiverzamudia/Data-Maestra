@@ -151,46 +151,63 @@ export class UsuariosService {
   }
 
   /**
-   * Búsqueda local para administración y login. Nunca expone passwordHash.
+   * 11G — Búsqueda admin paginada. Nunca expone passwordHash.
    * Server-side: filtra por displayName, username o profitCode (contains).
    * Incluye membresías activas (empresa/departamento/rol) para la tabla /admin.
    * Sin filtrar por active: el admin debe ver también inactivados por el sync.
+   * Devuelve envelope con totales globales (total/activeTotal/inactiveTotal,
+   * inmunes a la búsqueda) + filteredTotal para distinguir filtro de universo.
    */
-  async searchLocal(search?: string, profitCode?: string, limit = 20) {
-    const q = search?.trim() ? search.trim() : undefined;
-    return this.prisma.user.findMany({
-      where: {
-        ...(q
-          ? {
-              OR: [
-                { displayName: { contains: q } },
-                { username: { contains: q } },
-                { profitCode: { contains: q } },
-              ],
-            }
-          : {}),
-        ...(profitCode ? { profitCode } : {}),
-      },
-      select: {
-        id: true,
-        username: true,
-        displayName: true,
-        profitCode: true,
-        active: true,
-        mustChangePassword: true,
-        lastLoginAt: true,
-        userRoles: {
-          where: { active: true },
-          select: {
-            company: { select: { id: true, name: true, code: true } },
-            department: { select: { id: true, name: true, code: true } },
-            role: { select: { code: true, name: true } },
-          },
+  static readonly ADMIN_PAGE_SIZES = [25, 50, 100];
+
+  async searchAdmin(opts: { search?: string; profitCode?: string; page?: number; limit?: number }) {
+    const q = opts.search?.trim() ? opts.search.trim() : undefined;
+    const where: Record<string, unknown> = {
+      ...(q
+        ? {
+            OR: [
+              { displayName: { contains: q } },
+              { username: { contains: q } },
+              { profitCode: { contains: q } },
+            ],
+          }
+        : {}),
+      ...(opts.profitCode ? { profitCode: opts.profitCode } : {}),
+    };
+    const limit = UsuariosService.ADMIN_PAGE_SIZES.includes(opts.limit ?? 0) ? opts.limit! : 25;
+    const rawPage = Number(opts.page);
+    const page = Number.isFinite(rawPage) ? Math.max(Math.floor(rawPage), 1) : 1;
+    const select = {
+      id: true,
+      username: true,
+      displayName: true,
+      profitCode: true,
+      active: true,
+      mustChangePassword: true,
+      lastLoginAt: true,
+      userRoles: {
+        where: { active: true },
+        select: {
+          company: { select: { id: true, name: true, code: true } },
+          department: { select: { id: true, name: true, code: true } },
+          role: { select: { code: true, name: true } },
         },
       },
-      orderBy: { displayName: 'asc' },
-      take: Math.min(Math.max(limit, 1), 100),
-    });
+    };
+    const [items, total, filteredTotal, activeTotal, inactiveTotal] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        select,
+        orderBy: { displayName: 'asc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.user.count(),
+      this.prisma.user.count({ where }),
+      this.prisma.user.count({ where: { active: true } }),
+      this.prisma.user.count({ where: { active: false } }),
+    ]);
+    return { items, total, filteredTotal, activeTotal, inactiveTotal, page, limit };
   }
 
   // =====================================================================

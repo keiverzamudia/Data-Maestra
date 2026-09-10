@@ -137,6 +137,9 @@ describe('AlmacenService', () => {
         groupId: 'g1',
         subgroupId: 'sg1',
         masterCode: 'RVHCAR-00001',
+        articleType: 'C',
+        unitCode: 'UND',
+        taxType: '1',
       });
       SolicitudesService.approve.mockResolvedValue({ id: 'req-1', status: 'PENDIENTE_CONTABILIDAD' });
 
@@ -159,6 +162,25 @@ describe('AlmacenService', () => {
       });
 
       await expect(service.approve('req-1', 'user-1', 'c1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws BadRequestException when Profit data (tipo/unidad/impuesto) is missing (14C-FORM §23)', async () => {
+      prisma.request.findUnique.mockResolvedValue({
+        id: 'req-1',
+        status: 'PENDIENTE_ALMACEN',
+        requestData: { requestId: 'req-1' },
+      });
+      prisma.requestData.findUnique.mockResolvedValue({
+        requestId: 'req-1',
+        groupId: 'g1',
+        subgroupId: 'sg1',
+        masterCode: 'RVHCAR-00001',
+        articleType: 'C',
+        unitCode: null,
+        taxType: null,
+      });
+
+      await expect(service.approve('req-1', 'user-1', 'c1')).rejects.toThrow(BadRequestException);
     });
   });
 

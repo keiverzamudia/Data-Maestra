@@ -10,6 +10,10 @@ export const apiFinalReviewService: FinalReviewService = {
     return api.get<Request[]>(`/api/v1/final-review/pending${qs ? `?${qs}` : ''}`);
   },
 
+  async getReviewDetail(id: string) {
+    return api.get<Request>(`/api/v1/final-review/${encodeURIComponent(id)}`);
+  },
+
   async approveReview(id) {
     await api.post(`/api/v1/final-review/${id}/approve`);
   },

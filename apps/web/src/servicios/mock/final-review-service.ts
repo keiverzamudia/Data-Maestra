@@ -8,6 +8,12 @@ export const mockFinalReviewService: FinalReviewService = {
     return requests.filter(r => r.status === 'PENDIENTE_VALIDACION_MAESTRA');
   },
 
+  async getReviewDetail(id: string) {
+    const r = requests.find(x => x.id === id);
+    if (!r) throw new Error('No encontrada');
+    return r;
+  },
+
   async approveReview(id) {
     const r = requests.find(x => x.id === id);
     if (r) r.status = 'APROBADO_FINAL';
