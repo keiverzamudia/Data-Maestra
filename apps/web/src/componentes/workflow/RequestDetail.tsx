@@ -26,7 +26,7 @@ export const RequestDetail: React.FC<{ request: Request; showWorkflow?: boolean 
       {showWorkflow && <WorkflowTimeline status={request.status} />}
 
       <div className="card p16">
-        <h3 className="h1" style={{ fontSize: 16 }}>Detalle de Solicitud</h3>
+        <h3 className="card-title">Detalle de Solicitud</h3>
         <div className="review-grid" style={{ marginTop: 8 }}>
           <div>
             <span className="muted small">Solicitante</span>
@@ -65,7 +65,7 @@ export const RequestDetail: React.FC<{ request: Request; showWorkflow?: boolean 
             src={`/api/v1/uploads/${request.referencePhotoUri}`}
             alt="Imagen referencial"
             onClick={() => setLightboxOpen(true)}
-            style={{ maxWidth: '100%', maxHeight: 300, borderRadius: 8, marginTop: 8, cursor: 'pointer' }}
+            className="evidence-thumb evidence-action"
           />
           <ImageLightbox
             src={`/api/v1/uploads/${request.referencePhotoUri}`}
@@ -79,7 +79,7 @@ export const RequestDetail: React.FC<{ request: Request; showWorkflow?: boolean 
 
       {(request.groupId || request.subgroupId || request.brandId || request.articleType) && (
         <div className="card p16">
-          <h3 className="h1" style={{ fontSize: 16 }}>Clasificación</h3>
+          <h3 className="card-title">Clasificación</h3>
           <div className="review-grid" style={{ marginTop: 8 }}>
             {request.articleType && (
               <div>
@@ -159,9 +159,9 @@ export const RequestDetail: React.FC<{ request: Request; showWorkflow?: boolean 
           <span className="muted small">Códigos Contables</span>
           <div style={{ marginTop: 8 }}>
             {request.accountingCodes.map((ac, i) => (
-              <div key={i} style={{ marginBottom: 4, fontSize: 13 }}>
-                {ac.position && <span className="badge badge-blue" style={{ marginRight: 6 }}>{ac.position}</span>}
-                <strong>{ac.code}</strong> — {ac.description}
+              <div key={i} className="acct-line">
+                {ac.position && <span className="badge badge-blue acct-pos-badge">{ac.position}</span>}
+                <strong className="mono">{ac.code}</strong> — {ac.description}
               </div>
             ))}
           </div>

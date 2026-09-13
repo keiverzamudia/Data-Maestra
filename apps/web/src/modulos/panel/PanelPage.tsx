@@ -99,13 +99,13 @@ export const DashboardPage: React.FC = () => {
       <section aria-label="Resumen">
         <h2 className="section-title">Resumen</h2>
         <div className="stat-grid">
-          <div className="stat-card stat-info"><span className="stat-icon" aria-hidden="true">◻</span><div><div className="stat-num">{stats.totalRequests}</div><div className="stat-label">Solicitudes totales</div></div></div>
+          <div className="stat-card stat-info"><span className="stat-icon" aria-hidden="true">◧</span><div><div className="stat-num">{stats.totalRequests}</div><div className="stat-label">Solicitudes totales</div></div></div>
           <div className={`stat-card ${stats.pendingRequests > 0 ? 'stat-warn' : ''}`}><span className="stat-icon" aria-hidden="true">◷</span><div><div className="stat-num">{stats.pendingRequests}</div><div className="stat-label">Pendientes de atención</div></div></div>
-          <div className="stat-card stat-info"><span className="stat-icon" aria-hidden="true">⇄</span><div><div className="stat-num">{stats.inApproval}</div><div className="stat-label">En aprobación</div></div></div>
+          <div className="stat-card stat-info"><span className="stat-icon" aria-hidden="true">↻</span><div><div className="stat-num">{stats.inApproval}</div><div className="stat-label">En aprobación</div></div></div>
           <div className="stat-card stat-ok"><span className="stat-icon" aria-hidden="true">✓</span><div><div className="stat-num">{stats.completedRequests}</div><div className="stat-label">Completadas</div></div></div>
           <div className={`stat-card ${stats.returnedRequests > 0 ? 'stat-bad' : ''}`}><span className="stat-icon" aria-hidden="true">↩</span><div><div className="stat-num">{stats.returnedRequests}</div><div className="stat-label">Devueltas</div></div></div>
           <Can permission="IMPORT.VIEW">
-            <div className="stat-card"><span className="stat-icon" aria-hidden="true">↻</span><div><div className="stat-num">{stats.recentImports}</div><div className="stat-label">Importaciones recientes</div></div></div>
+            <div className="stat-card"><span className="stat-icon" aria-hidden="true">⇅</span><div><div className="stat-num">{stats.recentImports}</div><div className="stat-label">Importaciones recientes</div></div></div>
           </Can>
         </div>
       </section>

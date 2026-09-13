@@ -8,10 +8,10 @@ const PipelineStage: React.FC<{
   count?: number; errors?: number; warnings?: number;
 }> = ({ name, status, count, errors, warnings }) => {
   const icons = { done: '✓', warning: '⚠', processing: '●', pending: '○' };
-  const colors = { done: '#16a34a', warning: '#ca8a04', processing: '#2563eb', pending: '#94a3b8' };
+  const tones = { done: 'stage-done', warning: 'stage-warn', processing: 'stage-proc', pending: 'stage-pend' };
   return (
-    <div className="pipeline-stage" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: '1px solid #f1f5f9' }}>
-      <span style={{ color: colors[status], fontSize: 18, width: 24, textAlign: 'center' }}>{icons[status]}</span>
+    <div className="pipeline-stage">
+      <span className={`stage-icon ${tones[status]}`} aria-hidden="true">{icons[status]}</span>
       <div style={{ flex: 1 }}>
         <strong>{name}</strong>
         {count !== undefined && <span className="muted small" style={{ marginLeft: 8 }}>{count.toLocaleString()} registros</span>}
@@ -53,7 +53,7 @@ export const ImportsPage: React.FC = () => {
 
       {/* Data Pipeline */}
       <div className="card p16">
-        <h3 className="h1" style={{ fontSize: 16 }}>Procesamiento de Datos</h3>
+        <h3 className="card-title">Procesamiento de Datos</h3>
         <div style={{ marginTop: 12 }}>
           <PipelineStage name="1. Importación" status="done" count={totalRecords} />
           <PipelineStage name="2. Sanitización" status="done" count={totalImported} />
@@ -66,7 +66,7 @@ export const ImportsPage: React.FC = () => {
 
       {/* Import Runs */}
       <div className="card p16">
-        <h3 className="h1" style={{ fontSize: 16 }}>Historial de Importaciones</h3>
+        <h3 className="card-title">Historial de Importaciones</h3>
         {imports.length === 0 ? (
           <EmptyState title="No hay importaciones registradas" desc="Las importaciones aparecerán aquí cuando se procesen datos" />
         ) : (
@@ -101,13 +101,13 @@ export const ImportsPage: React.FC = () => {
 
       {/* Data Quality - Pendiente */}
       <div className="card p16">
-        <h3 className="h1" style={{ fontSize: 16 }}>Data Quality</h3>
+        <h3 className="card-title">Data Quality</h3>
         <EmptyState title="Módulo pendiente de implementación" desc="Data Quality se conectará cuando se implemente el backend de evaluación de calidad" />
       </div>
 
       {/* Matching - Pendiente */}
       <div className="card p16">
-        <h3 className="h1" style={{ fontSize: 16 }}>Matching</h3>
+        <h3 className="card-title">Matching</h3>
         <EmptyState title="Módulo pendiente de implementación" desc="Matching se conectará cuando se implemente el backend de matching" />
       </div>
     </div>

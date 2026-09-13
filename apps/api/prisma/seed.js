@@ -76,11 +76,14 @@ async function main() {
       'ACCOUNTING.APPROVE', 'ACCOUNTING.VIEW', 'IMPORT.RUN', 'IMPORT.VIEW',
       'AUDIT.VIEW', 'ADMIN.MANAGE', 'DASHBOARD.VIEW', 'MANAGER.APPROVE',
       'FINAL_REVIEW.APPROVE',
+      // 14E: existe pero NO se otorga a ningún rol (deny by default).
+      // Otorgarlo requiere acción administrativa explícita en fase posterior.
+      'PROFIT.WRITE',
     ];
     for (const code of permissions) {
       await prisma.permission.create({ data: { code } });
     }
-    console.log('Created 13 permissions');
+    console.log('Created 14 permissions');
 
     // RolePermissions (10F): conjuntos reales por rol.
     // AUDITOR queda sin permisos (mismo comportamiento efectivo que el puente 10E).

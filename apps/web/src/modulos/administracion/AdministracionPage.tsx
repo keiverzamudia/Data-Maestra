@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Page, Button, Input, Alert, Skeleton, ErrorState, EmptyState } from '../../componentes/ui';
+import { Page, Button, Input, Alert, Skeleton, ErrorState, EmptyState, SectionCard, DataTable, type DataColumn } from '../../componentes/ui';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
 import { useSession } from '../../contextos/SessionContext';
 import { apiUsuariosService, type AdminUser, type ProfitSyncResult } from '../../servicios/api/api-usuarios-service';
@@ -10,13 +10,6 @@ import { BulkAssignModal } from './BulkAssignModal';
 import { RoleAdminModal } from './RoleAdminModal';
 import { OrganizacionSection } from './OrganizacionSection';
 import type { Company, Department, Role } from '../../tipos';
-
-const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
-  <div className="card p16">
-    <h3 className="h1" style={{ fontSize: 16 }}>{title}</h3>
-    <div style={{ marginTop: 8 }}>{children}</div>
-  </div>
-);
 
 function uniq(values: (string | null | undefined)[]): string {
   const out = Array.from(new Set(values.filter((v): v is string => !!v)));
@@ -146,14 +139,14 @@ const UsuariosSection: React.FC<{ empresas: Company[]; departamentos: Department
 
   if (!canAdmin) {
     return (
-      <Section title="Personas y acceso">
+      <SectionCard title="Personas y acceso">
         <p className="muted">Sin permiso para administrar usuarios. Se requiere ADMIN.MANAGE.</p>
-      </Section>
+      </SectionCard>
     );
   }
 
   return (
-    <Section title="Personas y acceso">
+    <SectionCard title="Personas y acceso">
       <div className="stack-sm">
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <Input
@@ -255,11 +248,19 @@ const UsuariosSection: React.FC<{ empresas: Company[]; departamentos: Department
           />
         )}
       </div>
-    </Section>
+    </SectionCard>
   );
 };
 
 /** 10I — Sección Roles: datos reales de GET /roles. Solo ADMIN.MANAGE. */
+const roleColumns = (onAdmin: (code: string) => void): DataColumn<AdminRole>[] => [
+  { key: 'rol', header: 'Rol', label: 'Rol', render: r => <strong>{getRoleLabel(r.code, r.name)}</strong> },
+  { key: 'desc', header: 'Descripción', label: 'Descripción', render: r => <span className="muted small">{getRoleDescription(r.code) ?? r.description ?? '—'}</span> },
+  { key: 'usr', header: 'Usuarios', label: 'Usuarios', render: r => <>{r.userCount} usuario{r.userCount === 1 ? '' : 's'}</> },
+  { key: 'per', header: 'Permisos', label: 'Permisos', render: r => <>{r.permissionCount} permiso{r.permissionCount === 1 ? '' : 's'}</> },
+  { key: 'acc', header: 'Acciones', label: 'Acciones', render: r => <Button size="sm" variant="secondary" onClick={() => onAdmin(r.code)}>Administrar</Button> },
+];
+
 const RolesSection: React.FC = () => {
   const { hasPermission } = useSession();
   const [roles, setRoles] = React.useState<AdminRole[]>([]);
@@ -292,14 +293,14 @@ const RolesSection: React.FC = () => {
 
   if (!canAdmin) {
     return (
-      <Section title="Roles y Permisos">
+      <SectionCard title="Roles y Permisos">
         <p className="muted">Sin permiso para administrar roles. Se requiere ADMIN.MANAGE.</p>
-      </Section>
+      </SectionCard>
     );
   }
 
   return (
-    <Section title="Roles y Permisos">
+    <SectionCard title="Roles y Permisos" desc="Roles del sistema con su descripción funcional y permisos.">
       <div className="stack-sm">
         {loading && (
           <div className="stack-sm" aria-label="Cargando roles">
@@ -309,30 +310,21 @@ const RolesSection: React.FC = () => {
         {!loading && error && (
           <ErrorState title="No pudimos cargar los roles." onRetry={() => void load()} />
         )}
-        {!loading && !error && roles.length === 0 && <EmptyState title="Sin roles" desc="No se encontraron roles en el sistema." />}
-        {!loading && !error && roles.length > 0 && (
-          <div className="card table-responsive">
-          <table className="table">
-            <thead><tr><th>Rol</th><th>Descripción</th><th>Usuarios</th><th>Permisos</th><th>Acciones</th></tr></thead>
-            <tbody>
-              {roles.map(r => (
-                <tr key={r.code}>
-                  <td data-label="Rol"><strong>{getRoleLabel(r.code, r.name)}</strong></td>
-                  <td data-label="Descripción" className="muted small">{getRoleDescription(r.code) ?? r.description ?? '—'}</td>
-                  <td data-label="Usuarios">{r.userCount} usuario{r.userCount === 1 ? '' : 's'}</td>
-                  <td data-label="Permisos">{r.permissionCount} permiso{r.permissionCount === 1 ? '' : 's'}</td>
-                  <td data-label="Acciones"><Button size="sm" variant="secondary" onClick={() => setAdminCode(r.code)}>Administrar</Button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          </div>
+        {!loading && !error && (
+          <DataTable
+            columns={roleColumns(setAdminCode)}
+            rows={roles}
+            rowKey={r => r.code}
+            emptyTitle="Sin roles"
+            emptyDesc="No se encontraron roles en el sistema."
+            caption="Roles del sistema. Use Administrar para ver permisos y usuarios."
+          />
         )}
         {adminCode && (
           <RoleAdminModal roleCode={adminCode} onClose={() => setAdminCode(null)} onChanged={() => void load()} />
         )}
       </div>
-    </Section>
+    </SectionCard>
   );
 };
 export type AdminSection = 'personas' | 'organizacion' | 'roles';

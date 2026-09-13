@@ -20,7 +20,7 @@ export const Can: React.FC<{ permission: string; fallback?: React.ReactNode; chi
 export const AccessDenied: React.FC<{ permission: string }> = ({ permission }) => (
   <div className="stack">
     <div className="card p16">
-      <h3 className="h1" style={{ fontSize: 16 }}>Acceso denegado</h3>
+      <h3 className="card-title">Acceso denegado</h3>
       <p className="muted small">No tienes permiso para ver esta sección. Permiso requerido: <code>{permission}</code></p>
       <Link className="btn btn-secondary" to="/">Volver al inicio</Link>
     </div>

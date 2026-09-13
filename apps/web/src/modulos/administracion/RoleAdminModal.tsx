@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Drawer, Button, Input, Alert, ConfirmDialog, Skeleton, ErrorState, Field } from '../../componentes/ui';
+import { Drawer, Button, Alert, ConfirmDialog, Skeleton, ErrorState, Badge, SearchInput } from '../../componentes/ui';
 import { apiRolesService, type RoleDetail } from '../../servicios/api/api-roles-service';
 import { getRoleLabel, getRoleDescription, getPermissionLabel } from '../../utilidades/presentacion';
 
@@ -9,7 +9,15 @@ interface Props {
   onChanged: () => void;
 }
 
-/** 10I — Drawer de administración de un rol (consistente con UserAdminModal). */
+/**
+ * Consola de administración RBAC del rol (solo presentación; la lógica de
+ * concesión/retiro y el modelo efectivo DENEGADO > CONCEDIDO > HEREDADO
+ * pertenecen al backend y no cambian aquí).
+ *
+ * - Concedido al rol (+ CONCEDIDO): los usuarios del rol lo heredan.
+ * - Sin conceder: el rol no lo otorga. Las excepciones por usuario
+ *   (− DENEGADO / + CONCEDIDO) se gestionan en Personas y acceso.
+ */
 export const RoleAdminModal: React.FC<Props> = ({ roleCode, onClose, onChanged }) => {
   const [detail, setDetail] = React.useState<RoleDetail | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -60,6 +68,118 @@ export const RoleAdminModal: React.FC<Props> = ({ roleCode, onClose, onChanged }
   const q = filter.trim().toLowerCase();
   const catalog = (detail?.catalog ?? []).filter(p => !q || p.code.toLowerCase().includes(q));
 
+  const roleName = detail ? getRoleLabel(detail.code, detail.name) : 'Administrar rol';
+  const roleDesc = detail ? (getRoleDescription(detail.code) || detail.description) : null;
+
+  return (
+    <Drawer open onClose={onClose} title={roleName} subtitle="Administración del rol" size="narrow">
+      {loading && (
+        <div className="stack-sm" aria-label="Cargando rol">
+          <Skeleton height={16} width="40%" /><Skeleton height={60} /><Skeleton height={60} />
+        </div>
+      )}
+      {!loading && error && !detail && <ErrorState title="No pudimos cargar el rol." desc={error} onRetry={() => void load()} />}
+      {error && detail && <Alert tone="danger">{error}</Alert>}
+      {detail && (
+        <div className="stack">
+          {saving && <span className="muted small">Guardando...</span>}
+          {msg && <Alert tone="success">{msg}</Alert>}
+
+          <section className="role-head" aria-label="Resumen del rol">
+            <div className="eyebrow">Rol del sistema</div>
+            <h2 className="role-name">{roleName}</h2>
+            {roleDesc && <p className="muted small">{roleDesc}</p>}
+            <div className="role-stats">
+              <div className="role-stat"><strong>{detail.users.length}</strong><span>usuario{detail.users.length === 1 ? '' : 's'}</span></div>
+              <div className="role-stat"><strong>{detail.permissions.length}</strong><span>permiso{detail.permissions.length === 1 ? '' : 's'}</span></div>
+            </div>
+          </section>
+
+          <section aria-label="Permisos del rol">
+            <div className="perm-toolbar">
+              <h3 className="subsection-title">Permisos del rol</h3>
+              <Badge tone="blue">{detail.permissions.length} activos</Badge>
+            </div>
+            <div className="block-mt-sm">
+              <SearchInput value={filter} onChange={setFilter} placeholder="Buscar permiso..." />
+            </div>
+            {catalog.length === 0 && <p className="muted small block-mt-sm">Sin permisos para este filtro.</p>}
+            {groupCatalog(catalog).map(g => (
+              <div key={g.domain} className="block-mt">
+                <h4 className="perm-domain">{g.domain} <span className="muted">· {g.items.length} permiso{g.items.length === 1 ? '' : 's'}</span></h4>
+                <div className="stack-sm">
+                  {g.items.map(p => {
+                    const on = assigned.has(p.code);
+                    return (
+                      <div key={p.code} className="perm-row">
+                        <div className="perm-main">
+                          <div className="perm-name">{getPermissionLabel(p.code)}</div>
+                          <div className="muted small">{p.description || '—'}</div>
+                        </div>
+                        <Badge tone={on ? 'green' : 'gray'}>{on ? '+ CONCEDIDO' : 'Sin conceder'}</Badge>
+                        {on ? (
+                          <Button size="sm" variant="ghost" disabled={!!saving} onClick={() => setConfirmRemove(p.code)}>
+                            Retirar
+                          </Button>
+                        ) : (
+                          <Button size="sm" variant="secondary" disabled={!!saving} onClick={() => void toggle(p.code, false)}>
+                            Conceder
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+            <p className="muted small block-mt">
+              Lo concedido al rol es heredado (✓) por sus usuarios. Prioridad efectiva:
+              − DENEGADO sobre + CONCEDIDO sobre ✓ HEREDADO. Las excepciones por
+              usuario se gestionan en Personas y acceso.
+            </p>
+          </section>
+
+          <section aria-label="Usuarios con este rol">
+            <h3 className="subsection-title">Usuarios con este rol ({detail.users.length})</h3>
+            <div className="stack-sm block-mt-sm">
+              {detail.users.length === 0 && <p className="muted small">Sin usuarios asignados.</p>}
+              {detail.users.map(u => (
+                <div key={u.username} className="user-row">
+                  <strong>{u.displayName}</strong>
+                  <span className="muted small mono">{u.username}</span>
+                  <Badge tone={u.active ? 'green' : 'red'}>{u.active ? 'Activo' : 'Inactivo'}</Badge>
+                  {(u.company || u.department) && (
+                    <span className="muted small">{[u.company, u.department].filter(Boolean).join(' / ')}</span>
+                  )}
+                </div>
+              ))}
+              <p className="muted small">La asignación de usuarios se realiza desde Personas y acceso → Administrar.</p>
+            </div>
+          </section>
+
+          <div className="drawer-foot">
+            <Button variant="secondary" onClick={onClose}>Cerrar</Button>
+          </div>
+
+          <ConfirmDialog
+            open={confirmRemove !== null}
+            title="Retirar permiso del rol"
+            desc={confirmRemove ? `¿Retirar ${getPermissionLabel(confirmRemove)} del rol ${getRoleLabel(detail.code, detail.name)}? Los usuarios que lo heredaban dejarán de tenerlo (salvo override individual).` : undefined}
+            confirmLabel="Retirar permiso"
+            busy={!!saving}
+            onCancel={() => setConfirmRemove(null)}
+            onConfirm={() => {
+              const code = confirmRemove;
+              setConfirmRemove(null);
+              if (code) void toggle(code, true);
+            }}
+          />
+        </div>
+      )}
+    </Drawer>
+  );
+};
+
 const PERM_DOMAIN: Record<string, string> = {
   REQUEST: 'Solicitudes', WAREHOUSE: 'Almacén', ACCOUNTING: 'Contabilidad',
   FINAL_REVIEW: 'Revisión final', MANAGER: 'Gerencia', ADMIN: 'Administración',
@@ -80,99 +200,3 @@ function groupCatalog(catalog: Array<{ code: string; description: string | null 
   }
   return [...groups.entries()].map(([domain, items]) => ({ domain, items }));
 }
-
-  return (
-    <Drawer open onClose={onClose} title={detail ? `Administrar rol — ${getRoleLabel(detail.code, detail.name)}` : 'Administrar rol'}>
-      {loading && (
-        <div className="stack-sm" aria-label="Cargando rol">
-          <Skeleton height={16} width="40%" /><Skeleton height={60} /><Skeleton height={60} />
-        </div>
-      )}
-      {!loading && error && !detail && <ErrorState title="No pudimos cargar el rol." desc={error} onRetry={() => void load()} />}
-      {error && detail && <Alert tone="danger">{error}</Alert>}
-      {detail && (
-        <div className="stack">
-          {saving && <span className="muted small">Guardando...</span>}
-          {msg && <Alert tone="success">{msg}</Alert>}
-          <div className="card p16">
-            <h3 className="h1" style={{ fontSize: 15 }}>{getRoleLabel(detail.code, detail.name)}</h3>
-            <div className="review-grid" style={{ marginTop: 8 }}>
-              <div><span className="muted small">Usuarios</span><br /><strong>{detail.users.length}</strong></div>
-              <div><span className="muted small">Permisos</span><br /><strong>{detail.permissions.length}</strong></div>
-            </div>
-            {(getRoleDescription(detail.code) || detail.description) && <p className="muted small" style={{ marginTop: 8 }}>{getRoleDescription(detail.code) ?? detail.description}</p>}
-          </div>
-          <div className="card p16">
-            <h3 className="h1" style={{ fontSize: 15 }}>Permisos del rol</h3>
-            <div style={{ marginTop: 8 }} className="stack-sm">
-              <Field label="Buscar permiso">
-                <Input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Buscar permiso..." autoComplete="off" aria-label="Buscar permiso" />
-              </Field>
-              {catalog.length === 0 && <p className="muted small">Sin permisos</p>}
-              {groupCatalog(catalog).map(g => (
-                <div key={g.domain}>
-                  <h4 className="muted small" style={{ margin: '8px 0 4px', textTransform: 'uppercase', letterSpacing: '.5px' }}>{g.domain}</h4>
-                  <table className="table">
-                    <tbody>
-                      {g.items.map(p => {
-                        const on = assigned.has(p.code);
-                        return (
-                          <tr key={p.code}>
-                            <td data-label="Permiso"><strong>{getPermissionLabel(p.code)}</strong><br /><span className="muted small">{p.description || '—'}</span></td>
-                            <td data-label="Asignado">
-                              <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
-                                <input
-                                  type="checkbox"
-                                  checked={on}
-                                  disabled={!!saving}
-                                  onChange={() => { if (on) setConfirmRemove(p.code); else void toggle(p.code, false); }}
-                                  aria-label={`Permiso ${getPermissionLabel(p.code)}`}
-                                />
-                                <span>{on ? '☑' : '☐'}</span>
-                              </label>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="card p16">
-            <h3 className="h1" style={{ fontSize: 15 }}>Usuarios con este rol ({detail.users.length})</h3>
-            <div style={{ marginTop: 8 }} className="stack-sm">
-              {detail.users.length === 0 && <p className="muted small">Sin usuarios asignados.</p>}
-              {detail.users.map(u => (
-                <div key={u.username} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <strong>{u.displayName}</strong>
-                  <span className="muted small">{u.username}</span>
-                  <span className={`badge ${u.active ? 'badge-green' : 'badge-red'}`}>{u.active ? 'Activo' : 'Inactivo'}</span>
-                  {(u.company || u.department) && (
-                    <span className="muted small">{[u.company, u.department].filter(Boolean).join(' / ')}</span>
-                  )}
-                </div>
-              ))}
-              <p className="muted small">La asignación de usuarios se realiza desde Usuarios → Administrar.</p>
-            </div>
-          </div>
-          <Button variant="secondary" onClick={onClose}>Cerrar</Button>
-          <ConfirmDialog
-            open={confirmRemove !== null}
-            title="Retirar permiso del rol"
-            desc={confirmRemove ? `¿Retirar ${getPermissionLabel(confirmRemove)} del rol ${getRoleLabel(detail.code, detail.name)}? Los usuarios que lo heredaban dejarán de tenerlo (salvo override individual).` : undefined}
-            confirmLabel="Retirar permiso"
-            busy={!!saving}
-            onCancel={() => setConfirmRemove(null)}
-            onConfirm={() => {
-              const code = confirmRemove;
-              setConfirmRemove(null);
-              if (code) void toggle(code, true);
-            }}
-          />
-        </div>
-      )}
-    </Drawer>
-  );
-};

@@ -117,7 +117,7 @@ const NotifBell: React.FC = () => {
           {!loading && !error && notifs.length === 0 && <div className="muted small" style={{ padding: 12 }}>Sin notificaciones.</div>}
           {!loading && !error && notifs.slice(0, 20).map(n => (
             <div key={n.id} className={`notif-item ${n.readAt ? '' : 'notif-unread'}`}>
-              <div className="notif-title">{!n.readAt && <span aria-hidden="true">🔵 </span>}{n.title}</div>
+              <div className="notif-title">{!n.readAt && <span className="notif-dot" aria-hidden="true" />}{n.title}</div>
               <div className="muted small">{n.body}</div>
               <div className="muted small notif-meta">
                 <span>{timeAgo(n.createdAt)}</span>
@@ -138,10 +138,20 @@ const GROUP_LABEL: Record<string, string> = { operate: 'Operación', admin: 'Adm
 
 export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [collapsed, setCollapsed] = React.useState(false);
+  const [mobileOpen, setMobileOpen] = React.useState(false);
   const [search, setSearch] = React.useState('');
   const { companyId, setCompanyId, companies } = useCompany();
   const { logout, hasPermission } = useSession();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+
+  // Al navegar en móvil, la navegación drawer se cierra sola.
+  React.useEffect(() => { setMobileOpen(false); }, [pathname]);
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMobileOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const nav = visibleNav(hasPermission);
   const operate = nav.filter(n => n.key !== 'admin');
@@ -166,16 +176,24 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
 
   return (
     <div className="layout">
-      <aside className={`sidebar ${collapsed ? 'sidebar-collapsed' : ''}`}>
+      {mobileOpen && (
+        <div
+          className="sidebar-overlay"
+          aria-hidden="true"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+      <aside className={`sidebar ${collapsed ? 'sidebar-collapsed' : ''} ${mobileOpen ? 'sidebar-mobile-open' : ''}`}>
         <div className="sidebar-brand">
           <span className="brand-mark" aria-hidden="true">DM</span>
           {!collapsed && (
             <span className="brand-text">
               <span className="logo">Data-Maestra</span>
-              <span className="brand-sub">Master Data Management</span>
+              <span className="brand-sub">Gestión de Datos Maestros</span>
             </span>
           )}
-          <button className="btn btn-ghost btn-sm brand-toggle" onClick={() => setCollapsed(v => !v)} aria-label={collapsed ? 'Expandir navegación' : 'Colapsar navegación'}>{collapsed ? '»' : '«'}</button>
+          <button className="btn btn-ghost btn-sm brand-toggle brand-toggle-desktop" onClick={() => setCollapsed(v => !v)} aria-label={collapsed ? 'Expandir navegación' : 'Colapsar navegación'}>{collapsed ? '»' : '«'}</button>
+          <button className="btn btn-ghost btn-sm brand-toggle brand-toggle-mobile" onClick={() => setMobileOpen(false)} aria-label="Cerrar navegación">✕</button>
         </div>
         <nav className="nav" aria-label="Navegación principal">
           {nav.length === 0 && !collapsed && (
@@ -195,12 +213,20 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
           )}
         </nav>
         <div className="sidebar-footer">
-          {!collapsed && <div className="muted small sidebar-foot-note">Master Data Management</div>}
+          {!collapsed && <div className="muted small sidebar-foot-note">Gestión de Datos Maestros</div>}
         </div>
       </aside>
       <div className="main">
         <header className="header">
           <div className="header-left">
+            <button
+              className="btn btn-ghost nav-toggle"
+              onClick={() => setMobileOpen(v => !v)}
+              aria-label="Abrir navegación"
+              aria-expanded={mobileOpen}
+            >
+              ☰
+            </button>
             <input
               className="input header-search"
               placeholder="Búsqueda global (código, descripción, part number)..."

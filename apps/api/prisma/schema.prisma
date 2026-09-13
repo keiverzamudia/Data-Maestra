@@ -367,6 +367,9 @@ model RequestData {
   articleTypeManual Boolean  @default(false) @map("article_type_manual")
   taxType           String?  @map("tax_type")
   unitCode          String?  @map("unit_code")
+  // Código Profit de marca/color tal como lo eligió Warehouse (14E: el espejo
+  // Brand solo guarda nombre; el código se necesita para co_color).
+  brandCode         String?  @map("brand_code")
 
   request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
 

@@ -33,7 +33,7 @@ export const AccountingStandardPanel: React.FC<Props> = ({ groupName, groupCode,
     <section className="card p16" aria-label="Información contable Profit">
       <div className="acct-head">
         <div>
-          <h3 className="h1" style={{ fontSize: 16 }}>Información Contable Profit</h3>
+          <h3 className="card-title">Información Contable Profit</h3>
           <p className="muted small" style={{ marginTop: 4 }}>
             Estándar contable del grupo {groupName} ({groupCode}).
           </p>

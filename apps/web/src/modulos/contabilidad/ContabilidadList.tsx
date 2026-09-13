@@ -375,7 +375,7 @@ export const AccountingList: React.FC = () => {
                   <td data-label="Subgrupo">{findName(subgrupos, r.subgroupId)}</td>
                   <td data-label="Marca">{findName(marcas, r.brandId)}</td>
                   <td data-label="Código Master">
-                    <span className="master-code-display" style={{ fontSize: 12 }}>
+                    <span className="master-code-sm">
                       {r.masterCode || (r.groupId && r.subgroupId
                         ? `${grupos.find(g => g.id === r.groupId)?.code || ''}${subgrupos.find(s => s.id === r.subgroupId)?.code || ''}000001`
                         : '—')}

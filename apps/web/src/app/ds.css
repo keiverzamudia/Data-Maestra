@@ -234,6 +234,8 @@ button.action-card:focus-visible{outline:2px solid var(--blue);outline-offset:2p
 .meta-label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);font-weight:600}
 .meta-value{font-weight:700;font-size:var(--text-base)}
 .master-code{font-family:var(--font-mono);font-weight:800;font-size:20px;color:var(--blue-active);background:var(--blue-soft);border:1px solid var(--border);border-radius:var(--radius-sm);padding:2px 12px;letter-spacing:1px}
+.master-code-sm{font-family:var(--font-mono);font-weight:700;font-size:var(--text-sm);color:var(--blue-active)}
+.code-inline{font-family:var(--font-mono);font-size:var(--text-caption);padding:2px 6px;background:var(--surface-soft);border:1px solid var(--border-soft);border-radius:var(--radius-xs)}
 .master-strip{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--sp-3)}
 .copy-btn{display:inline-flex;align-items:center;gap:4px}
 .acct-table{width:100%;border-collapse:collapse;font-size:var(--text-md)}
@@ -264,14 +266,100 @@ button.action-card:focus-visible{outline:2px solid var(--blue);outline-offset:2p
 .acct-code{font-family:var(--font-mono);font-weight:700;font-size:var(--text-md);word-break:break-all}
 .acct-desc{font-size:var(--text-base)}
 .acct-origin{margin-top:4px}
+/* Enterprise — sección, tabla y paginador oficiales */
+.section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--sp-3);margin-bottom:var(--sp-3);flex-wrap:wrap}
+.section-card-title{font-size:var(--text-card-title);font-weight:700;margin:0;line-height:var(--line-height-tight)}
+.section-card-desc{margin-top:2px}
+.section-card-actions{display:flex;gap:var(--sp-2);flex-wrap:wrap}
+.table-card{overflow:hidden}
+.table-caption{text-align:left;padding:var(--sp-2) var(--sp-3)}
+.table th.cell-num,.table td.cell-num{text-align:right;font-variant-numeric:tabular-nums}
+.table tbody tr:hover{background:var(--surface-soft)}
+.pager-select{width:auto;margin-left:var(--sp-2)}
+/* Enterprise — zona de carga de imagen */
+.dropzone{border:2px dashed var(--border);border-radius:var(--radius-sm);padding:var(--sp-6);text-align:center;min-height:120px;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.dropzone-filled{padding:var(--sp-3);min-height:0}
+.dropzone-preview{max-width:100%;max-height:300px;border-radius:var(--radius-sm);display:block;margin:0 auto}
+.checklist-single{grid-template-columns:1fr}
+/* Enterprise — confirmación de éxito */
+.success-hero{text-align:center;padding:var(--sp-10)}
+.success-hero-mark{font-size:48px;margin-bottom:var(--sp-4);color:var(--success);font-weight:800}
+/* Enterprise — acciones en fila de tabla */
+.row-actions{display:inline-flex;gap:var(--sp-1);flex-wrap:wrap}
+/* Enterprise — nota bajo campo (converge muted small + marginTop 4) */
+.field-note{margin-top:var(--sp-1)}
+/* Enterprise — Almacén: recepción, dry-run y bloques de campo */
+.received-desc{margin-top:var(--sp-1);font-weight:600}
+.field-label-block{display:block;margin-bottom:var(--sp-1)}
+.evidence-action{cursor:pointer}
+.field-block{margin-top:var(--sp-3);display:block}
+.block-mt{margin-top:var(--sp-3)}
+.block-mt-sm{margin-top:var(--sp-2)}
+.callout-pad{padding-left:var(--sp-2)}
+.callout-comment{margin-top:var(--sp-2);font-weight:600}
+.origin-code{font-family:var(--font-mono);font-weight:700;font-size:var(--text-base);margin-top:var(--sp-1)}
+.dryrun-verdict{font-weight:700}
+.dryrun-ready{color:var(--success)}
+.dryrun-notready{color:var(--danger)}
+.dryrun-check{display:flex;gap:var(--sp-2);align-items:baseline}
+/* Enterprise — pipeline de importación */
+.pipeline-stage{display:flex;align-items:center;gap:var(--sp-3);padding:var(--sp-3) 0;border-bottom:1px solid var(--border-soft)}
+.stage-icon{font-size:18px;width:24px;text-align:center}
+.stage-done{color:var(--success)}
+.stage-warn{color:var(--warning)}
+.stage-proc{color:var(--blue)}
+.stage-pend{color:var(--sidebar-dim)}
+/* Enterprise — niveles de título oficiales (card 16 / subsección 15) */
+.card-title{font-size:var(--text-h2);font-weight:700;margin:0;line-height:var(--line-height-tight)}
+.subsection-title{font-size:var(--text-h3);font-weight:700;margin:0;line-height:var(--line-height-tight)}
+/* Enterprise — línea de código contable en detalle */
+.acct-line{margin-bottom:var(--sp-1);font-size:var(--text-md)}
+.acct-pos-badge{margin-right:var(--sp-2)}
+/* Enterprise — drawer estrecho (consolas como RBAC) + pie fijo + subtítulo */
+.drawer-narrow{width:min(480px,100%)}
+.drawer-subtitle{margin-top:2px}
+.drawer-foot{position:sticky;bottom:0;background:var(--card);border-top:1px solid var(--border);padding:var(--sp-3) 0 var(--sp-1);margin-top:var(--sp-3);display:flex;gap:var(--sp-2);justify-content:flex-end}
+/* Enterprise — consola RBAC del rol */
+.eyebrow{font-size:var(--text-caption);text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700}
+.role-head{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--sp-4)}
+.role-name{font-size:20px;font-weight:800;margin:2px 0 0;line-height:var(--line-height-tight)}
+.role-stats{display:flex;gap:var(--sp-4);margin-top:var(--sp-3)}
+.role-stat{display:flex;flex-direction:column}
+.role-stat strong{font-size:var(--text-metric);font-weight:800;line-height:1}
+.role-stat span{font-size:var(--text-sm);color:var(--muted)}
+.perm-toolbar{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2)}
+.perm-domain{font-size:var(--text-sm);text-transform:uppercase;letter-spacing:.5px;color:var(--slate);margin:0 0 var(--sp-2);font-weight:700}
+.perm-row{display:flex;align-items:center;gap:var(--sp-2);background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:var(--sp-2) var(--sp-3);flex-wrap:wrap}
+.perm-main{flex:1;min-width:180px}
+.perm-name{font-weight:600;font-size:var(--text-md)}
+.user-row{display:flex;gap:var(--sp-2);align-items:center;flex-wrap:wrap}
 /* 11G — paginador de admin */
 .pager{display:flex;gap:var(--sp-3);align-items:center;flex-wrap:wrap;margin-top:var(--sp-2)}
 .pager label{display:flex;align-items:center}
-/* 11F — en móvil el sidebar colapsa a rail de iconos (solo CSS, sin lógica) */
-@media(max-width:700px){
-  .sidebar{width:var(--sidebar-w-collapsed)}
-  .sidebar .brand-text,.sidebar .nav-section,.sidebar .nav-link span:not(.nav-icon),.sidebar-foot-note{display:none}
-  .sidebar .nav-link{justify-content:center}
-  .header-search{min-width:0}
+/* Enterprise — navegación móvil drawer + punto de no-leído + mono técnico */
+.nav-toggle{display:none}
+.brand-toggle-mobile{display:none}
+.sidebar-overlay{display:none}
+.notif-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--blue);margin-right:6px;vertical-align:1px}
+.mono{font-family:var(--font-mono)}
+@media(max-width:767px){
+  .nav-toggle{display:inline-flex}
+  .sidebar{
+    position:fixed;inset:0 auto 0 0;height:100dvh;width:min(280px,84vw);z-index:var(--z-modal);
+    transform:translateX(-102%);transition:transform var(--transition-base);
+    box-shadow:var(--shadow-md);
+  }
+  .sidebar-mobile-open{transform:translateX(0)}
+  .sidebar-mobile-open .brand-text,.sidebar-mobile-open .nav-section,
+  .sidebar-mobile-open .nav-link span:not(.nav-icon),.sidebar-mobile-open .sidebar-foot-note{display:block}
+  .sidebar-mobile-open .nav-link{justify-content:flex-start}
+  .sidebar-overlay{display:block;position:fixed;inset:0;background:var(--overlay);z-index:var(--z-panel)}
+  .brand-toggle-desktop{display:none}
+  .brand-toggle-mobile{display:inline-flex}
+  .page-title{font-size:19px}
+  .header-search{font-size:var(--text-md)}
+  .header-company .muted{display:none}
+  .content{overflow-x:hidden}
 }
+/* (Rail móvil anterior reemplazado por drawer en bloque Enterprise superior.) */
 @media(max-width:900px){.login-page{grid-template-columns:1fr}.login-brand{padding:28px 24px;gap:10px}.login-tagline{font-size:var(--text-h1)}.login-brand-desc,.login-points{display:none}.login-auth{padding:24px 16px}.login-form{padding:24px}}

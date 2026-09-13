@@ -5,7 +5,7 @@ import { useSession } from '../../contextos/SessionContext';
 import { useCompany } from '../../contextos/CompanyContext';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
 import { Page, Button, StatusBadge, Skeleton, ErrorState, Alert } from '../../componentes/ui';
-import { RequestDetail, WorkflowStepper } from '../../componentes/workflow';
+import { RequestDetail, WorkflowStepper, ProfitRegistrationPanel } from '../../componentes/workflow';
 import type { Request, ApprovalRef } from '../../tipos';
 
 const AREA_ACTUAL: Record<string, string> = {
@@ -117,7 +117,7 @@ export const RequestDetailPage: React.FC = () => {
 
       {(myLast || isMine) && (
         <div className="card p16" aria-label="Mi participación">
-          <h3 className="h1" style={{ fontSize: 15 }}>Mi participación</h3>
+          <h3 className="subsection-title">Mi participación</h3>
           {myLast ? (
             <div style={{ marginTop: 8 }}>
               <p><strong>✓ {ACCION_LABEL[myLast.action] ?? myLast.action} por mí</strong></p>
@@ -138,7 +138,7 @@ export const RequestDetailPage: React.FC = () => {
       )}
 
       <div className="card p16" aria-label="Recorrido completo">
-        <h3 className="h1" style={{ fontSize: 15 }}>Recorrido</h3>
+        <h3 className="subsection-title">Recorrido</h3>
         <div className="stack-sm" style={{ marginTop: 8 }}>
           {approvals.length === 0 && <p className="muted small">Aún sin acciones registradas.</p>}
           {approvals.map(a => (
@@ -156,6 +156,8 @@ export const RequestDetailPage: React.FC = () => {
       </div>
 
       <RequestDetail request={request} showWorkflow={false} />
+
+      <ProfitRegistrationPanel request={request} onChanged={load} />
     </Page>
   );
 };

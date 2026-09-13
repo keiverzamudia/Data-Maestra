@@ -3,7 +3,7 @@ import { Can } from '../../componentes/auth/Can';
 import { useCompany } from '../../contextos/CompanyContext';
 import { requestService } from '../../servicios';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
-import { Button, SearchInput, StatusBadge, PriorityBadge, EmptyState, Alert, ConfirmDialog, Skeleton, ErrorState } from '../../componentes/ui';
+import { Button, SearchInput, StatusBadge, PriorityBadge, EmptyState, Alert, ConfirmDialog, Skeleton, ErrorState, DataTable, type DataColumn } from '../../componentes/ui';
 import { Page } from '../../componentes/ui';
 import { RequestDetail, WorkflowStepper, WorkflowStatusInfo } from '../../componentes/workflow';
 import type { Request } from '../../tipos';
@@ -60,6 +60,26 @@ export const ApprovalsPage: React.FC = () => {
       setApproving(false);
     }
   };
+
+  const columns: DataColumn<Request>[] = [
+    { key: 'num', header: 'N°', label: 'N°', render: r => <strong>#{r.requestNumber}</strong> },
+    { key: 'desc', header: 'Descripción', label: 'Descripción', render: r => <span className="ellipsis">{r.requestedDescription}</span> },
+    { key: 'req', header: 'Solicitante', label: 'Solicitante', render: r => usuarios.find(u => u.id === r.requesterId)?.displayName || '—' },
+    { key: 'area', header: 'Área', label: 'Área', render: r => departamentos.find(d => d.id === r.departmentId)?.name || '—' },
+    { key: 'fecha', header: 'Fecha', label: 'Fecha', render: r => <span className="muted small">{new Date(r.createdAt).toLocaleDateString('es-VE')}</span> },
+    { key: 'pri', header: 'Prioridad', label: 'Prioridad', render: r => <PriorityBadge priority={r.priority} /> },
+    { key: 'est', header: 'Estado', label: 'Estado', render: r => <StatusBadge status={r.status} /> },
+    { key: 'acc', header: 'Acción', label: 'Acción', render: r => (
+      <span className="row-actions">
+        <Button size="sm" variant="secondary" onClick={() => setSelected(r)}>Ver</Button>
+        <Can permission="MANAGER.APPROVE">
+          <Button size="sm" onClick={() => handleApprove(r.id)} disabled={approving}>
+            {approving ? 'Aprobando...' : 'Aprobar'}
+          </Button>
+        </Can>
+      </span>
+    ) },
+  ];
 
   if (selected) {
     return (
@@ -126,53 +146,12 @@ export const ApprovalsPage: React.FC = () => {
         <EmptyState title="No hay solicitudes pendientes de aprobación" />
       )}
       {!loading && !listError && filtered.length > 0 && (
-        <div className="card table-responsive">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>N°</th>
-                <th>Descripción</th>
-                <th>Solicitante</th>
-                <th>Área</th>
-                <th>Fecha</th>
-                <th>Prioridad</th>
-                <th>Estado</th>
-                <th>Acción</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(r => {
-                const requester = usuarios.find(u => u.id === r.requesterId);
-                const dept = departamentos.find(d => d.id === r.departmentId);
-                return (
-                  <tr key={r.id}>
-                    <td data-label="N°"><strong>#{r.requestNumber}</strong></td>
-                    <td data-label="Descripción" className="ellipsis">{r.requestedDescription}</td>
-                    <td data-label="Solicitante">{requester?.displayName || '—'}</td>
-                    <td data-label="Área">{dept?.name || '—'}</td>
-                    <td data-label="Fecha" className="muted small">{new Date(r.createdAt).toLocaleDateString('es-VE')}</td>
-                    <td data-label="Prioridad"><PriorityBadge priority={r.priority} /></td>
-                    <td data-label="Estado"><StatusBadge status={r.status} /></td>
-                    <td data-label="Acción">
-                      <div style={{ display: 'flex', gap: 4 }}>
-                        <Button size="sm" variant="secondary" onClick={() => setSelected(r)}>Ver</Button>
-                        <Can permission="MANAGER.APPROVE">
-                          <Button
-                            size="sm"
-                            onClick={() => handleApprove(r.id)}
-                            disabled={approving}
-                          >
-                            {approving ? 'Aprobando...' : 'Aprobar'}
-                          </Button>
-                        </Can>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <DataTable<Request>
+          columns={columns}
+          rows={filtered}
+          rowKey={r => r.id}
+          caption={`${filtered.length} por aprobar.`}
+        />
       )}
     </Page>
   );

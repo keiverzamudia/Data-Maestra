@@ -1,82 +1,84 @@
 // @vitest-environment jsdom
+import * as React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { RoleAdminModal } from './RoleAdminModal';
-import { apiRolesService } from '../../servicios/api/api-roles-service';
 
 vi.mock('../../servicios/api/api-roles-service', () => ({
   apiRolesService: {
-    listar: vi.fn(),
     detalle: vi.fn(),
     conceder: vi.fn(),
     quitar: vi.fn(),
   },
 }));
 
-const detalleMock = apiRolesService.detalle as any;
-const concederMock = apiRolesService.conceder as any;
-const quitarMock = apiRolesService.quitar as any;
+import { apiRolesService } from '../../servicios/api/api-roles-service';
 
 const DETAIL = {
-  code: 'REQUESTER',
-  name: 'Solicitante',
+  code: 'ACCOUNTING',
+  name: 'Contabilidad',
   description: null,
-  permissions: [{ code: 'REQUEST.VIEW', description: null }],
+  permissions: [{ code: 'ACCOUNTING.APPROVE', description: 'Aprueba validación' }],
   catalog: [
-    { code: 'REQUEST.CREATE', description: null },
-    { code: 'REQUEST.VIEW', description: null },
+    { code: 'ACCOUNTING.APPROVE', description: 'Aprueba validación' },
+    { code: 'ACCOUNTING.VIEW', description: 'Consulta la cola' },
   ],
-  users: [{ displayName: 'Juan Pérez', username: 'j.perez', active: true, company: 'EMP-A', department: null }],
+  users: [
+    { displayName: 'Ana Pérez', username: 'aperez', active: true, company: 'Empresa 1', department: 'Contabilidad' },
+  ],
 };
 
-describe('RoleAdminModal 10I', () => {
+describe('RoleAdminModal (consola RBAC)', () => {
   beforeEach(() => {
+    (apiRolesService.detalle as any).mockResolvedValue(DETAIL);
+  });
+
+  afterEach(() => {
+    cleanup();
     vi.clearAllMocks();
-    detalleMock.mockResolvedValue(structuredClone(DETAIL));
-  });
-  afterEach(() => cleanup());
-
-  it('carga el detalle del rol', async () => {
-    render(<RoleAdminModal roleCode="REQUESTER" onClose={() => {}} onChanged={() => {}} />);
-    expect(await screen.findByText('Administrar rol — Solicitante')).toBeTruthy();
-    expect(await screen.findByText('Juan Pérez')).toBeTruthy();
-    expect(detalleMock).toHaveBeenCalledWith('REQUESTER');
   });
 
-  it('muestra permisos asignados y permite asignar', async () => {
-    const changed = vi.fn();
-    render(<RoleAdminModal roleCode="REQUESTER" onClose={() => {}} onChanged={changed} />);
-    await screen.findByText('Crear solicitudes');
-    const box = screen.getByLabelText('Permiso Crear solicitudes') as HTMLInputElement;
-    expect(box.checked).toBe(false);
-    concederMock.mockResolvedValue({ ok: true, created: true });
-    fireEvent.click(box);
-    await waitFor(() => expect(concederMock).toHaveBeenCalledWith('REQUESTER', 'REQUEST.CREATE'));
-    expect(changed).toHaveBeenCalled();
+  it('título es el rol con subtítulo, sin "Administrar rol —"', async () => {
+    render(<RoleAdminModal roleCode="ACCOUNTING" onClose={() => {}} onChanged={() => {}} />);
+    await waitFor(() => expect(screen.getAllByText('Contabilidad').length).toBeGreaterThan(0));
+    expect(screen.getByText('Administración del rol')).toBeDefined();
+    expect(screen.queryByText(/Administrar rol —/)).toBeNull();
   });
 
-  it('permite quitar un permiso asignado', async () => {
-    render(<RoleAdminModal roleCode="REQUESTER" onClose={() => {}} onChanged={() => {}} />);
-    await screen.findByText('Consultar solicitudes');
-    const box = screen.getByLabelText('Permiso Consultar solicitudes') as HTMLInputElement;
-    expect(box.checked).toBe(true);
-    quitarMock.mockResolvedValue({ ok: true, removed: true });
-    fireEvent.click(box);
-    fireEvent.click(await screen.findByText('Retirar permiso'));
-    await waitFor(() => expect(quitarMock).toHaveBeenCalledWith('REQUESTER', 'REQUEST.VIEW'));
+  it('muestra estado + CONCEDIDO y acción Conceder separados', async () => {
+    render(<RoleAdminModal roleCode="ACCOUNTING" onClose={() => {}} onChanged={() => {}} />);
+    await waitFor(() => expect(screen.getByText('+ CONCEDIDO')).toBeDefined());
+    expect(screen.getByText('Sin conceder')).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Conceder' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Retirar' })).toBeDefined();
+    // Sin checkboxes ambiguos
+    expect(screen.queryByRole('checkbox')).toBeNull();
   });
 
-  it('muestra error de API', async () => {
-    detalleMock.mockRejectedValueOnce(new Error('Fallo de red'));
-    render(<RoleAdminModal roleCode="REQUESTER" onClose={() => {}} onChanged={() => {}} />);
-    expect(await screen.findByText('Fallo de red')).toBeTruthy();
+  it('conceder llama al endpoint y muestra feedback', async () => {
+    const onChanged = vi.fn();
+    (apiRolesService.conceder as any).mockResolvedValue({ ok: true, created: true });
+    render(<RoleAdminModal roleCode="ACCOUNTING" onClose={() => {}} onChanged={onChanged} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Conceder' })).toBeDefined());
+    fireEvent.click(screen.getByRole('button', { name: 'Conceder' }));
+    await waitFor(() => expect(apiRolesService.conceder).toHaveBeenCalledWith('ACCOUNTING', 'ACCOUNTING.VIEW'));
+    await waitFor(() => expect(screen.getByText('Permiso asignado correctamente')).toBeDefined());
+    expect(onChanged).toHaveBeenCalled();
   });
 
-  it('filtra permisos por búsqueda', async () => {
-    render(<RoleAdminModal roleCode="REQUESTER" onClose={() => {}} onChanged={() => {}} />);
-    await screen.findByText('Crear solicitudes');
-    fireEvent.change(screen.getByPlaceholderText('Buscar permiso...'), { target: { value: 'create' } });
-    expect(screen.queryByText('REQUEST.VIEW')).toBeNull();
-    expect(screen.getByText('Crear solicitudes')).toBeTruthy();
+  it('buscador filtra permisos dentro de la toolbar', async () => {
+    render(<RoleAdminModal roleCode="ACCOUNTING" onClose={() => {}} onChanged={() => {}} />);
+    await waitFor(() => expect(screen.getByText('+ CONCEDIDO')).toBeDefined());
+    fireEvent.change(screen.getByPlaceholderText('Buscar permiso...'), { target: { value: 'VIEW' } });
+    await waitFor(() => expect(screen.queryByText('+ CONCEDIDO')).toBeNull());
+    expect(screen.getByText('Sin conceder')).toBeDefined();
+  });
+
+  it('muestra usuarios reales y pie con Cerrar', async () => {
+    const { container } = render(<RoleAdminModal roleCode="ACCOUNTING" onClose={() => {}} onChanged={() => {}} />);
+    await waitFor(() => expect(screen.getByText('Ana Pérez')).toBeDefined());
+    expect(screen.getByText('Usuarios con este rol (1)')).toBeDefined();
+    // Pie fijo del drawer con Cerrar (además del cierre del encabezado).
+    expect(container.querySelector('.drawer-foot button')).not.toBeNull();
   });
 });

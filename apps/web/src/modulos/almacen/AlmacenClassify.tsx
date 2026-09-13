@@ -6,7 +6,7 @@ import { useCatalogos } from '../../hooks/useCatalogos';
 import { useProfitCatalogos } from '../../hooks/useProfitCatalogos';
 import type { DryRunResult } from '../../contratos';
 import { analyzerProposals } from '../../mock/source-items';
-import { Button, Select, Textarea, Modal, ImageLightbox, Alert, ConfirmDialog, Field, StatusBadge, Skeleton } from '../../componentes/ui';
+import { Button, Select, Textarea, Modal, ImageLightbox, Alert, ConfirmDialog, Field, StatusBadge, Skeleton, SectionCard } from '../../componentes/ui';
 import { Page } from '../../componentes/ui';
 import { WorkflowStepper, WorkflowStatusInfo, AnalyzerPanel, MasterCodePreview } from '../../componentes/workflow';
 import type { Request } from '../../tipos';
@@ -241,10 +241,10 @@ export const WarehouseClassify: React.FC = () => {
           if (lastRejection) {
             return (
               <Alert tone="danger">
-                <div className="callout" style={{ paddingLeft: 8 }}>
+                <div className="callout callout-pad">
                   <strong>Observación de Contabilidad</strong>
-                  <p style={{ marginTop: 8, fontWeight: 600 }}>{lastRejection.comment}</p>
-                  <p className="muted small" style={{ marginTop: 4 }}>
+                  <p className="callout-comment">{lastRejection.comment}</p>
+                  <p className="muted small field-note">
                     {lastRejection.actor?.displayName || '—'} · {new Date(lastRejection.createdAt).toLocaleString('es-VE')}
                   </p>
                 </div>
@@ -257,27 +257,28 @@ export const WarehouseClassify: React.FC = () => {
 
       <div className="grid2">
         <div className="stack">
-          <div className="card p16">
-            <h3 className="h1" style={{ fontSize: 16 }}>Información recibida</h3>
-            <p className="muted small read-only-note">Datos de la solicitud. Solo lectura: Almacén no modifica la descripción original.</p>
-            <div style={{ marginTop: 8 }}>
+          <SectionCard
+            title="Información recibida"
+            desc="Datos de la solicitud. Solo lectura: Almacén no modifica la descripción original."
+          >
+            <div>
               <span className="muted small">Descripción original</span>
-              <p style={{ marginTop: 4, fontWeight: 600 }}>{request.requestedDescription}</p>
+              <p className="received-desc">{request.requestedDescription}</p>
             </div>
             {request.referencePhotoUri && (
-              <div style={{ marginTop: 12 }}>
-                <span className="muted small" style={{ display: 'block', marginBottom: 4 }}>Imagen referencial</span>
+              <div className="block-mt">
+                <span className="muted small field-label-block">Imagen referencial</span>
                 <img
                   src={`/api/v1/uploads/${request.referencePhotoUri}`}
                   alt="Imagen referencial"
                   onClick={() => setLightboxOpen(true)}
-                  style={{ maxWidth: '100%', maxHeight: 250, borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border)' }}
+                  className="evidence-thumb evidence-action"
                   onMouseEnter={e => (e.currentTarget.style.opacity = '0.85')}
                   onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
                 />
               </div>
             )}
-          </div>
+          </SectionCard>
 
           {analyzerProposal && (
             <AnalyzerPanel
@@ -290,12 +291,10 @@ export const WarehouseClassify: React.FC = () => {
             />
           )}
 
-          <div className="card p16">
-            <h3 className="h1" style={{ fontSize: 16 }}>Clasificación</h3>
-            <p className="muted small" style={{ marginTop: 4, marginBottom: 12 }}>
-              Catálogos directos desde Profit. El subgrupo depende del grupo;
-              categoría y marca son independientes.
-            </p>
+          <SectionCard
+            title="Clasificación"
+            desc="Catálogos directos desde Profit. El subgrupo depende del grupo; categoría y marca son independientes."
+          >
 
             {profitError && (
               <Alert tone="danger">
@@ -323,10 +322,10 @@ export const WarehouseClassify: React.FC = () => {
                   </optgroup>
                 </Select>
                 {groupDefaultType && !articleTypeManual && articleType && (
-                  <span className="muted small" style={{ marginTop: 4 }}>Sugerido por la línea {groupCode}.</span>
+                  <span className="muted small field-note">Sugerido por la línea {groupCode}.</span>
                 )}
                 {articleTypeManual && (
-                  <span className="muted small" style={{ marginTop: 4 }}>El tipo fue seleccionado manualmente.</span>
+                  <span className="muted small field-note">El tipo fue seleccionado manualmente.</span>
                 )}
               </Field>
 
@@ -377,7 +376,7 @@ export const WarehouseClassify: React.FC = () => {
                   {pMarcas.map(m => <option key={m.co_col.trim()} value={m.co_col.trim()}>{m.co_col.trim()} — {m.des_col.trim()}</option>)}
                 </Select>
                 {!brandCode && legacyBrandId && brandName && (
-                  <span className="muted small" style={{ marginTop: 4 }}>Marca guardada: {brandName} (catálogo anterior)</span>
+                  <span className="muted small field-note">Marca guardada: {brandName} (catálogo anterior)</span>
                 )}
               </label>
 
@@ -397,10 +396,10 @@ export const WarehouseClassify: React.FC = () => {
                   {pTasas.map(t => <option key={t.tipo.trim()} value={t.tipo.trim()}>{t.tipo.trim()} — {t.descripcio}</option>)}
                 </Select>
                 {taxWarning && (
-                  <span className="muted small" style={{ marginTop: 4 }}>{taxWarning}</span>
+                  <span className="muted small field-note">{taxWarning}</span>
                 )}
                 {!taxWarning && derivedTax && (
-                  <span className="muted small" style={{ marginTop: 4 }}>Valor que utilizará Profit: tasa {effectiveTax}.</span>
+                  <span className="muted small field-note">Valor que utilizará Profit: tasa {effectiveTax}.</span>
                 )}
               </Field>
 
@@ -410,11 +409,11 @@ export const WarehouseClassify: React.FC = () => {
               </label>
             </div>
 
-            <label style={{ marginTop: 12, display: 'block' }}>
+            <label className="field-block">
               <span className="muted small">Aplicación</span>
               <input className="input" value={application} onChange={e => setApplication(e.target.value)} placeholder="Aplicación del artículo" />
             </label>
-          </div>
+          </SectionCard>
 
           <div className="action-bar">
             <Can permission="WAREHOUSE.CLASSIFY">
@@ -425,26 +424,25 @@ export const WarehouseClassify: React.FC = () => {
             </Can>
           </div>
           {!canApprove && (
-            <p className="muted small" style={{ marginTop: 8 }}>
+            <p className="muted small block-mt-sm">
               Para aprobar se requieren grupo, subgrupo, tipo de artículo y unidad Profit.
             </p>
           )}
 
           {/* Datos listos para Profit (§23): solo lectura, sin botón de escritura. */}
-          <div className="card p16" style={{ marginTop: 12 }}>
-            <h3 className="h1" style={{ fontSize: 16 }}>Datos listos para Profit</h3>
-            <p className="muted small" style={{ marginTop: 4, marginBottom: 12 }}>
-              Verificación previa a la futura escritura. No escribe en Profit.
-            </p>
+          <SectionCard
+            title="Datos listos para Profit"
+            desc="Verificación previa a la futura escritura. No escribe en Profit."
+          >
             {!dryRun ? (
               <p className="muted small">Pulse «Validar artículo» para ejecutar la validación completa.</p>
             ) : (
               <div className="stack-sm">
-                <p style={{ fontWeight: 700, color: dryRun.ready ? 'var(--success, green)' : 'var(--danger, red)' }}>
+                <p className={`dryrun-verdict ${dryRun.ready ? 'dryrun-ready' : 'dryrun-notready'}`}>
                   {dryRun.ready ? 'ARTÍCULO LISTO' : 'ARTÍCULO NO LISTO'}
                 </p>
                 {dryRun.checks.map(c => (
-                  <div key={c.key} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+                  <div key={c.key} className="dryrun-check">
                     <span aria-hidden>{c.status === 'COMPLETO' ? '✓' : c.status === 'NO_APLICA' ? '–' : '✗'}</span>
                     <div>
                       <strong>{c.label}:</strong> {c.status}
@@ -460,7 +458,7 @@ export const WarehouseClassify: React.FC = () => {
                 )}
               </div>
             )}
-          </div>
+          </SectionCard>
 
           <ConfirmDialog
             open={confirmApprove}
@@ -481,9 +479,9 @@ export const WarehouseClassify: React.FC = () => {
           <MasterCodePreview groupCode={groupCode} subgroupCode={subgroupCode} />
 
           {request.groupId && (
-            <div className="card p16" style={{ marginTop: 12 }}>
+            <div className="card p16 block-mt">
               <span className="muted small">Código de Origen (Profit)</span>
-              <div className="master-code-display" style={{ fontSize: 14, marginTop: 4 }}>
+              <div className="origin-code">
                 {request.partNumber || '—'}
               </div>
             </div>

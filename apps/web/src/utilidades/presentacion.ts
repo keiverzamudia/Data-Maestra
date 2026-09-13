@@ -65,6 +65,7 @@ const PERMISSIONS: Record<string, string> = {
   'AUDIT.VIEW': 'Consultar auditoría',
   'IMPORT.RUN': 'Ejecutar importaciones',
   'IMPORT.VIEW': 'Consultar importaciones',
+  'PROFIT.WRITE': 'Crear artículos en Profit',
 };
 
 export function getPermissionLabel(code: string): string {

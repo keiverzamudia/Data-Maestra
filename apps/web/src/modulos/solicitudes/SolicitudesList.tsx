@@ -5,7 +5,7 @@ import { useSession } from '../../contextos/SessionContext';
 import { useCompany } from '../../contextos/CompanyContext';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
 import { requestService } from '../../servicios';
-import { Page, Button, StatusBadge, SearchInput, EmptyState, ErrorState, Skeleton, Select, Tabs } from '../../componentes/ui';
+import { Page, Button, StatusBadge, SearchInput, EmptyState, ErrorState, Skeleton, Select, Tabs, DataTable, Pagination, type DataColumn } from '../../componentes/ui';
 import type { Request } from '../../tipos';
 
 type Scope = 'activas' | 'historial';
@@ -99,6 +99,21 @@ export const RequesterList: React.FC = () => {
   const deptOf = (id: string) => departamentos.find(d => d.id === id)?.name ?? '—';
   const companyOf = (id: string) => companies.find(c => c.id === id)?.name ?? '—';
 
+  const columns: DataColumn<Request>[] = [
+    { key: 'num', header: 'N°', label: 'N°', render: r => <strong>#{r.requestNumber}</strong> },
+    { key: 'desc', header: 'Descripción', label: 'Descripción', render: r => <span className="ellipsis">{r.requestedDescription}</span> },
+    { key: 'req', header: 'Solicitante', label: 'Solicitante', render: r => nameOf(r.requesterId) },
+    { key: 'dept', header: 'Departamento', label: 'Departamento', render: r => deptOf(r.departmentId) },
+    ...(isAdmin ? [{ key: 'emp', header: 'Empresa', label: 'Empresa', render: (r: Request) => <span className="cell-secondary">{companyOf(r.companyId)}</span> } as DataColumn<Request>] : []),
+    { key: 'est', header: 'Estado', label: 'Estado', render: r => <StatusBadge status={r.status} /> },
+    ...(scope === 'historial' ? [{ key: 'part', header: 'Mi participación', label: 'Mi participación', render: (r: Request) => (
+      r.requesterId === user?.id && !r.miParticipacion ? <span>✓ Solicité</span>
+      : r.miParticipacion ? <span>✓ {r.miParticipacion.accion}</span>
+      : <span className="muted">—</span>
+    ) } as DataColumn<Request>] : []),
+    { key: 'fecha', header: 'Fecha', label: 'Fecha', render: r => <span className="muted small">{new Date(r.createdAt).toLocaleDateString('es-VE')}</span> },
+  ];
+
   return (
     <Page
       title="Solicitudes"
@@ -164,56 +179,21 @@ export const RequesterList: React.FC = () => {
       {!loading && !error && requests.length > 0 && (
         <>
           <p className="muted small" role="status">Mostrando {requests.length} de {filteredTotal} resultados.</p>
-          <div className="card table-responsive">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>N°</th>
-                  <th>Descripción</th>
-                  <th>Solicitante</th>
-                  <th>Departamento</th>
-                  {isAdmin && <th>Empresa</th>}
-                  <th>Estado</th>
-                  {scope === 'historial' && <th>Mi participación</th>}
-                  <th>Fecha</th>
-                </tr>
-              </thead>
-              <tbody>
-                {requests.map(r => (
-                  <tr key={r.id} className="clickable" onClick={() => navigate(`/requester/${r.id}`)}>
-                    <td data-label="N°"><strong>#{r.requestNumber}</strong></td>
-                    <td data-label="Descripción" className="ellipsis">{r.requestedDescription}</td>
-                    <td data-label="Solicitante">{nameOf(r.requesterId)}</td>
-                    <td data-label="Departamento">{deptOf(r.departmentId)}</td>
-                    {isAdmin && <td data-label="Empresa" className="cell-secondary">{companyOf(r.companyId)}</td>}
-                    <td data-label="Estado"><StatusBadge status={r.status} /></td>
-                    {scope === 'historial' && (
-                      <td data-label="Mi participación">
-                        {r.requesterId === user?.id && !r.miParticipacion ? (
-                          <span>✓ Solicité</span>
-                        ) : r.miParticipacion ? (
-                          <span>✓ {r.miParticipacion.accion}</span>
-                        ) : (
-                          <span className="muted">—</span>
-                        )}
-                      </td>
-                    )}
-                    <td data-label="Fecha" className="muted small">{new Date(r.createdAt).toLocaleDateString('es-VE')}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="pager" role="navigation" aria-label="Paginación de solicitudes">
-            <label className="muted small">Por página
-              <select className="input" value={limit} onChange={e => { setLimit(Number(e.target.value)); setPage(1); }} aria-label="Solicitudes por página" style={{ width: 'auto', marginLeft: 6 }}>
-                {[25, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
-            </label>
-            <span className="muted small">Página {page} de {totalPages}</span>
-            <Button size="sm" variant="secondary" onClick={() => setPage(p => Math.max(p - 1, 1))} disabled={page <= 1}>Anterior</Button>
-            <Button size="sm" variant="secondary" onClick={() => setPage(p => Math.min(p + 1, totalPages))} disabled={page >= totalPages}>Siguiente</Button>
-          </div>
+          <DataTable<Request>
+            columns={columns}
+            rows={requests}
+            rowKey={r => r.id}
+            onRowClick={r => navigate(`/requester/${r.id}`)}
+            caption="Solicitudes. Pulse una fila para abrir el detalle."
+          />
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            total={filteredTotal}
+            pageSize={limit}
+            onPage={setPage}
+            onPageSize={n => { setLimit(n); setPage(1); }}
+          />
         </>
       )}
     </Page>

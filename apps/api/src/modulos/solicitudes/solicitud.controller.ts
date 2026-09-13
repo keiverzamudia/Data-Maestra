@@ -172,4 +172,31 @@ export class SolicitudesController {
   getHistory(@CurrentUser() user: RequestUser, @Param('id') id: string) {
     return this.requestsService.getHistory(id, user.id);
   }
+
+  @Post(':id/profit-plan')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('DASHBOARD.VIEW')
+  @ApiOperation({ summary: 'Plan Profit sin escritura: payload + candidato + disponibilidad (14E §22)' })
+  async profitPlan(@CurrentUser() user: RequestUser, @Param('id') id: string) {
+    const companyId = await this.authService.resolveCompanyContext(user.id);
+    return this.requestsService.planProfitCreation(id, user.id, companyId);
+  }
+
+  @Post(':id/profit-create')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('PROFIT.WRITE')
+  @ApiOperation({ summary: 'Crear artículo en Profit (gates: APROBADO_FINAL + PROFIT.WRITE + flag + payload)' })
+  async profitCreate(@CurrentUser() user: RequestUser, @Param('id') id: string) {
+    const companyId = await this.authService.resolveCompanyContext(user.id);
+    return this.requestsService.createInProfit(id, user.id, companyId);
+  }
+
+  @Post(':id/profit-verify')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('PROFIT.WRITE')
+  @ApiOperation({ summary: 'Verificar un co_art en Profit (solo lectura, sin cambiar estados)' })
+  async profitVerify(@CurrentUser() user: RequestUser, @Param('id') id: string, @Body() body: { coArt?: string }) {
+    const companyId = await this.authService.resolveCompanyContext(user.id);
+    return this.requestsService.verifyProfitCreation(id, body?.coArt ?? '', user.id, companyId);
+  }
 }

@@ -1,10 +1,21 @@
-/* 11A — Design tokens centralizados de Data-Maestra.
-   Única fuente de color, tipografía, spacing, radius, sombras y z-index.
-   globals.css conserva la estructura; los valores viven aquí. */
+/* Enterprise Edition — Design tokens centralizados de Data-Maestra.
+    Única fuente de color, tipografía, spacing, radius, sombras y z-index.
+    globals.css conserva la estructura; los valores viven aquí.
+    Regla de oro (§43): ningún componente define tamaños/colores fuera de aquí. */
 :root{
   /* brand */
   --blue:#2563eb; --blue-hover:#1d4ed8; --blue-active:#1e40af; --blue-soft:#eff6ff;
   --brand-deep:#1e3a8a;
+  /* semantic aliases (§6): usar estos nombres en código nuevo */
+  --color-primary:var(--blue); --color-primary-hover:var(--blue-hover);
+  --color-primary-active:var(--blue-active); --color-primary-soft:var(--blue-soft);
+  --color-success:var(--success); --color-success-soft:var(--success-bg);
+  --color-warning:var(--warning); --color-warning-soft:var(--warning-bg);
+  --color-danger:var(--danger); --color-danger-soft:var(--danger-bg);
+  --color-info:var(--info); --color-info-soft:var(--info-bg);
+  --color-text-primary:var(--text); --color-text-secondary:var(--slate);
+  --color-text-muted:var(--muted);
+  --color-border:var(--border); --color-surface:var(--card); --color-background:var(--bg);
   /* surfaces */
   --bg:#f1f5f9; --card:#ffffff; --white:#ffffff; --surface-soft:#f8fafc; --overlay:rgba(0,0,0,.4);
   --code-bg:#0f172a; --code-text:#e2e8f0;
@@ -17,21 +28,29 @@
   --warning:#ca8a04; --warning-bg:#fef9c3; --warning-text:#854d0e; --warning-border:#fde047;
   --danger:#dc2626; --danger-bg:#fee2e2; --danger-text:#991b1b; --danger-border:#fca5a5;
   --info:#1d4ed8; --info-bg:#dbeafe; --info-text:#1e40af;
-  /* typography */
-  --font-sans:Inter,-apple-system,"Segoe UI",Roboto,sans-serif;
-  --font-mono:"Courier New",ui-monospace,monospace;
-  --text-xs:11px; --text-sm:12px; --text-md:13px; --text-base:14px;
-  --text-h3:15px; --text-h2:16px; --text-h1:22px; --text-display:28px;
-  /* spacing scale */
+  /* typography (§4): Inter base, JetBrains Mono solo códigos técnicos */
+  --font-sans:"Inter",-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --text-caption:11px; --text-xs:11px; --text-sm:12px; --text-md:13px; --text-base:14px;
+  --text-lg:15px; --text-h3:15px; --text-h2:16px; --text-card-title:17px;
+  --text-h1:22px; --text-display:28px; --text-metric:26px;
+  --line-height-tight:1.25; --line-height-normal:1.5; --line-height-relaxed:1.65;
+  /* spacing scale (§5): 4/8/12/16/20/24/32/40/48 */
   --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px; --sp-8:32px; --sp-10:40px; --sp-12:48px;
-  /* radius & shadow */
-  --radius-sm:8px; --radius-md:12px; --radius-full:20px; --radius-pill:999px;
+  /* radius & shadow (§7): discretas, sin glassmorphism */
+  --radius-xs:6px; --radius-sm:8px; --radius-md:12px; --radius-lg:16px;
+  --radius-full:20px; --radius-pill:999px;
+  --shadow-sm:0 1px 2px rgba(15,23,42,.06);
   --shadow-md:0 10px 30px rgba(0,0,0,.15);
+  --shadow-card:0 1px 3px rgba(15,23,42,.08);
   /* controls */
   --control-h:36px; --sidebar-w:240px; --sidebar-w-collapsed:64px;
+  --content-max:1280px;
+  /* breakpoints (§9): desktop >=1200, tablet 768-1199, mobile <768 */
+  --bp-tablet:768px; --bp-desktop:1200px;
   /* z-index */
   --z-header:10; --z-panel:20; --z-modal:50; --z-toast:100;
-  /* motion */
+  /* motion (§26): solo transiciones cortas funcionales */
   --transition-fast:.15s ease; --transition-base:.2s ease;
 }
 @media (prefers-reduced-motion:reduce){

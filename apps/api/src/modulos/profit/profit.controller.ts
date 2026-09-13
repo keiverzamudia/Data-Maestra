@@ -1,6 +1,7 @@
 import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { ProfitAdapterService } from './profit-adapter.service';
+import { ProfitArticleCreationService } from './profit-article-creation.service';
 import { RbacGuard } from '../autenticacion/rbac.guard';
 import { JwtGuard } from '../autenticacion/jwt.guard';
 import { RequirePermission } from '../autenticacion/require-permission.decorator';
@@ -9,7 +10,18 @@ import { RequirePermission } from '../autenticacion/require-permission.decorator
 @Controller('profit')
 @UseGuards(JwtGuard, RbacGuard)
 export class ProfitController {
-  constructor(private readonly profitAdapter: ProfitAdapterService) {}
+  constructor(
+    private readonly profitAdapter: ProfitAdapterService,
+    // Opcional al final por compatibilidad posicional en tests (Nest lo inyecta por tipo).
+    private readonly creationService?: ProfitArticleCreationService,
+  ) {}
+
+  @Get('write-status')
+  @RequirePermission('DASHBOARD.VIEW')
+  @ApiOperation({ summary: 'Write engine status (READ-ONLY: never enables writes)' })
+  getWriteStatus() {
+    return this.creationService?.writeStatus() ?? { enabled: false, configured: false };
+  }
 
   @Get('groups')
   @RequirePermission('DASHBOARD.VIEW')

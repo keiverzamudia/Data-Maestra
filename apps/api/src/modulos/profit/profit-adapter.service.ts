@@ -343,6 +343,34 @@ export class ProfitAdapterService {
     );
   }
 
+  /**
+   * Existence check indexado sobre la PK para el plan sin escritura
+   * (14E §2/§9: SELECT 1, sin traer ART a memoria). Solo lectura.
+   */
+  async articleExists(coArt: string): Promise<boolean> {
+    // @ts-ignore
+    const mssql: any = await import('mssql');
+    const rows = await this.query<{ one: number }>(
+      `SELECT 1 AS one FROM dbo.art WHERE co_art = @coArt`,
+      { coArt: { type: mssql.Char(30), value: coArt.trim() } },
+    );
+    return rows.length > 0;
+  }
+
+  /** Máximo sufijo numérico del prefijo sistemático (punto de partida, READ-ONLY). */
+  async maxSequenceFor(prefix: string): Promise<number> {
+    // @ts-ignore
+    const mssql: any = await import('mssql');
+    const rows = await this.query<{ m: string | null }>(
+      `SELECT MAX(RIGHT(LTRIM(RTRIM(co_art)), 4)) AS m FROM dbo.art
+       WHERE LTRIM(RTRIM(co_art)) LIKE @pfx + '[0-9][0-9][0-9][0-9]'
+       AND LEN(LTRIM(RTRIM(co_art))) = LEN(@pfx) + 4`,
+      { pfx: { type: mssql.VarChar(12), value: prefix } },
+    );
+    const m = rows[0]?.m;
+    return m && /^\d+$/.test(m) ? parseInt(m, 10) : 0;
+  }
+
   async getCategories(): Promise<ProfitCategory[]> {
     return this.query<ProfitCategory>(`SELECT co_cat, cat_des FROM dbo.cat_art ORDER BY co_cat`);
   }

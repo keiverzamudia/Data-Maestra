@@ -33,7 +33,13 @@ export const Tabs:React.FC<{tabs:string[];active:number;onChange:(i:number)=>voi
   <div className="tabs">{tabs.map((t,i)=><button key={t} className={`tab ${i===active?'tab-active':''}`} onClick={()=>onChange(i)}>{t}</button>)}</div>
 );
 export const Modal:React.FC<{open:boolean; onClose:()=>void; title:string; children:React.ReactNode}> = ({open,onClose,title,children})=>{
-  if(!open) return null; return <div className="modal-overlay" onClick={onClose}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><h3>{title}</h3><button className="btn btn-ghost" onClick={onClose}>✕</button></div><div className="modal-body">{children}</div></div></div>;
+  React.useEffect(()=>{
+    if(!open) return;
+    const onKey=(e:KeyboardEvent)=>{ if(e.key==='Escape') onClose(); };
+    window.addEventListener('keydown',onKey);
+    return ()=>window.removeEventListener('keydown',onKey);
+  },[open,onClose]);
+  if(!open) return null; return <div className="modal-overlay" onClick={onClose}><div className="modal" role="dialog" aria-label={title} onClick={e=>e.stopPropagation()}><div className="modal-head"><h3>{title}</h3><button className="btn btn-ghost" onClick={onClose} aria-label="Cerrar">✕</button></div><div className="modal-body">{children}</div></div></div>;
 };
 export const EmptyState:React.FC<{title:string; desc?:string}> = ({title,desc})=><div className="empty"><div className="empty-title">{title}</div>{desc && <div className="muted">{desc}</div>}</div>;
 export const SearchInput:React.FC<{value:string; onChange:(v:string)=>void; placeholder?:string}> = ({value,onChange,placeholder})=>(
@@ -58,13 +64,25 @@ export const ErrorState:React.FC<{title?:string;desc?:string;onRetry?:()=>void}>
   </div>;
 
 export const ConfirmDialog:React.FC<{open:boolean;title:string;desc?:string;confirmLabel?:string;onConfirm:()=>void;onCancel:()=>void;busy?:boolean}> = ({open,title,desc,confirmLabel='Confirmar',onConfirm,onCancel,busy})=>{
+  React.useEffect(()=>{
+    if(!open) return;
+    const onKey=(e:KeyboardEvent)=>{ if(e.key==='Escape') onCancel(); };
+    window.addEventListener('keydown',onKey);
+    return ()=>window.removeEventListener('keydown',onKey);
+  },[open,onCancel]);
   if(!open) return null;
   return <div className="modal-overlay" onClick={onCancel}><div className="modal" role="alertdialog" aria-label={title} onClick={e=>e.stopPropagation()}><div className="modal-head"><h3>{title}</h3><button className="btn btn-ghost" onClick={onCancel} aria-label="Cerrar">✕</button></div><div className="modal-body"><div className="stack-sm">{desc && <p className="muted">{desc}</p>}<div style={{display:'flex',gap:8,justifyContent:'flex-end'}}><Button variant="secondary" onClick={onCancel} disabled={busy}>Cancelar</Button><Button onClick={onConfirm} disabled={busy}>{busy ? 'Procesando...' : confirmLabel}</Button></div></div></div></div></div>;
 };
 
-export const Drawer:React.FC<{open:boolean;onClose:()=>void;title:string;children:React.ReactNode}> = ({open,onClose,title,children})=>{
+export const Drawer:React.FC<{open:boolean;onClose:()=>void;title:string;subtitle?:string;children:React.ReactNode;size?:'default'|'narrow'}> = ({open,onClose,title,subtitle,children,size='default'})=>{
+  React.useEffect(()=>{
+    if(!open) return;
+    const onKey=(e:KeyboardEvent)=>{ if(e.key==='Escape') onClose(); };
+    window.addEventListener('keydown',onKey);
+    return ()=>window.removeEventListener('keydown',onKey);
+  },[open,onClose]);
   if(!open) return null;
-  return <div className="drawer-overlay" onClick={onClose}><div className="drawer" role="dialog" aria-label={title} onClick={e=>e.stopPropagation()}><div className="drawer-head"><h3>{title}</h3><button className="btn btn-ghost" onClick={onClose} aria-label="Cerrar">✕</button></div><div className="drawer-body">{children}</div></div></div>;
+  return <div className="drawer-overlay" onClick={onClose}><div className={`drawer${size==='narrow'?' drawer-narrow':''}`} role="dialog" aria-label={title} onClick={e=>e.stopPropagation()}><div className="drawer-head"><div><h3>{title}</h3>{subtitle && <p className="muted small drawer-subtitle">{subtitle}</p>}</div><button className="btn btn-ghost" onClick={onClose} aria-label="Cerrar">✕</button></div><div className="drawer-body">{children}</div></div></div>;
 };
 
 export const Field:React.FC<{label:string;required?:boolean;helper?:string;error?:string;children:React.ReactNode}> = ({label,required,helper,error,children})=>(
@@ -84,4 +102,87 @@ export const Page:React.FC<{title:string;desc?:string;actions?:React.ReactNode;c
     {children}
   </div>
 );
+
+/* ── Enterprise: tarjeta de sección con encabezado uniforme (título 16-18px) ── */
+export const SectionCard:React.FC<{title:string;desc?:string;actions?:React.ReactNode;children:React.ReactNode;className?:string}> = ({title,desc,actions,children,className=''})=>(
+  <section className={`card p16 ${className}`}>
+    <div className="section-head">
+      <div><h2 className="section-card-title">{title}</h2>{desc && <p className="muted small section-card-desc">{desc}</p>}</div>
+      {actions && <div className="section-card-actions">{actions}</div>}
+    </div>
+    {children}
+  </section>
+);
+
+/* ── Enterprise: métrica oficial (converge kpi/stat/summary hacia este patrón) ── */
+export const StatCard:React.FC<{label:string;value:string|number;sub?:string;tone?:'ok'|'warn'|'bad'|'info'}> = ({label,value,sub,tone})=>{
+  const t=tone?` stat-${tone}`:'';
+  return <div className={`stat-card${t}`}><div><div className="stat-num">{value}</div><div className="stat-label">{label}</div>{sub && <div className="muted small">{sub}</div>}</div></div>;
+};
+
+/* ── Enterprise: código técnico en JetBrains Mono (Profit, Master, contables, IDs) ── */
+export const Code:React.FC<{children:React.ReactNode;className?:string}> = ({children,className=''})=>
+  <code className={`mono ${className}`}>{children}</code>;
+
+/* ── Enterprise: tabla única (encabezado, hover, códigos mono, responsive) ── */
+export interface DataColumn<T>{key:string;header:string;render:(row:T)=>React.ReactNode;align?:'left'|'right';label?:string}
+export function DataTable<T>({columns,rows,rowKey,loading,error,emptyTitle,emptyDesc,onRetry,loadingRows=5,caption,onRowClick}:{
+  columns:DataColumn<T>[];rows:T[];rowKey:(row:T,index:number)=>string;
+  loading?:boolean;error?:string|null;emptyTitle?:string;emptyDesc?:string;onRetry?:()=>void;loadingRows?:number;caption?:string;
+  onRowClick?:(row:T)=>void;
+}){
+  if(loading){
+    return <div className="card p16 stack-sm" role="status" aria-label="Cargando datos"><Skeleton height={16} width="30%"/>{Array.from({length:loadingRows}).map((_,i)=><Skeleton key={i} height={36}/>)}</div>;
+  }
+  if(error){
+    return <div className="card p16"><ErrorState title="No pudimos cargar la información." desc={error} onRetry={onRetry}/></div>;
+  }
+  if(rows.length===0){
+    return <div className="card p16"><EmptyState title={emptyTitle||'Sin resultados'} desc={emptyDesc||'No hay datos para mostrar con los filtros actuales.'}/></div>;
+  }
+  return (
+    <div className="card table-card">
+      <div className="table-responsive">
+        <table className="table">
+          {caption && <caption className="muted small table-caption">{caption}</caption>}
+          <thead><tr>{columns.map(c=><th key={c.key} scope="col" className={c.align==='right'?'cell-num':''}>{c.header}</th>)}</tr></thead>
+          <tbody>
+            {rows.map((row,i)=>(
+              <tr
+                key={rowKey(row,i)}
+                className={onRowClick?'clickable':''}
+                onClick={onRowClick?()=>onRowClick(row):undefined}
+                onKeyDown={onRowClick?(e)=>{if(e.key==='Enter'){onRowClick(row);}}:undefined}
+                tabIndex={onRowClick?0:undefined}
+              >
+                {columns.map((c,ci)=>(
+                  <td key={c.key} data-label={c.label||c.header} className={`${ci===0?'cell-primary':''}${c.align==='right'?' cell-num':''}`}>{c.render(row)}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/* ── Enterprise: paginación única (conservar server-side: page/limit/total) ── */
+export const Pagination:React.FC<{page:number;totalPages:number;total?:number;pageSize?:number;onPage:(p:number)=>void;onPageSize?:(n:number)=>void}> = ({page,totalPages,total,pageSize,onPage,onPageSize})=>{
+  if(totalPages<=1 && !onPageSize) return null;
+  return (
+    <nav className="pager" aria-label="Paginación">
+      <Button variant="secondary" size="sm" onClick={()=>onPage(Math.max(page-1,1))} disabled={page<=1}>Anterior</Button>
+      <span className="muted small" aria-live="polite">Página {page} de {totalPages}{total!==undefined?` · ${total} registros`:''}</span>
+      <Button variant="secondary" size="sm" onClick={()=>onPage(Math.min(page+1,totalPages))} disabled={page>=totalPages}>Siguiente</Button>
+      {onPageSize && (
+        <label className="muted small">Por página
+          <select className="input pager-select" value={pageSize} onChange={e=>onPageSize(Number(e.target.value))} aria-label="Registros por página">
+            {[10,25,50,100].map(n=><option key={n} value={n}>{n}</option>)}
+          </select>
+        </label>
+      )}
+    </nav>
+  );
+};
 export { ImageLightbox } from './ImageLightbox';

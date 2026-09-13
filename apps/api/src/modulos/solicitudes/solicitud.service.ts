@@ -5,6 +5,9 @@ import { ClassifyRequestDto } from './dto/classify-request.dto';
 import { ApprovalDto } from './dto/approval.dto';
 import { CatalogosService } from '../catalogos/catalogos.service';
 import { ProfitAdapterService } from '../profit/profit-adapter.service';
+import { ProfitArticleCreationService, type CreationPlan, type CreationResult } from '../profit/profit-article-creation.service';
+import type { ProfitArticleInput } from '../profit/profit-article.payload';
+import { buildProfitArticlePayload } from '../profit/profit-article.payload';
 import {
   checkTaxCoherence,
   isArticleTypeCode,
@@ -71,6 +74,7 @@ export class SolicitudesService {
     private readonly authService: AutenticacionService,
     // Opcional al final para compatibilidad posicional en tests (Nest resuelve por tipo).
     private readonly profitAdapter?: ProfitAdapterService,
+    private readonly profitCreation?: ProfitArticleCreationService,
   ) {}
 
   async create(dto: CreateRequestDto, userId: string, companyId: string, departmentId: string) {
@@ -779,6 +783,7 @@ export class SolicitudesService {
             articleTypeManual: dto.articleTypeManual ?? false,
             taxType: dto.taxType,
             unitCode: dto.unitCode?.trim() || undefined,
+            brandCode: dto.brandCode?.trim() || undefined,
           },
         });
       } else {
@@ -796,6 +801,7 @@ export class SolicitudesService {
             articleTypeManual: dto.articleTypeManual ?? false,
             taxType: dto.taxType,
             unitCode: dto.unitCode?.trim() || undefined,
+            brandCode: dto.brandCode?.trim() || undefined,
           },
         });
       }
@@ -1011,6 +1017,155 @@ export class SolicitudesService {
     const required = ['estado', 'descripcion', 'grupo', 'subgrupo', 'tipo', 'unidad'];
     const ready = required.every((k) => checks.find((c) => c.key === k)?.status === 'COMPLETO');
     return { ready, checks, warnings, wouldProvision };
+  }
+
+  /**
+   * Construye el input Profit desde la clasificación guardada (14E §24: usa
+   * los datos del formulario 14C-FORM, sin duplicarlos ni reinventarlos).
+   */
+  private async buildProfitInput(id: string): Promise<{ request: any; input: ProfitArticleInput; warnings: string[] }> {
+    const request = await this.prisma.request.findUnique({
+      where: { id },
+      include: { requestData: true },
+    });
+    if (!request) throw new NotFoundException(`Request ${id} not found`);
+    const rd = (request as any).requestData;
+    if (!rd?.groupId || !rd?.subgroupId) {
+      throw new BadRequestException(`Request ${id} sin clasificación de grupo/subgrupo`);
+    }
+    const [group, subgroup, category] = await Promise.all([
+      this.prisma.catalogGroup.findUnique({ where: { id: rd.groupId } }),
+      this.prisma.catalogSubgroup.findUnique({ where: { id: rd.subgroupId } }),
+      rd.categoryId ? this.prisma.catalogCategory.findUnique({ where: { id: rd.categoryId } }) : null,
+    ]);
+    if (!group || !subgroup) throw new BadRequestException(`Clasificación huérfana en request ${id}`);
+    const warnings: string[] = [];
+    if (!rd.articleType || !rd.unitCode || !rd.taxType) {
+      throw new BadRequestException(`Request ${id} sin tipo/unidad/impuesto (clasificación incompleta para Profit)`);
+    }
+    if (!rd.brandCode) warnings.push('Sin código de marca guardado: se usará 01 (NO APLICA)');
+    const input: ProfitArticleInput = {
+      description: (request as any).requestedDescription ?? '',
+      articleType: rd.articleType,
+      groupCode: (group as any).code,
+      subgroupCode: (subgroup as any).code,
+      unitCode: rd.unitCode,
+      taxType: rd.taxType,
+      categoryCode: (category as any)?.code,
+      colorCode: rd.brandCode ?? undefined,
+    };
+    return { request, input, warnings };
+  }
+
+  private profitEngine(): ProfitArticleCreationService {
+    if (!this.profitCreation) throw new ServiceUnavailableException('Motor de creación Profit no disponible');
+    return this.profitCreation;
+  }
+
+  /** Plan sin escritura: payload + candidato + disponibilidad (§22). */
+  async planProfitCreation(id: string, userId: string, companyId: string): Promise<CreationPlan & { requestId: string }> {
+    const { request, input, warnings } = await this.buildProfitInput(id);
+    const plan = await this.profitEngine().plan(input);
+    await this.prisma.auditEvent.create({
+      data: {
+        correlationId: request.id,
+        requestId: id,
+        actorId: userId,
+        actorCompanyId: companyId,
+        entityType: 'Request',
+        entityId: id,
+        action: 'PROFIT_PLAN',
+        afterData: JSON.stringify({ coArt: plan.candidate, available: plan.available, warnings }),
+      },
+    });
+    return { requestId: id, ...plan, warnings: [...warnings, ...plan.warnings] };
+  }
+
+  /**
+   * Creación controlada en Profit (14E). Gates: APROBADO_FINAL + PROFIT.WRITE
+   * (controller) + flag (adapter) + payload válido. Transiciones directas
+   * APROBADO_FINAL → PROCESANDO_PROFIT → REGISTRADO_PROFIT | ERROR_PROFIT
+   * (la secuencia ya las define; no hay APPROVE posterior).
+   */
+  async createInProfit(id: string, userId: string, companyId: string): Promise<CreationResult & { requestId: string }> {
+    const { request, input } = await this.buildProfitInput(id);
+    if ((request as any).status !== 'APROBADO_FINAL') {
+      throw new BadRequestException(`Request ${id} no está en APROBADO_FINAL (estado: ${(request as any).status})`);
+    }
+    // Fail-fast ANTES de cambiar estado: flag + destino explícito.
+    this.profitEngine().assertAvailable();
+    await this.prisma.request.update({ where: { id }, data: { status: 'PROCESANDO_PROFIT' } });
+
+    const t0 = Date.now();
+    let result: CreationResult;
+    try {
+      result = await this.profitEngine().allocateAndInsert(input);
+    } catch (err: any) {
+      result = {
+        ok: false,
+        coArt: '',
+        attempts: [],
+        reconcile: 'RECONCILIATION_ERROR',
+        differences: [],
+        errorCode: 'ERROR_PROFIT_ENGINE',
+        errorDetail: String(err?.message ?? err).slice(0, 500),
+      };
+    }
+    const durationMs = Date.now() - t0;
+
+    await this.prisma.request.update({
+      where: { id },
+      data: { status: result.ok ? 'REGISTRADO_PROFIT' : 'ERROR_PROFIT' },
+    });
+    // Auditoría §20: sin secretos, con correlación y duración.
+    await this.prisma.auditEvent.create({
+      data: {
+        correlationId: request.id,
+        requestId: id,
+        actorId: userId,
+        actorCompanyId: companyId,
+        entityType: 'Request',
+        entityId: id,
+        action: 'PROFIT_CREATE_RESULT',
+        afterData: JSON.stringify({
+          requestId: id,
+          masterCode: (request as any).requestData?.masterCode ?? null,
+          co_art: result.coArt || null,
+          resultado: result.ok ? 'OK' : 'FAIL',
+          reconcile: result.reconcile,
+          attempts: result.attempts.map((a) => ({ attempt: a.attempt, candidate: a.candidate, outcome: a.outcome })),
+          errorCode: result.errorCode ?? null,
+          durationMs,
+        }),
+      },
+    });
+    return { requestId: id, ...result };
+  }
+
+  /**
+   * Verificación posterior (14F.2): relectura + reconciliación de un co_art
+   * contra lo esperado. Solo lectura: NO cambia estados, NO reintenta.
+   * La recuperación de ERROR_PROFIT es una nueva creación (nuevo código).
+   */
+  async verifyProfitCreation(id: string, coArt: string, userId: string, companyId: string) {
+    const { request, input } = await this.buildProfitInput(id);
+    const code = (coArt ?? '').trim();
+    if (!code) throw new BadRequestException('coArt es requerido para verificar');
+    const payload = buildProfitArticlePayload(code, input);
+    const v = await this.profitEngine().verifyAndReconcile(code, payload);
+    await this.prisma.auditEvent.create({
+      data: {
+        correlationId: request.id,
+        requestId: id,
+        actorId: userId,
+        actorCompanyId: companyId,
+        entityType: 'Request',
+        entityId: id,
+        action: 'PROFIT_VERIFY',
+        afterData: JSON.stringify({ requestId: id, co_art: code, reconcile: v.status, differences: v.differences }),
+      },
+    });
+    return { requestId: id, coArt: code, reconcile: v.status, differences: v.differences };
   }
 
   async getHistory(id: string, userId?: string) {

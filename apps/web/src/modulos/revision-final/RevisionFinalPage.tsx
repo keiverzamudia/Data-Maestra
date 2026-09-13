@@ -4,9 +4,9 @@ import { useCompany } from '../../contextos/CompanyContext';
 import { finalReviewService } from '../../servicios';
 import { useCatalogos } from '../../hooks/useCatalogos';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
-import { Button, SearchInput, StatusBadge, EmptyState, Modal, Textarea, Alert, ConfirmDialog, Skeleton, ErrorState } from '../../componentes/ui';
+import { Button, SearchInput, StatusBadge, EmptyState, Modal, Textarea, Alert, ConfirmDialog, Skeleton, ErrorState, SectionCard, DataTable, Code, type DataColumn } from '../../componentes/ui';
 import { Page } from '../../componentes/ui';
-import { WorkflowStepper, WorkflowStatusInfo, RequestDetail, StageTrace } from '../../componentes/workflow';
+import { WorkflowStepper, WorkflowStatusInfo, RequestDetail, StageTrace, ProfitRegistrationPanel } from '../../componentes/workflow';
 import type { Request } from '../../tipos';
 
 function findName(list: { id: string; name: string }[], id?: string) {
@@ -96,12 +96,24 @@ export const FinalReviewPage: React.FC = () => {
     }
   };
 
+  const columns: DataColumn<Request>[] = [
+    { key: 'num', header: 'N°', label: 'N°', render: r => <strong>#{r.requestNumber}</strong> },
+    { key: 'desc', header: 'Descripción', label: 'Descripción', render: r => <span className="ellipsis">{r.requestedDescription}</span> },
+    { key: 'grupo', header: 'Grupo', label: 'Grupo', render: r => findName(grupos, r.groupId) },
+    { key: 'sub', header: 'Subgrupo', label: 'Subgrupo', render: r => findName(subgrupos, r.subgroupId) },
+    { key: 'marca', header: 'Marca', label: 'Marca', render: r => findName(marcas, r.brandId) },
+    { key: 'master', header: 'Código Master', label: 'Código Master', render: r => <Code>{r.masterCode || '—'}</Code> },
+    { key: 'sol', header: 'Solicitante', label: 'Solicitante', render: r => usuarios.find(u => u.id === r.requesterId)?.displayName || '—' },
+    { key: 'est', header: 'Estado', label: 'Estado', render: r => <StatusBadge status={r.status} /> },
+    { key: 'acc', header: 'Acción', label: 'Acción', render: r => <Button size="sm" onClick={() => openDetail(r)}>Revisar</Button> },
+  ];
+
   if (selected) {
     // 12E — Aprobación Final es cierre: sin checklist (responsabilidad de Contabilidad).
     // Solo lectura + trazabilidad real del historial.
     const accCount = selected.accountingCodes?.length ?? 0;
 
-    return (
+  return (
       <Page
         title={`Validación Maestra — ${selected.requestNumber}`}
         desc="Solicitud lista para aprobación final"
@@ -110,15 +122,11 @@ export const FinalReviewPage: React.FC = () => {
         <WorkflowStepper status={selected.status} />
         <WorkflowStatusInfo status={selected.status} />
 
-        <div className="card p16">
-          <h3 className="h1" style={{ fontSize: 14 }}>Cierre de validaciones</h3>
-          <p className="muted" style={{ marginTop: 4 }}>
-            Las validaciones requeridas de Almacén, Contabilidad y Validación Maestra han sido completadas.
-            Esta es la última aprobación humana antes del registro en Profit.
-          </p>
-          <div style={{ marginTop: 8 }}>
-            <StageTrace approvals={selected.approvals} accCount={accCount} validationCurrent />
-          </div>
+        <SectionCard
+          title="Cierre de validaciones"
+          desc="Las validaciones requeridas de Almacén, Contabilidad y Validación Maestra han sido completadas. Esta es la última aprobación humana antes del registro en Profit."
+        >
+          <StageTrace approvals={selected.approvals} accCount={accCount} validationCurrent />
           <div style={{ marginTop: 8 }}>
             <Alert tone={accCount > 0 ? 'success' : 'warning'}>
               {accCount > 0
@@ -126,10 +134,12 @@ export const FinalReviewPage: React.FC = () => {
                 : 'Contabilidad — sin información contable registrada en esta solicitud (casos anteriores a la validación contable).'}
             </Alert>
           </div>
-        </div>
+        </SectionCard>
 
         <div className="stack">
           <RequestDetail request={selected} showWorkflow={false} />
+
+          <ProfitRegistrationPanel request={selected} />
 
           <div className="action-bar">
             <Can permission="FINAL_REVIEW.APPROVE">
@@ -211,44 +221,12 @@ export const FinalReviewPage: React.FC = () => {
         <EmptyState title="No hay solicitudes pendientes de validación" desc="Todas las solicitudes han sido procesadas" />
       )}
       {!loading && !listError && filtered.length > 0 && (
-        <div className="card table-responsive">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>N°</th>
-                <th>Descripción</th>
-                <th>Grupo</th>
-                <th>Subgrupo</th>
-                <th>Marca</th>
-                <th>Código Master</th>
-                <th>Solicitante</th>
-                <th>Estado</th>
-                <th>Acción</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(r => (
-                <tr key={r.id}>
-                  <td data-label="N°"><strong>#{r.requestNumber}</strong></td>
-                  <td data-label="Descripción" className="ellipsis">{r.requestedDescription}</td>
-                  <td data-label="Grupo">{findName(grupos, r.groupId)}</td>
-                  <td data-label="Subgrupo">{findName(subgrupos, r.subgroupId)}</td>
-                  <td data-label="Marca">{findName(marcas, r.brandId)}</td>
-                  <td data-label="Código Master">
-                    <span className="master-code-display" style={{ fontSize: 12 }}>
-                      {r.masterCode || '—'}
-                    </span>
-                  </td>
-                  <td data-label="Solicitante">{usuarios.find(u => u.id === r.requesterId)?.displayName || '—'}</td>
-                  <td data-label="Estado"><StatusBadge status={r.status} /></td>
-                  <td data-label="Acción">
-                    <Button size="sm" onClick={() => openDetail(r)}>Revisar</Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable<Request>
+          columns={columns}
+          rows={filtered}
+          rowKey={r => r.id}
+          caption={`${filtered.length} listas para aprobación final.`}
+        />
       )}
     </Page>
   );

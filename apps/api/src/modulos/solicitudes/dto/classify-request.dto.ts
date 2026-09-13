@@ -37,7 +37,7 @@ export class ClassifyRequestDto {
   @IsOptional()
   brandCode?: string;
 
-  @ApiPropertyOptional({ example: 'GASOLINA' })
+  @ApiPropertyOptional({ example: 'GASOLINA', description: 'Nombre Profit de marca/colores' })
   @IsString()
   @IsOptional()
   brandName?: string;

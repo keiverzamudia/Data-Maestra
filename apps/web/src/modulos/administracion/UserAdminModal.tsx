@@ -82,7 +82,7 @@ export const UserAdminModal: React.FC<Props> = ({ userId, empresas, departamento
           {msg && <Alert tone="success">{msg}</Alert>}
 
           <div className="card p16">
-            <h3 className="h1" style={{ fontSize: 15 }}>1. Información</h3>
+            <h3 className="subsection-title">1. Información</h3>
             <div className="review-grid" style={{ marginTop: 8 }}>
               <div><span className="muted small">Nombre</span><br /><strong>{detail.displayName}</strong></div>
               <div><span className="muted small">Usuario</span><br /><strong>{detail.username}</strong></div>
@@ -95,7 +95,7 @@ export const UserAdminModal: React.FC<Props> = ({ userId, empresas, departamento
           </div>
 
           <div className="card p16">
-            <h3 className="h1" style={{ fontSize: 15 }}>2. Organización</h3>
+            <h3 className="subsection-title">2. Organización</h3>
             <div style={{ marginTop: 8 }} className="stack-sm">
               {detail.userRoles.length === 0 && <p className="muted small">Sin empresa asignada.</p>}
               {detail.userRoles.map(m => (
@@ -138,13 +138,13 @@ export const UserAdminModal: React.FC<Props> = ({ userId, empresas, departamento
           </div>
 
           <div className="card p16">
-            <h3 className="h1" style={{ fontSize: 15 }}>3. Roles</h3>
+            <h3 className="subsection-title">3. Roles</h3>
             <p style={{ marginTop: 8 }}><strong>{detail.roleCodes.length ? detail.roleCodes.map(c => getRoleLabel(c)).join(', ') : '—'}</strong></p>
             <p className="muted small">Los roles se asignan y quitan desde la sección Organización (cada asignación lleva su empresa y departamento).</p>
           </div>
 
           <div className="card p16">
-            <h3 className="h1" style={{ fontSize: 15 }}>4. Permisos</h3>
+            <h3 className="subsection-title">4. Permisos</h3>
             <div style={{ marginTop: 8 }} className="stack-sm">
               <table className="table">
                 <thead><tr><th>Permiso</th><th>Origen</th><th>Estado efectivo</th><th>Acción</th></tr></thead>
@@ -173,7 +173,7 @@ export const UserAdminModal: React.FC<Props> = ({ userId, empresas, departamento
           </div>
 
           <div className="card p16">
-            <h3 className="h1" style={{ fontSize: 15 }}>5. Seguridad</h3>
+            <h3 className="subsection-title">5. Seguridad</h3>
             <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {detail.active ? (
                 <Button

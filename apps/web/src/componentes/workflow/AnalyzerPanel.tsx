@@ -18,7 +18,7 @@ export const AnalyzerPanel: React.FC<AnalyzerPanelProps> = ({ groupCode, subgrou
   return (
     <div className="card p16 analyzer-panel">
       <div className="flex-between">
-        <h3 className="h1" style={{ fontSize: 16 }}>Análisis Automático</h3>
+        <h3 className="card-title">Análisis Automático</h3>
         <span className="badge badge-green">✓ Analizado</span>
       </div>
 

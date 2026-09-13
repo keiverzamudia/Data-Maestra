@@ -80,13 +80,14 @@ describe('Refresh/Persistence', () => {
     const req = await solicitudesService.create({ requestedDescription: 'T', purpose: 'T' }, 'u1', 'c1', 'd1');
     await solicitudesService.submit(req.id, 'u1', 'c1');
     await solicitudesService.approve(req.id, { action: 'APPROVE' }, 'u2', 'c1');
-    await solicitudesService.classify(req.id, { groupId: 'g1', subgroupId: 'sg1', partNumber: 'P-001', manufacturer: 'Siemens' }, 'u3', 'c1');
+    await solicitudesService.classify(req.id, { groupId: 'g1', subgroupId: 'sg1', partNumber: 'P-001', articleType: 'C', taxType: '1' }, 'u3', 'c1');
 
     const fresh = await almacenService.findOneForClassification(req.id);
     expect(fresh.groupId).toBe('g1');
     expect(fresh.subgroupId).toBe('sg1');
     expect(fresh.partNumber).toBe('P-001');
-    expect(fresh.manufacturer).toBe('Siemens');
+    expect(fresh.articleType).toBe('C');
+    expect(fresh.manufacturer).toBeUndefined();
     expect(fresh.masterCode).toBeDefined();
   });
 

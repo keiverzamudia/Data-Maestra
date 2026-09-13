@@ -202,7 +202,7 @@ export const AuditPage: React.FC = () => {
                     <td data-label="Acción"><Badge tone={actionTone(ev.action)}>{getAuditActionLabel(ev.action)}</Badge></td>
                     <td data-label="Afectado">{affectedName(ev)}</td>
                     <td data-label="Módulo" className="cell-secondary">{ev.entityType}</td>
-                    <td data-label="Correlation ID"><code className="code" style={{ fontSize: 11, padding: '2px 6px' }}>{ev.correlationId?.slice(0, 8) ?? '—'}</code></td>
+                    <td data-label="Correlation ID"><code className="code-inline">{ev.correlationId?.slice(0, 8) ?? '—'}</code></td>
                     <td data-label="Detalle"><Button size="sm" variant="secondary" onClick={() => void openDetail(ev.id)}>Ver</Button></td>
                   </tr>
                 ))}

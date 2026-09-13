@@ -66,7 +66,7 @@ export const ValidationChecklist: React.FC<Props> = ({ checks, ready, missing, l
   return (
     <section className="card p16" aria-label="Checklist de validación">
       <div className="acct-head">
-        <h3 className="h1" style={{ fontSize: 16 }}>Checklist de Validación</h3>
+        <h3 className="card-title">Checklist de Validación</h3>
         <span className="pill pill-ok">{done} / {checks.length} OK</span>
       </div>
       <div style={{ marginTop: 8 }}>

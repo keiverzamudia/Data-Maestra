@@ -15,7 +15,7 @@ interface Props {
 /** 12G — Panel de decisión (ref. Stitch): observaciones + veredicto + acciones. */
 export const DecisionPanel: React.FC<Props> = ({ ready, missing, saving, notes, onNotes, onApprove, onReject, lastChange }) => (
   <section className="card p16" aria-label="Decisión contable">
-    <h3 className="h1" style={{ fontSize: 16 }}>Decisión Contable</h3>
+    <h3 className="card-title">Decisión Contable</h3>
     <div style={{ marginTop: 8 }}>
       <label className="muted small" htmlFor="acct-notes">Observaciones contables (opcional)</label>
       <Textarea
