@@ -3,11 +3,6 @@ import { useSession } from '../../contextos/SessionContext';
 import { apiAuthService, type LoginCandidate } from '../../servicios/api/api-auth-service';
 import { Button, Input, Alert } from '../../componentes/ui';
 
-interface Props {
-  /** Gate lo usa cuando la sesión vigente exige cambio obligatorio. */
-  forcedChange?: boolean;
-}
-
 /** Iconos propios del sistema (trazo actual, sin emojis como icono). */
 const EyeIcon: React.FC = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -25,12 +20,13 @@ const EyeOffIcon: React.FC = () => (
 );
 
 /**
- * FASE 10E — Login real de aplicación (sin JWT en JS; cookie HttpOnly).
+ * FASE 10E/15 — Login real (sin JWT en JS; cookie HttpOnly).
  * Autocomplete muestra solo displayName; el id queda interno.
- * Tras cambio correcto las sesiones se revocan y se vuelve al login.
+ * FASE 15: la contraseña se valida contra Profit en backend y se
+ * descarta; aquí solo vive en el campo durante el intento.
  */
-export const LoginPage: React.FC<Props> = ({ forcedChange }) => {
-  const { login, refreshSession, user } = useSession();
+export const LoginPage: React.FC = () => {
+  const { login } = useSession();
   const [text, setText] = React.useState('');
   const [candidates, setCandidates] = React.useState<LoginCandidate[]>([]);
   const [selected, setSelected] = React.useState<LoginCandidate | null>(null);
@@ -41,17 +37,10 @@ export const LoginPage: React.FC<Props> = ({ forcedChange }) => {
   const [searching, setSearching] = React.useState(false);
   const [searchError, setSearchError] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
-  // Cambio obligatorio
-  const [mustChange, setMustChange] = React.useState(!!forcedChange);
-  const [current, setCurrent] = React.useState('');
-  const [next, setNext] = React.useState('');
-  const [confirm, setConfirm] = React.useState('');
-  const [changed, setChanged] = React.useState(false);
   const reqId = React.useRef(0);
   // FASE CIERRE VISUAL — asset oficial SAN LUIS (public/brand/isologo-san-luis.svg).
   // Si el archivo no existe, se muestra el wordmark textual. Nunca inventar logo.
   const [brandOk, setBrandOk] = React.useState(true);
-  const [brandAzulOk, setBrandAzulOk] = React.useState(true);
 
   // Autocomplete server-side con debounce; descarta respuestas viejas.
   // Sin filtrado en frontend: los candidatos son siempre los del servidor.
@@ -86,72 +75,27 @@ export const LoginPage: React.FC<Props> = ({ forcedChange }) => {
     return () => clearTimeout(t);
   }, [text, selected]);
 
-  const resetToLogin = () => {
-    setMustChange(false);
-    setChanged(false);
-    setCurrent('');
-    setNext('');
-    setConfirm('');
-    setPassword('');
-    setError(null);
-    setSearchError(null);
-    setSelected(null);
-    setText('');
-  };
-
   const handleLogin = async () => {
     if (!selected || loading) return;
     setLoading(true);
     setError(null);
     try {
-      const st = await login(selected.id, password);
-      if (st === 'must-change') {
-        setCurrent(password);
-        setMustChange(true);
-      }
+      await login(selected.id, password);
       // Si 'ok', el Gate muestra la aplicación automáticamente.
     } catch (err: any) {
       setError(err?.message || 'Usuario o contraseña incorrectos.');
     } finally {
+      // La contraseña solo vive durante el intento: se limpia siempre.
+      setPassword('');
       setLoading(false);
     }
   };
-
-  const handleChange = async () => {
-    if (loading) return;
-    if (next !== confirm) {
-      setError('La confirmación no coincide con la nueva contraseña.');
-      return;
-    }
-    if (next.length < 8) {
-      setError('La nueva contraseña debe tener al menos 8 caracteres.');
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      await apiAuthService.cambiarPassword(current, next);
-      // Las sesiones quedan revocadas: revalidar lleva al login.
-      await refreshSession();
-      // NOTA: mustChange se mantiene true hasta el próximo login con sesión
-      // válida; si se pusiera false aquí, la condición de vista mostraría el
-      // login en lugar del mensaje de éxito.
-      setChanged(true);
-    } catch (err: any) {
-      setError(err?.message || 'No se pudo cambiar la contraseña.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // En modo cambio forzado la identidad viene de la sesión (nunca del input).
-  const changeTitle = user ? `Cambio obligatorio — ${user.displayName}` : 'Debes cambiar tu contraseña';
 
   return (
     <div className="login-page">
       <aside className="login-brand" aria-label="Data-Maestra">
         {brandOk ? (
-          <img src="/brand/isologo-san-luis.svg" alt="San Luis" className="brand-asset brand-asset-invert" onError={() => setBrandOk(false)} />
+          <img src="/brand/isologo-san-luis-azul.png" alt="San Luis" className="brand-asset" onError={() => setBrandOk(false)} />
         ) : (
           <p className="login-sl">San Luis</p>
         )}
@@ -186,11 +130,7 @@ export const LoginPage: React.FC<Props> = ({ forcedChange }) => {
       </aside>
       <main className="login-auth">
         <div className="login-form">
-          {!mustChange ? (
             <div className="stack-sm">
-              {brandAzulOk && (
-                <img src="/brand/isologo-san-luis-azul.svg" alt="San Luis" className="brand-asset-sm" onError={() => setBrandAzulOk(false)} />
-              )}
               <h2 className="login-title">Iniciar sesión</h2>
               <p className="muted small">Ingresa con tu usuario corporativo</p>
               <label>
@@ -260,43 +200,8 @@ export const LoginPage: React.FC<Props> = ({ forcedChange }) => {
                 {loading ? 'Verificando…' : 'Iniciar sesión'}
               </Button>
               {error && <Alert tone="danger">{error}</Alert>}
-              <p className="muted small">Acceso corporativo. Si es tu primer ingreso deberás cambiar tu contraseña.</p>
+              <p className="muted small">Acceso corporativo con tu contraseña de Profit.</p>
             </div>
-          ) : !changed ? (
-            <div className="stack-sm">
-              <h2 className="login-title">{forcedChange ? changeTitle : 'Debes cambiar tu contraseña'}</h2>
-              <p className="muted small">Debes cambiar tu contraseña antes de continuar.</p>
-              <label>
-                <span className="muted small">Contraseña actual</span>
-                <Input type="password" value={current} onChange={e => setCurrent(e.target.value)} disabled={loading} />
-              </label>
-              <label>
-                <span className="muted small">Nueva contraseña (mínimo 8 caracteres)</span>
-                <Input type="password" value={next} onChange={e => setNext(e.target.value)} disabled={loading} />
-              </label>
-              <label>
-                <span className="muted small">Confirmar nueva contraseña</span>
-                <Input
-                  type="password"
-                  value={confirm}
-                  onChange={e => setConfirm(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') handleChange(); }}
-                  disabled={loading}
-                />
-              </label>
-              <Button onClick={handleChange} disabled={loading || !current || !next || !confirm}>
-                {loading ? 'Actualizando…' : 'Cambiar contraseña'}
-              </Button>
-              {error && <Alert tone="danger">{error}</Alert>}
-            </div>
-          ) : (
-            <div className="stack-sm">
-              <Alert tone="success">
-                Contraseña actualizada correctamente. Tus sesiones fueron cerradas: ingresa de nuevo.
-              </Alert>
-              <Button onClick={resetToLogin}>Volver al login</Button>
-            </div>
-          )}
         </div>
       </main>
     </div>

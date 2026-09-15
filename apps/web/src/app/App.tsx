@@ -24,19 +24,16 @@ export function App() {
   );
 }
 
-// FASE 10E — Puerta real: loading sin flash → sin sesión LoginPage →
-// mustChangePassword cambio obligatorio → autenticado aplicación.
+// FASE 10E/15 — Puerta real: loading sin flash → sin sesión LoginPage →
+// autenticado aplicación. La contraseña se valida contra Profit.
 // CompanyProvider vive dentro (sus endpoints exigen JWT).
 function Gate() {
-  const { loading, authenticated, mustChangePassword } = useSession();
+  const { loading, authenticated } = useSession();
   if (loading) {
     return <div className="empty">Cargando sesión…</div>;
   }
   if (!authenticated) {
     return <LoginPage />;
-  }
-  if (mustChangePassword) {
-    return <LoginPage forcedChange />;
   }
   return (
     <CompanyProvider>

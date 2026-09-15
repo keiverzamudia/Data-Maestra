@@ -12,7 +12,6 @@ vi.mock('../../servicios/api/api-usuarios-service', () => ({
     quitarRol: vi.fn(),
     fijarOverride: vi.fn(),
     quitarOverride: vi.fn(),
-    restablecerPassword: vi.fn(),
   },
 }));
 
@@ -21,7 +20,7 @@ const cambiarMock = apiUsuariosService.cambiarEstado as any;
 
 const DETAIL: any = {
   id: 'u1', username: 'j.perez', displayName: 'Juan Pérez', email: null,
-  profitCode: 'KZAMU', active: true, mustChangePassword: false,
+  profitCode: 'KZAMU', active: true,
   lastLoginAt: null, userRoles: [], permissionOverrides: [],
   roleCodes: ['REQUESTER'], effectivePermissions: [], permissionCatalog: [],
 };
@@ -44,6 +43,15 @@ describe('UserAdminModal 11D', () => {
     expect(await screen.findByText(/¿Desactivar a Juan Pérez\?/)).toBeTruthy();
     fireEvent.click(screen.getByText('Desactivar'));
     expect(cambiarMock).toHaveBeenCalledWith('u1', false);
+  });
+
+  it('FASE 15: sin restablecimiento local de contraseña', async () => {
+    render(
+      <UserAdminModal userId="u1" empresas={[]} departamentos={[]} roles={[]} onClose={() => {}} onChanged={() => {}} />,
+    );
+    expect(await screen.findByText('Administrar — Juan Pérez')).toBeTruthy();
+    expect(screen.queryByText('Restablecer contraseña')).toBeNull();
+    expect(screen.queryByText('Confirmar restablecimiento')).toBeNull();
   });
 
   it('error de carga con reintento', async () => {

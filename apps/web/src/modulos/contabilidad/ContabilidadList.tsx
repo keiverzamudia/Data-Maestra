@@ -6,13 +6,13 @@ import { useCatalogos } from '../../hooks/useCatalogos';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
 import { Button, SearchInput, StatusBadge, EmptyState, Modal, Textarea, Alert, ConfirmDialog, ErrorState, Skeleton, Tabs, DataTable, Pagination, type DataColumn } from '../../componentes/ui';
 import { Page } from '../../componentes/ui';
+import { HelpButton } from '../../componentes/ayuda';
 import { WorkflowStepper, ProfitRegistrationPanel } from '../../componentes/workflow';
 import {
   RequestSummary, AccountingStandardPanel, ValidationChecklist, DecisionPanel,
   type ContabilidadEntry, type CheckEvidence, type CheckStatus,
 } from '../../componentes/contabilidad';
 import { apiProfitService, type ProfitGroupStandard } from '../../servicios/api/api-profit-service';
-import { serializarDis } from '../../utilidades/dis';
 import type { Request } from '../../tipos';
 
 function findName(list: { id: string; name: string }[], id?: string) {
@@ -247,13 +247,6 @@ export const AccountingList: React.FC = () => {
     ];
     const missing = checks.filter(c => c.status !== 'ok').length;
     const ready = missing === 0 && !stdLoading;
-    const dis = (() => {
-      try {
-        return serializarDis(entries.map(e => ({ position: parseInt(e.position.slice(1), 10) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10, code: e.code })));
-      } catch {
-        return '<DIS></DIS>';
-      }
-    })();
     const lastApproval = (selected.approvals ?? []).filter(a => a.action === 'APPROVE').slice(-1)[0];
     const lastChange = lastApproval
       ? `${lastApproval.actor?.displayName ?? '—'} · ${new Date(lastApproval.createdAt).toLocaleString('es-VE')}`
@@ -265,7 +258,7 @@ export const AccountingList: React.FC = () => {
       <Page
         title={`Aprobación Contable — ${selected.requestNumber}`}
         desc={selected.requestedDescription}
-        actions={<span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>{detailLoading && <span className="muted small">Cargando trazabilidad…</span>}<Button variant="secondary" onClick={() => setSelected(null)}>Volver</Button></span>}
+        actions={<span style={{ display: 'flex', gap: 8, alignItems: 'center' }}><HelpButton helpKey="contabilidad" status={selected.status} />{detailLoading && <span className="muted small">Cargando trazabilidad…</span>}<Button variant="secondary" onClick={() => setSelected(null)}>Volver</Button></span>}
       >
         {/* CAPA 1 — cabecera con estado y acciones */}
         <section className="card p16" aria-label="Cabecera de solicitud">
@@ -336,7 +329,6 @@ export const AccountingList: React.FC = () => {
               stdLoading={stdLoading}
               stdError={stdError}
               verifiedAt={verifiedAt}
-              dis={dis}
               onVerify={() => void loadStandard(selected)}
             />
             {error && <Alert tone="danger">{error}</Alert>}
@@ -416,6 +408,7 @@ export const AccountingList: React.FC = () => {
     <Page
       title="Contabilidad"
       desc={loading ? 'Revisa y aprueba las clasificaciones desde el punto de vista contable.' : `${filtered.length} clasificación${filtered.length === 1 ? '' : 'es'} por revisar.`}
+      actions={<HelpButton helpKey="contabilidad" />}
     >
       <div className="toolbar" role="search">
         <span className="grow"><SearchInput value={search} onChange={onSearch} placeholder="Buscar por descripción..." /></span>

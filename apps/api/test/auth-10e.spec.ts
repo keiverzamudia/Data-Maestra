@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
 import { createHash } from 'crypto';
 import { AutenticacionService } from '../src/modulos/autenticacion/autenticacion.service';
@@ -11,8 +10,8 @@ const sha = (s: string) => createHash('sha256').update(s).digest('hex');
 function createMocks() {
   const db = {
     users: [
-      { id: 'u-ok', displayName: 'USUARIO OK', active: true, passwordHash: bcrypt.hashSync('Secreta123', 4), mustChangePassword: false, lastLoginAt: null, passwordChangedAt: null },
-      { id: 'u-off', displayName: 'USUARIO OFF', active: false, passwordHash: bcrypt.hashSync('Secreta123', 4), mustChangePassword: false, lastLoginAt: null, passwordChangedAt: null },
+      { id: 'u-ok', displayName: 'USUARIO OK', active: true, profitCode: 'UOK', lastLoginAt: null },
+      { id: 'u-off', displayName: 'USUARIO OFF', active: false, profitCode: 'UOFF', lastLoginAt: null },
     ] as any[],
     sessions: [] as any[],
     userRoles: [
@@ -62,15 +61,19 @@ function createMocks() {
     userPermissionOverride: { findMany: vi.fn(async () => []) },
     auditEvent: { create: vi.fn(async ({ data }: any) => ({ id: 'a1', ...data })) },
   };
-  return { prisma, db };
+  // FASE 15: Profit valida (id === profitCode).
+  const adapter = {
+    autenticarProfit: vi.fn(async (code: string, pass: string) => (pass === 'Secreta123' ? code : null)),
+  };
+  return { prisma, db, adapter };
 }
 
 describe('FASE 10E — login crea Session + JWT', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('1-5/30. login crea una Session con tokenHash (no token) y expiresAt', async () => {
-    const { prisma, db } = createMocks();
-    const svc = new AutenticacionService(prisma);
+    const { prisma, db, adapter } = createMocks();
+    const svc = new AutenticacionService(prisma, adapter as any);
     const r = await svc.loginReal({ userId: 'u-ok', password: 'Secreta123' }, '1.2.3.4', 'UA');
     expect(prisma.session.create).toHaveBeenCalledTimes(1);
     const created = prisma.session.create.mock.calls[0][0].data;
@@ -86,16 +89,16 @@ describe('FASE 10E — login crea Session + JWT', () => {
   });
 
   it('6/7. login fallido o inactivo no crea Session', async () => {
-    const { prisma } = createMocks();
-    const svc = new AutenticacionService(prisma);
+    const { prisma, adapter } = createMocks();
+    const svc = new AutenticacionService(prisma, adapter as any);
     await expect(svc.loginReal({ userId: 'u-ok', password: 'mal' })).rejects.toThrow();
     await expect(svc.loginReal({ userId: 'u-off', password: 'Secreta123' })).rejects.toThrow();
     expect(prisma.session.create).not.toHaveBeenCalled();
   });
 
   it('8. JWT válido + sesión vigente autentica', async () => {
-    const { prisma } = createMocks();
-    const svc = new AutenticacionService(prisma);
+    const { prisma, adapter } = createMocks();
+    const svc = new AutenticacionService(prisma, adapter as any);
     const r = await svc.loginReal({ userId: 'u-ok', password: 'Secreta123' });
     const resolved = await svc.resolveSession(r.token);
     expect(resolved!.user.id).toBe('u-ok');
@@ -113,8 +116,8 @@ describe('FASE 10E — login crea Session + JWT', () => {
   });
 
   it('11/12/19. sesión revocada o expirada rechaza', async () => {
-    const { prisma, db } = createMocks();
-    const svc = new AutenticacionService(prisma);
+    const { prisma, db, adapter } = createMocks();
+    const svc = new AutenticacionService(prisma, adapter as any);
     const r = await svc.loginReal({ userId: 'u-ok', password: 'Secreta123' });
     await svc.logout(r.sessionId, 'u-ok');
     expect(db.sessions[0].revokedAt).toBeInstanceOf(Date);
@@ -127,37 +130,16 @@ describe('FASE 10E — login crea Session + JWT', () => {
   });
 
   it('13/14. usuario inexistente o inactivo rechaza aunque la sesión exista', async () => {
-    const { prisma, db } = createMocks();
-    const svc = new AutenticacionService(prisma);
+    const { prisma, db, adapter } = createMocks();
+    const svc = new AutenticacionService(prisma, adapter as any);
     const r = await svc.loginReal({ userId: 'u-ok', password: 'Secreta123' });
     db.users.splice(0, db.users.length);
     expect(await svc.resolveSession(r.token)).toBeNull();
   });
 
-  it('21/22. cambio usa identidad de sesión (sin userId en body)', async () => {
-    const { prisma, db } = createMocks();
-    const svc = new AutenticacionService(prisma);
-    const r = await svc.cambiarPasswordSesion('u-ok', { currentPassword: 'Secreta123', newPassword: 'NuevaClave1' });
-    expect(r).toEqual({ ok: true });
-    expect(await bcrypt.compare('NuevaClave1', db.users[0].passwordHash)).toBe(true);
-    expect(db.users[0].mustChangePassword).toBe(false);
-    expect(db.users[0].passwordChangedAt).toBeInstanceOf(Date);
-  });
-
-  it('cambio revoca todas las sesiones del usuario', async () => {
-    const { prisma, db } = createMocks();
-    const svc = new AutenticacionService(prisma);
-    const r1 = await svc.loginReal({ userId: 'u-ok', password: 'Secreta123' });
-    const r2 = await svc.loginReal({ userId: 'u-ok', password: 'Secreta123' });
-    await svc.cambiarPasswordSesion('u-ok', { currentPassword: 'Secreta123', newPassword: 'NuevaClave1' });
-    expect(await svc.resolveSession(r1.token)).toBeNull();
-    expect(await svc.resolveSession(r2.token)).toBeNull();
-    expect(db.sessions.every((s: any) => s.revokedAt instanceof Date)).toBe(true);
-  });
-
   it('26-29. auditoría sin secretos y JWT nunca en claro en BD', async () => {
-    const { prisma, db } = createMocks();
-    const svc = new AutenticacionService(prisma);
+    const { prisma, db, adapter } = createMocks();
+    const svc = new AutenticacionService(prisma, adapter as any);
     const r = await svc.loginReal({ userId: 'u-ok', password: 'Secreta123' });
     await svc.logout(r.sessionId, 'u-ok');
     const actions = prisma.auditEvent.create.mock.calls.map((c: any) => c[0].data.action);

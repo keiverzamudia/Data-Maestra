@@ -25,7 +25,6 @@ export const UserAdminModal: React.FC<Props> = ({ userId, empresas, departamento
   const [companyId, setCompanyId] = React.useState('');
   const [departmentId, setDepartmentId] = React.useState('');
   const [roleCode, setRoleCode] = React.useState('');
-  const [confirmReset, setConfirmReset] = React.useState(false);
   const [confirmDeactivate, setConfirmDeactivate] = React.useState(false);
 
   const load = React.useCallback(async () => {
@@ -88,7 +87,6 @@ export const UserAdminModal: React.FC<Props> = ({ userId, empresas, departamento
               <div><span className="muted small">Usuario</span><br /><strong>{detail.username}</strong></div>
               <div><span className="muted small">Código Profit</span><br /><strong>{detail.profitCode || '—'}</strong></div>
               <div><span className="muted small">Estado</span><br /><strong>{detail.active ? 'Activo' : 'Inactivo'}</strong></div>
-              <div><span className="muted small">Cambio de contraseña</span><br /><strong>{detail.mustChangePassword ? 'Pendiente' : 'Al día'}</strong></div>
               <div><span className="muted small">Último ingreso</span><br /><strong>{detail.lastLoginAt ? new Date(detail.lastLoginAt).toLocaleString('es-VE') : '—'}</strong></div>
             </div>
             {detail.profitCode && <p className="muted small" style={{ marginTop: 8 }}>Identidad respaldada por Profit (nombre, usuario y código se sincronizan).</p>}
@@ -192,15 +190,6 @@ export const UserAdminModal: React.FC<Props> = ({ userId, empresas, departamento
                   Activar usuario
                 </Button>
               )}
-              {!confirmReset ? (
-                <Button variant="danger" disabled={!!saving} onClick={() => setConfirmReset(true)}>
-                  Restablecer contraseña
-                </Button>
-              ) : (
-                <Button variant="danger" disabled={!!saving} onClick={() => { setConfirmReset(false); void run('reset', () => apiUsuariosService.restablecerPassword(detail.id), 'Contraseña restablecida. El usuario deberá cambiarla al iniciar sesión.'); }}>
-                  Confirmar restablecimiento
-                </Button>
-              )}
             </div>
             <ConfirmDialog
               open={confirmDeactivate}
@@ -211,7 +200,7 @@ export const UserAdminModal: React.FC<Props> = ({ userId, empresas, departamento
               onCancel={() => setConfirmDeactivate(false)}
               onConfirm={() => { setConfirmDeactivate(false); void run('active', () => apiUsuariosService.cambiarEstado(detail.id, false), 'Usuario desactivado correctamente'); }}
             />
-            <p className="muted small" style={{ marginTop: 8 }}>Desactivar conserva roles, empresa, departamento y permisos. Restablecer vuelve al flujo de contraseña inicial y revoca las sesiones del usuario.</p>
+            <p className="muted small" style={{ marginTop: 8 }}>Desactivar conserva roles, empresa, departamento y permisos. La contraseña se valida contra Profit.</p>
           </div>
         </div>
       )}

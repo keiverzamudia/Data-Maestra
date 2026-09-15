@@ -56,12 +56,8 @@ model User {
   // Código externo estable proveniente de Profit (referencia para sincronización).
   // Nullable para compatibilidad con usuarios creados antes de 10B.
   profitCode String? @unique @map("profit_code")
-  // Hash de contraseña (bcrypt en 10D). NULL = sin contraseña asignada (no puede hacer login).
-  passwordHash String? @map("password_hash")
-  // true = debe cambiar la contraseña en el próximo ingreso (temporal / reset).
-  mustChangePassword Boolean   @default(true) @map("must_change_password")
+  // FASE 15: sin contraseña local — se valida contra MasterProfit.dbo.autenticar().
   lastLoginAt        DateTime? @map("last_login_at")
-  passwordChangedAt  DateTime? @map("password_changed_at")
 
   userRoles       UserRole[]
   permissionOverrides UserPermissionOverride[]

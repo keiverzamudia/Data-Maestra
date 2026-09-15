@@ -15,6 +15,12 @@ describe('serializarDis', () => {
     expect(serializarDis({ c7: '1.1.04.01.01.001' })).toBe('<DIS>{c7:1.1.04.01.01.001}</DIS>');
   });
 
+  it('3b. caso 14S: c1+c7+c8 exacto', () => {
+    expect(serializarDis({ c1: '1.1.04.03.01.010', c7: '1.1.04.01.01.001', c8: '7.1.10.02.01.002' })).toBe(
+      '<DIS>{c1:1.1.04.03.01.010}{c7:1.1.04.01.01.001}{c8:7.1.10.02.01.002}</DIS>',
+    );
+  });
+
   it('4. c1+c7', () => {
     expect(
       serializarDis([

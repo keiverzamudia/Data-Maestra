@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { serializarDis, type ContabilidadPosition } from '../../utilidades/dis';
+import type { ContabilidadPosition } from '../../utilidades/dis';
 
 export type PositionKey = `c${ContabilidadPosition}`;
 
@@ -32,14 +32,6 @@ export const InformacionContable: React.FC<Props> = ({ value }) => {
     [value],
   );
 
-  const dis = React.useMemo(() => {
-    try {
-      return serializarDis(value.map(e => ({ position: positionNumber(e.position), code: e.code })));
-    } catch {
-      return '<DIS></DIS>';
-    }
-  }, [value]);
-
   return (
     <div className="stack-sm">
       {ordered.length === 0 ? (
@@ -57,14 +49,6 @@ export const InformacionContable: React.FC<Props> = ({ value }) => {
           ))}
         </div>
       )}
-
-      <div className="card p16">
-        <span className="muted small">Formato contable para Profit</span>
-        <p className="muted small" style={{ marginTop: 4 }}>
-          Generado desde la configuración contable actual.
-        </p>
-        <div className="code" style={{ marginTop: 8, wordBreak: 'break-all' }}>{dis}</div>
-      </div>
 
       <p className="muted small">
         Información de solo lectura. Para modificarla, realice el cambio en Profit y luego

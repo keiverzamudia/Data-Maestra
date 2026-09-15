@@ -9,7 +9,6 @@ export interface LoginUser {
 export interface LoginResponse {
   authenticated: boolean;
   user: LoginUser;
-  mustChangePassword: boolean;
 }
 
 export interface LoginCandidate {
@@ -27,8 +26,7 @@ export interface SessionMembership {
 
 export interface SessionState {
   authenticated: boolean;
-  user: LoginUser & { mustChangePassword?: boolean };
-  mustChangePassword: boolean;
+  user: LoginUser;
   roleCodes: string[];
   permissions: string[];
   memberships: SessionMembership[];
@@ -52,9 +50,5 @@ export const apiAuthService = {
 
   async session(): Promise<SessionState> {
     return api.get<SessionState>('/api/v1/auth/session');
-  },
-
-  async cambiarPassword(currentPassword: string, newPassword: string): Promise<{ ok: boolean }> {
-    return api.post<{ ok: boolean }>('/api/v1/auth/cambiar-password', { currentPassword, newPassword });
   },
 };

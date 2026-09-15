@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { Page, Button, Input, Alert, Skeleton, ErrorState, EmptyState, SectionCard, DataTable, Pagination, type DataColumn } from '../../componentes/ui';
+import { HelpButton } from '../../componentes/ayuda';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
 import { useSession } from '../../contextos/SessionContext';
 import { apiUsuariosService, type AdminUser, type ProfitSyncResult } from '../../servicios/api/api-usuarios-service';
@@ -341,7 +342,7 @@ export const AdminPage: React.FC<{ section?: AdminSection }> = ({ section = 'per
 
   if (section === 'roles') {
     return (
-      <Page title="Roles y permisos" desc="Roles del sistema con su descripción funcional y permisos.">
+      <Page title="Roles y permisos" desc="Roles del sistema con su descripción funcional y permisos." actions={<HelpButton helpKey="roles" />}>
         <RolesSection />
       </Page>
     );
@@ -352,7 +353,7 @@ export const AdminPage: React.FC<{ section?: AdminSection }> = ({ section = 'per
   }
 
   return (
-    <Page title="Personas y acceso" desc="Personas, empresa, departamento, roles, permisos y acceso.">
+    <Page title="Personas y acceso" desc="Personas, empresa, departamento, roles, permisos y acceso." actions={<HelpButton helpKey="personas" />}>
       <UsuariosSection empresas={empresas} departamentos={departamentos} roles={rolesData} />
     </Page>
   );

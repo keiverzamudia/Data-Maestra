@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { Page, Button, Tabs, Alert, EmptyState, Drawer, ConfirmDialog } from '../../componentes/ui';
+import { HelpButton } from '../../componentes/ayuda';
 import { apiOrganizacionService } from '../../servicios/api/api-organizacion-service';
 import { DepartamentosSection } from './DepartamentosSection';
 import { CompanyModal } from './CompanyModal';
@@ -68,7 +69,7 @@ export const OrganizacionSection: React.FC<Props> = ({ empresas, departamentos, 
   const deleting = deleteId ? rows.find(c => c.id === deleteId) ?? null : null;
 
   return (
-    <Page title="Organización" desc="Empresas y departamentos del sistema.">
+    <Page title="Organización" desc="Empresas y departamentos del sistema." actions={<HelpButton helpKey="organizacion" />}>
       <Tabs tabs={['Empresas', 'Departamentos']} active={tab} onChange={setTab} />
 
       {tab === 0 && (

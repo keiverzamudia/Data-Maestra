@@ -46,7 +46,7 @@ export class UsuariosController {
   // Protección temporal 10C (ver sincronizarProfit). 10D definirá el acceso
   // público necesario para la búsqueda del login.
   @RequirePermission('ADMIN.MANAGE')
-  @ApiOperation({ summary: 'Search local users paginated with global totals (never exposes passwordHash)' })
+  @ApiOperation({ summary: 'Search local users paginated with global totals' })
   @ApiQuery({ name: 'search', required: false, description: 'Filter by displayName, username or profitCode (contains)' })
   @ApiQuery({ name: 'profitCode', required: false, description: 'Filter by profitCode exact (admin)' })
   @ApiQuery({ name: 'page', required: false, description: 'Page number (min 1)' })
@@ -71,7 +71,7 @@ export class UsuariosController {
 
   @Get(':id')
   @RequirePermission('ADMIN.MANAGE')
-  @ApiOperation({ summary: 'User detail with memberships and effective permissions (never exposes passwordHash)' })
+  @ApiOperation({ summary: 'User detail with memberships and effective permissions' })
   async detalle(@Param('id') id: string) {
     return this.usuariosService.getDetalle(id);
   }
@@ -111,13 +111,5 @@ export class UsuariosController {
   @ApiOperation({ summary: 'Remove individual override (back to inherited)' })
   async quitarOverride(@Param('id') id: string, @Body() dto: RemoveOverrideDto, @CurrentUser() user: RequestUser) {
     return this.usuariosService.removeOverride(id, dto.permissionCode, user.id);
-  }
-
-  @Post(':id/reset-password')
-  @HttpCode(HttpStatus.OK)
-  @RequirePermission('ADMIN.MANAGE')
-  @ApiOperation({ summary: 'Reset to initial-password flow (revokes sessions, no secrets exposed)' })
-  async restablecerPassword(@Param('id') id: string, @CurrentUser() user: RequestUser) {
-    return this.usuariosService.resetPassword(id, user.id);
   }
 }

@@ -12,7 +12,6 @@ export interface AdminUser {
   displayName: string;
   profitCode: string | null;
   active: boolean;
-  mustChangePassword: boolean;
   lastLoginAt: string | null;
   userRoles: AdminMembership[];
 }
@@ -57,9 +56,7 @@ export interface AdminUserDetail {
   email: string | null;
   profitCode: string | null;
   active: boolean;
-  mustChangePassword: boolean;
   lastLoginAt: string | null;
-  passwordChangedAt: string | null;
   userRoles: AdminMembershipFull[];
   permissionOverrides: Array<{ effect: string; permission: { code: string } }>;
   roleCodes: string[];
@@ -113,10 +110,6 @@ export const apiUsuariosService = {
 
   async quitarOverride(id: string, permissionCode: string): Promise<{ ok: boolean }> {
     return api.delete<{ ok: boolean }>(`/api/v1/usuarios/${encodeURIComponent(id)}/permisos`, { permissionCode });
-  },
-
-  async restablecerPassword(id: string): Promise<{ ok: boolean; mustChangePassword: boolean }> {
-    return api.post<{ ok: boolean; mustChangePassword: boolean }>(`/api/v1/usuarios/${encodeURIComponent(id)}/reset-password`);
   },
 
   async asignarRolMasivo(body: { userIds: string[]; roleCode: string; companyId: string; departmentId?: string | null }): Promise<BulkAssignResult> {

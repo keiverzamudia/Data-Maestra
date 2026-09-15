@@ -42,8 +42,8 @@ const masivoMock = apiUsuariosService.asignarRolMasivo as any;
 const listarRolesMock = apiRolesService.listar as any;
 
 const USERS = [
-  { id: 'u1', username: 'j.perez', displayName: 'Juan Pérez', profitCode: null, active: true, mustChangePassword: false, lastLoginAt: null, userRoles: [] },
-  { id: 'u2', username: 'm.garcia', displayName: 'María García', profitCode: null, active: true, mustChangePassword: false, lastLoginAt: null, userRoles: [] },
+  { id: 'u1', username: 'j.perez', displayName: 'Juan Pérez', profitCode: null, active: true, lastLoginAt: null, userRoles: [] },
+  { id: 'u2', username: 'm.garcia', displayName: 'María García', profitCode: null, active: true, lastLoginAt: null, userRoles: [] },
 ];
 
 function mockAll() {

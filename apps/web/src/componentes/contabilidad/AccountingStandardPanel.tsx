@@ -1,6 +1,5 @@
 import * as React from 'react';
 import { Button, Skeleton, Alert } from '../ui';
-import { copyText } from '../../utilidades/copy';
 import type { ProfitGroupStandard } from '../../servicios/api/api-profit-service';
 
 interface Props {
@@ -10,23 +9,16 @@ interface Props {
   stdLoading: boolean;
   stdError: string | null;
   verifiedAt: string | null;
-  dis: string;
   onVerify: () => void;
 }
 
 /**
  * 12G — Panel del estándar contable (ref. Stitch): pills de sincronización,
- * tabla POSICIÓN/CUENTA/DESCRIPCIÓN/ORIGEN/ESTADO, bloque DIS con copiar,
+ * tabla POSICIÓN/CUENTA/DESCRIPCIÓN/ORIGEN/ESTADO,
  * estados configurado / no configurado / error diferenciados.
+ * La representación técnica del formato contable es interna: no se muestra.
  */
-export const AccountingStandardPanel: React.FC<Props> = ({ groupName, groupCode, std, stdLoading, stdError, verifiedAt, dis, onVerify }) => {
-  const [copied, setCopied] = React.useState(false);
-  const copy = async () => {
-    if (await copyText(dis)) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
+export const AccountingStandardPanel: React.FC<Props> = ({ groupName, groupCode, std, stdLoading, stdError, verifiedAt, onVerify }) => {
   const configured = !!std && std.configured;
 
   return (
@@ -97,15 +89,6 @@ export const AccountingStandardPanel: React.FC<Props> = ({ groupName, groupCode,
                 ))}
               </tbody>
             </table>
-          </div>
-          <div style={{ marginTop: 12 }}>
-            <span className="muted small">Formato contable para Profit</span>
-            <div className="code" style={{ marginTop: 4, wordBreak: 'break-all' }}>{dis}</div>
-            <div style={{ marginTop: 8 }}>
-              <Button variant="secondary" size="sm" onClick={() => void copy()}>
-                {copied ? '✓ Copiado' : '⧉ Copiar'}
-              </Button>
-            </div>
           </div>
         </>
       )}

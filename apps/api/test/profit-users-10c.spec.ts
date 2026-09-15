@@ -52,9 +52,9 @@ function createMocks(initialLocal: LocalUser[], profitUsers: { profitCode: strin
 }
 
 describe('FASE 10C — GET /usuarios?search= (autocompletado login 10D)', () => {
-  it('busca por displayName, username y profitCode y nunca expone passwordHash', async () => {
+  it('busca por displayName, username y profitCode sin secretos', async () => {
     const rows = [
-      { id: 'a', username: 'KZAMU', displayName: 'KEIBER ZAMUDIA', profitCode: 'KZAMU', active: true, mustChangePassword: true, lastLoginAt: null },
+      { id: 'a', username: 'KZAMU', displayName: 'KEIBER ZAMUDIA', profitCode: 'KZAMU', active: true, lastLoginAt: null },
     ];
     const prisma: any = {
       user: {
@@ -97,7 +97,7 @@ describe('FASE 10C — GET /usuarios?search= (autocompletado login 10D)', () => 
 describe('FASE 10C — Sincronización de usuarios Profit', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('crea usuario nuevo con profitCode/displayName y sin passwordHash', async () => {
+  it('crea usuario nuevo con profitCode/displayName y sin secretos', async () => {
     const m = createMocks([], [{ profitCode: '02', displayName: 'JOSE MARTINEZ' }]);
     const svc = new UsuariosService(m.prisma, m.adapter, m.auditoria);
     const r = await svc.synchronize('u5', 'c1');
@@ -123,7 +123,7 @@ describe('FASE 10C — Sincronización de usuarios Profit', () => {
     expect(m.calls.filter(c => c.op.startsWith('user.'))).toHaveLength(0);
   });
 
-  it('actualiza solo displayName y no toca passwordHash/roles/empresa', async () => {
+  it('actualiza solo displayName y no toca roles/empresa', async () => {
     const m = createMocks(
       [{ id: 'u10', profitCode: '02', displayName: 'JOSE VIEJO', active: true }],
       [{ profitCode: '02', displayName: 'JOSE MARTINEZ' }],

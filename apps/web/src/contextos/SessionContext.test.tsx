@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import * as React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react';
 import { SessionProvider, useSession } from './SessionContext';
@@ -10,7 +11,6 @@ vi.mock('../servicios/api/api-auth-service', () => ({
     login: vi.fn(),
     logout: vi.fn(),
     session: vi.fn(),
-    cambiarPassword: vi.fn(),
   },
 }));
 
@@ -20,13 +20,14 @@ const logoutMock = apiAuthService.logout as any;
 
 function Probe() {
   const s = useSession();
+  const [res, setRes] = React.useState('');
   return (
     <div>
       <span data-testid="loading">{String(s.loading)}</span>
       <span data-testid="auth">{String(s.authenticated)}</span>
       <span data-testid="user">{s.user?.displayName ?? 'none'}</span>
-      <span data-testid="mcp">{String(s.mustChangePassword)}</span>
-      <button onClick={() => s.login('u-1', 'x')}>go-login</button>
+      <span data-testid="res">{res}</span>
+      <button onClick={() => s.login('u-1', 'x').then(setRes)}>go-login</button>
       <button onClick={() => s.logout()}>go-logout</button>
     </div>
   );
@@ -35,7 +36,6 @@ function Probe() {
 const FULL = {
   authenticated: true,
   user: { id: 'u-1', displayName: 'KEIBER ZAMUDIA', active: true },
-  mustChangePassword: false,
   roleCodes: ['REQUESTER'],
   permissions: ['REQUEST.VIEW'],
   memberships: [],
@@ -65,14 +65,16 @@ describe('SessionContext 10E', () => {
     expect(screen.getByTestId('user').textContent).toBe('none');
   });
 
-  it('mustChangePassword se expone', async () => {
-    sessionMock.mockResolvedValue({ ...FULL, mustChangePassword: true });
+  it('FASE 15: login solo retorna ok (sin must-change)', async () => {
+    loginMock.mockResolvedValue({ authenticated: true, user: FULL.user });
     render(<SessionProvider><Probe /></SessionProvider>);
-    await waitFor(() => expect(screen.getByTestId('mcp').textContent).toBe('true'));
+    await waitFor(() => expect(screen.getByTestId('loading').textContent).toBe('false'));
+    fireEvent.click(screen.getByText('go-login'));
+    await waitFor(() => expect(screen.getByTestId('res').textContent).toBe('ok'));
   });
 
   it('login delega y refresca; logout revoca y limpia', async () => {
-    loginMock.mockResolvedValue({ authenticated: true, user: FULL.user, mustChangePassword: false });
+    loginMock.mockResolvedValue({ authenticated: true, user: FULL.user });
     logoutMock.mockResolvedValue({ ok: true });
     render(<SessionProvider><Probe /></SessionProvider>);
     await waitFor(() => expect(screen.getByTestId('loading').textContent).toBe('false'));

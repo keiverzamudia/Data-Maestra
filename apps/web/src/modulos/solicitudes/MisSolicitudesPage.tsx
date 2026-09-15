@@ -6,6 +6,7 @@ import { useOrganizacion } from '../../hooks/useOrganizacion';
 import {
   Page, StatusBadge, SearchInput, Select, DataTable, Pagination, StatCard, type DataColumn,
 } from '../../componentes/ui';
+import { HelpButton } from '../../componentes/ayuda';
 import { etapaActual } from '../../utilidades/presentacion';
 import type { Request } from '../../tipos';
 
@@ -90,7 +91,7 @@ export const MisSolicitudesPage: React.FC = () => {
   ];
 
   return (
-    <Page title="Mis solicitudes" desc="Solicitudes creadas por mí.">
+    <Page title="Mis solicitudes" desc="Solicitudes creadas por mí." actions={<HelpButton helpKey="solicitudes" />}>
       <div className="stat-grid" aria-label="Resumen">
         <StatCard label="Total" value={totals.total} />
         <StatCard label="En proceso" value={totals.proceso} tone="info" />

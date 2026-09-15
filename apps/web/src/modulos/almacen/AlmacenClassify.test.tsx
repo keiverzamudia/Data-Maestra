@@ -126,7 +126,7 @@ describe('AlmacenClassify con catálogos Profit (FASE 8F)', () => {
   it('8. cambiar de grupo invalida el subgrupo anterior y filtra por grupo', async () => {
     renderClassify();
 
-    const groupSel = await screen.findByLabelText(/Grupo \(Profit\)/i) as HTMLSelectElement;
+    const groupSel = await screen.findByLabelText(/Grupo \(Profit\)/i, { selector: 'select' }) as HTMLSelectElement;
     const subgroupSel = screen.getByLabelText(/Subgrupo/i) as HTMLSelectElement;
 
     // Sin grupo: subgrupo deshabilitado
@@ -193,7 +193,7 @@ describe('AlmacenClassify 14C-FORM: tipo, unidad Profit, impuesto, dry-run', () 
 
     // Sin grupo no hay default
     expect(typeSel.value).toBe('');
-    fireEvent.change(screen.getByLabelText(/Grupo \(Profit\)/i), { target: { value: 'RVH' } });
+    fireEvent.change(screen.getByLabelText(/Grupo \(Profit\)/i, { selector: 'select' }), { target: { value: 'RVH' } });
     await waitFor(() => expect(
       (screen.getByLabelText(/Tipo de art/i) as HTMLSelectElement).value,
     ).toBe('C'));
@@ -201,7 +201,7 @@ describe('AlmacenClassify 14C-FORM: tipo, unidad Profit, impuesto, dry-run', () 
 
   it('override manual del tipo se conserva al cambiar de grupo', async () => {
     renderClassify();
-    const groupSel = await screen.findByLabelText(/Grupo \(Profit\)/i);
+    const groupSel = await screen.findByLabelText(/Grupo \(Profit\)/i, { selector: 'select' });
     fireEvent.change(groupSel, { target: { value: 'RVH' } });
     const typeSel = await screen.findByLabelText(/Tipo de art/i) as HTMLSelectElement;
     await waitFor(() => expect(typeSel.value).toBe('C'));
@@ -222,7 +222,7 @@ describe('AlmacenClassify 14C-FORM: tipo, unidad Profit, impuesto, dry-run', () 
     const unitSel = await screen.findByLabelText(/Unidad de venta/i) as HTMLSelectElement;
     expect(Array.from(unitSel.querySelectorAll('option')).map(o => o.value)).toContain('UND');
 
-    fireEvent.change(screen.getByLabelText(/Grupo \(Profit\)/i), { target: { value: 'RVH' } });
+    fireEvent.change(screen.getByLabelText(/Grupo \(Profit\)/i, { selector: 'select' }), { target: { value: 'RVH' } });
     await waitFor(() => expect(
       (screen.getByLabelText(/Tipo de art/i) as HTMLSelectElement).value,
     ).toBe('C'));
@@ -238,7 +238,7 @@ describe('AlmacenClassify 14C-FORM: tipo, unidad Profit, impuesto, dry-run', () 
       wouldProvision: [],
     });
     renderClassify();
-    await screen.findByLabelText(/Grupo \(Profit\)/i);
+    await screen.findByLabelText(/Grupo \(Profit\)/i, { selector: 'select' });
     fireEvent.click(screen.getByRole('button', { name: /Validar art/i }));
     await waitFor(() => expect(mockValidate).toHaveBeenCalled());
     await screen.findByText(/ARTÍCULO LISTO/i);
@@ -277,7 +277,7 @@ describe('AlmacenClassify vista post-clasificación (solo lectura por estado)', 
   it('1. PENDIENTE_ALMACEN renderiza formulario editable', async () => {
     mockGetRequest.mockResolvedValue(REQUEST);
     renderClassify();
-    const groupSel = await screen.findByLabelText(/Grupo \(Profit\)/i) as HTMLSelectElement;
+    const groupSel = await screen.findByLabelText(/Grupo \(Profit\)/i, { selector: 'select' }) as HTMLSelectElement;
     expect(groupSel.disabled).toBe(false);
     expect(screen.getByRole('button', { name: 'Guardar Borrador' })).toBeTruthy();
     expect(screen.getByRole('button', { name: /Validar art/i })).toBeTruthy();
@@ -287,7 +287,7 @@ describe('AlmacenClassify vista post-clasificación (solo lectura por estado)', 
 
   it('2/3/4. ALMACEN_APROBADO bloquea campos y oculta acciones de edición', async () => {
     renderWithStatus('ALMACEN_APROBADO');
-    const groupSel = await screen.findByLabelText(/Grupo \(Profit\)/i) as HTMLSelectElement;
+    const groupSel = await screen.findByLabelText(/Grupo \(Profit\)/i, { selector: 'select' }) as HTMLSelectElement;
     expect(groupSel.disabled).toBe(true);
     expect((screen.getByLabelText(/Tipo de art/i) as HTMLSelectElement).disabled).toBe(true);
     expect((screen.getByLabelText(/Unidad de venta/i) as HTMLSelectElement).disabled).toBe(true);
@@ -317,7 +317,7 @@ describe('AlmacenClassify vista post-clasificación (solo lectura por estado)', 
     // F5: montaje nuevo, estado real desde API.
     renderWithStatus('ALMACEN_APROBADO');
     expect(await screen.findByText(/Clasificación enviada/)).toBeTruthy();
-    expect((await screen.findByLabelText(/Grupo \(Profit\)/i) as HTMLSelectElement).disabled).toBe(true);
+    expect((await screen.findByLabelText(/Grupo \(Profit\)/i, { selector: 'select' }) as HTMLSelectElement).disabled).toBe(true);
     expect(screen.queryByRole('button', { name: 'Aprobar Clasificación' })).toBeNull();
   });
 
@@ -328,7 +328,7 @@ describe('AlmacenClassify vista post-clasificación (solo lectura por estado)', 
   ])('7/8/9. %s no permite editar', async (status) => {
     renderWithStatus(status);
     expect(await screen.findByText(/Clasificación enviada/)).toBeTruthy();
-    expect((await screen.findByLabelText(/Grupo \(Profit\)/i) as HTMLSelectElement).disabled).toBe(true);
+    expect((await screen.findByLabelText(/Grupo \(Profit\)/i, { selector: 'select' }) as HTMLSelectElement).disabled).toBe(true);
     expect(screen.queryByRole('button', { name: 'Guardar Borrador' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Aprobar Clasificación' })).toBeNull();
   });
@@ -337,7 +337,7 @@ describe('AlmacenClassify vista post-clasificación (solo lectura por estado)', 
     sessionAllow.value = false;
     mockGetRequest.mockResolvedValue(REQUEST);
     renderClassify();
-    expect((await screen.findByLabelText(/Grupo \(Profit\)/i) as HTMLSelectElement).disabled).toBe(true);
+    expect((await screen.findByLabelText(/Grupo \(Profit\)/i, { selector: 'select' }) as HTMLSelectElement).disabled).toBe(true);
     expect(screen.queryByRole('button', { name: 'Guardar Borrador' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Aprobar Clasificación' })).toBeNull();
   });
@@ -345,7 +345,7 @@ describe('AlmacenClassify vista post-clasificación (solo lectura por estado)', 
   it('borrador: guardar conserva PENDIENTE_ALMACEN, avisa y sigue editable', async () => {
     mockGetRequest.mockResolvedValue(REQUEST);
     renderClassify();
-    await screen.findByLabelText(/Grupo \(Profit\)/i);
+    await screen.findByLabelText(/Grupo \(Profit\)/i, { selector: 'select' });
     fireEvent.click(screen.getByRole('button', { name: 'Guardar Borrador' }));
     await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
     expect(await screen.findByText(/Borrador guardado correctamente/)).toBeTruthy();
@@ -353,7 +353,7 @@ describe('AlmacenClassify vista post-clasificación (solo lectura por estado)', 
     // Sigue editable: sin banner de enviada y con acciones visibles.
     // (el botón pasa a "Guardar Borrador ✓", prueba de que el guardado completó).
     expect(screen.queryByText(/Clasificación enviada/)).toBeNull();
-    expect((screen.getByLabelText(/Grupo \(Profit\)/i) as HTMLSelectElement).disabled).toBe(false);
+    expect((screen.getByLabelText(/Grupo \(Profit\)/i, { selector: 'select' }) as HTMLSelectElement).disabled).toBe(false);
     expect(screen.getByRole('button', { name: 'Guardar Borrador ✓' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Aprobar Clasificación' })).toBeTruthy();
   });
@@ -361,7 +361,7 @@ describe('AlmacenClassify vista post-clasificación (solo lectura por estado)', 
   it('borrador: varios guardados parciales conservan lo anterior', async () => {
     mockGetRequest.mockResolvedValue(REQUEST);
     renderClassify();
-    await screen.findByLabelText(/Grupo \(Profit\)/i);
+    await screen.findByLabelText(/Grupo \(Profit\)/i, { selector: 'select' });
     const partInput = screen.getByPlaceholderText('Part Number') as HTMLInputElement;
     fireEvent.change(partInput, { target: { value: 'P-001' } });
     fireEvent.click(screen.getByRole('button', { name: 'Guardar Borrador' }));

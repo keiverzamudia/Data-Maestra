@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { apiImportacionService } from '../../servicios/api/api-importacion-service';
 import { PageHeader, Button, Badge, KpiCard, StatusBadge, EmptyState } from '../../componentes/ui';
+import { HelpButton } from '../../componentes/ayuda';
 import type { ImportRun } from '../../tipos';
 
 const PipelineStage: React.FC<{
@@ -41,7 +42,7 @@ export const ImportsPage: React.FC = () => {
 
   return (
     <div className="stack">
-      <PageHeader title="Importaciones" subtitle="Pipeline de procesamiento de datos" />
+      <PageHeader title="Importaciones" subtitle="Pipeline de procesamiento de datos" action={<HelpButton helpKey="importaciones" />} />
 
       {/* KPIs */}
       <div className="kpi-grid">

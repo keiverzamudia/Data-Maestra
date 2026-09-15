@@ -6,6 +6,7 @@ import { apiPanelService } from '../../servicios/api/api-panel-service';
 import { requestService, warehouseService, warehouseApprovalService, accountingService } from '../../servicios';
 import { Can } from '../../componentes/auth/Can';
 import { Page, EmptyState, ErrorState, Skeleton, StatCard, StatusBadge, Button, SectionCard } from '../../componentes/ui';
+import { HelpButton } from '../../componentes/ayuda';
 import type { Request } from '../../tipos';
 
 interface DashboardStats {
@@ -142,7 +143,7 @@ export const DashboardPage: React.FC = () => {
   }
 
   return (
-    <Page title="Dashboard" desc={`Bienvenido, ${user?.displayName ?? ''}. Resumen de tu operación.`}>
+    <Page title="Dashboard" desc={`Bienvenido, ${user?.displayName ?? ''}. Resumen de tu operación.`} actions={<HelpButton helpKey="dashboard" />}>
       <section aria-label="Resumen">
         <h2 className="section-title">Resumen</h2>
         <div className="stat-grid">

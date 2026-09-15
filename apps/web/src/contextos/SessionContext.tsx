@@ -15,8 +15,7 @@ interface SessionContextType {
   roleCodes: string[];
   loading: boolean;
   authenticated: boolean;
-  mustChangePassword: boolean;
-  login: (userId: string, password: string) => Promise<'ok' | 'must-change'>;
+  login: (userId: string, password: string) => Promise<'ok'>;
   logout: () => Promise<void>;
   refreshSession: () => Promise<boolean>;
   hasPermission: (p: string) => boolean;
@@ -33,7 +32,6 @@ const SessionContext = React.createContext<SessionContextType>({
   roleCodes: [],
   loading: true,
   authenticated: false,
-  mustChangePassword: false,
   login: async () => 'ok',
   logout: async () => {},
   refreshSession: async () => false,
@@ -55,7 +53,7 @@ function getVisibleModules(permissions: string[]): string[] {
   return modules;
 }
 
-const EMPTY = { user: null as AuthUser | null, memberships: [] as SessionMembership[], permissions: [] as string[], roleCodes: [] as string[], mustChangePassword: false };
+const EMPTY = { user: null as AuthUser | null, memberships: [] as SessionMembership[], permissions: [] as string[], roleCodes: [] as string[] };
 
 export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, setState] = React.useState(EMPTY);
@@ -77,7 +75,6 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
         memberships: s.memberships ?? [],
         permissions: s.permissions ?? [],
         roleCodes: s.roleCodes ?? [],
-        mustChangePassword: s.mustChangePassword,
       });
       return true;
     } catch {
@@ -105,11 +102,10 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return () => { cancelled = true; };
   }, [refreshSession]);
 
-  const login = React.useCallback(async (userId: string, password: string): Promise<'ok' | 'must-change'> => {
-    const res = await apiAuthService.login(userId, password);
-    const ok = await refreshSession();
-    if (!ok) return 'ok';
-    return res.mustChangePassword ? 'must-change' : 'ok';
+  const login = React.useCallback(async (userId: string, password: string): Promise<'ok'> => {
+    await apiAuthService.login(userId, password);
+    await refreshSession();
+    return 'ok';
   }, [refreshSession]);
 
   const logout = React.useCallback(async () => {
@@ -134,7 +130,6 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
         roleCodes: state.roleCodes,
         loading,
         authenticated: state.user !== null,
-        mustChangePassword: state.mustChangePassword,
         login,
         logout,
         refreshSession,

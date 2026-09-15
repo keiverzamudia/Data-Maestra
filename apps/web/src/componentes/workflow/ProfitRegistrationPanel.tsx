@@ -1,7 +1,6 @@
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSession } from '../../contextos/SessionContext';
-import { useCatalogos } from '../../hooks/useCatalogos';
 import {
   SectionCard, Button, Alert, ConfirmDialog, Badge, SearchInput, Code, Input,
 } from '../ui';
@@ -20,20 +19,20 @@ import {
 } from '../../servicios/api/api-profit-registration-service';
 import type { Request } from '../../tipos';
 
-// 16A — visible en la puerta a Profit y estados técnicos (backend es la autoridad).
+// 16A — visible en la puerta a Profit y estados finales (backend es la autoridad).
 const VISIBLE_STATES = ['CONTABILIDAD_APROBADA', 'PROCESANDO_PROFIT', 'INSERTADO_PROFIT', 'ERROR_PROFIT'];
 
 /**
- * Registro en Profit (14F/14J, solo presentación).
- * 16A — vive en la pestaña de Contabilidad; la escritura exige
- * CONTABILIDAD_APROBADA + PROFIT.WRITE + bandera (backend valida todo).
+ * Registro en Profit (14F/14J/14R, solo presentación).
+ * 14R — experiencia corporativa: el usuario ve estado, códigos y acciones.
+ * Nada de infraestructura (servidor, base, auth, usuarios técnicos),
+ * nada de jerga del motor (dry-run, candidato, correlation id, preflight).
+ * Los detalles técnicos siguen en auditoría/backend para diagnóstico.
  * Semántica de color (§22): verde = operación real + verificada;
  * rojo = error real; ámbar = incierto; gris = deshabilitado.
- * READY/dry-run nunca usan verde.
  */
 export const ProfitRegistrationPanel: React.FC<{ request: Request; onChanged?: () => void }> = ({ request, onChanged }) => {
-  const { hasPermission, user, roleCodes } = useSession();
-  const { grupos, subgrupos, unidades } = useCatalogos();
+  const { hasPermission } = useSession();
   const navigate = useNavigate();
   const [writeStatus, setWriteStatus] = React.useState<ProfitWriteStatus | null>(null);
   const [plan, setPlan] = React.useState<ProfitPlan | null>(null);
@@ -122,8 +121,8 @@ export const ProfitRegistrationPanel: React.FC<{ request: Request; onChanged?: (
     setError(null);
     setRetryNote(null);
     try {
-      const r: ProfitRetryResult = await apiProfitRegistrationService.retry(request.id);
-      setRetryNote(`Recuperación lista: candidato ${r.candidate} (${r.available ? 'disponible' : 'ocupado'}). Requiere nueva confirmación.`);
+      await apiProfitRegistrationService.retry(request.id);
+      setRetryNote('Recuperación lista. Requiere nueva confirmación.');
       await loadAttempts();
       onChanged?.();
     } catch (err: any) {
@@ -146,12 +145,10 @@ export const ProfitRegistrationPanel: React.FC<{ request: Request; onChanged?: (
     }
   };
 
-  const groupName = grupos.find(g => g.id === request.groupId)?.name ?? request.groupId ?? '—';
-  const subgroupName = subgrupos.find(s => s.id === request.subgroupId)?.name ?? request.subgroupId ?? '—';
-  const unitName = unidades.find(u => u.id === request.unitId)?.name ?? request.unitCode ?? '—';
   const accCount = request.accountingCodes?.length ?? 0;
-  const notConfigured = writeStatus && !writeStatus.configured;
+  const serviceUp = !!writeStatus?.configured && !!writeStatus?.connected;
   const writeBlocked = writeStatus && (!writeStatus.enabled || !writeStatus.configured);
+  const registeredCode = attempts.find(a => a.result === 'SUCCESS')?.coArt ?? result?.coArt ?? null;
   const opState = profitOpState({
     writeBlocked: !!writeBlocked,
     busy,
@@ -159,107 +156,76 @@ export const ProfitRegistrationPanel: React.FC<{ request: Request; onChanged?: (
     result,
     requestStatus: request.status,
   });
+  // 14R — etiquetas para el usuario (los códigos internos del motor no se muestran).
   const OP_LABEL: Record<string, string> = {
-    DISABLED: 'ESCRITURA DESHABILITADA', READY: 'PREPARADO', VALIDATING: 'VALIDANDO',
-    READY_TO_WRITE: 'LISTO PARA REGISTRAR', WRITING: 'REGISTRANDO', VERIFYING: 'VERIFICANDO',
-    SUCCESS: 'REGISTRADO', FAILED: 'ERROR', UNKNOWN: 'RESULTADO INCIERTO', RETRY_REQUIRED: 'REQUIERE RECUPERACIÓN',
+    DISABLED: 'NO DISPONIBLE', READY: 'DISPONIBLE', VALIDATING: 'VERIFICANDO INFORMACIÓN',
+    READY_TO_WRITE: 'LISTO PARA ENVIAR', WRITING: 'ENVIANDO A PROFIT', VERIFYING: 'CONFIRMANDO REGISTRO',
+    SUCCESS: 'REGISTRADO', FAILED: 'NO REGISTRADO', UNKNOWN: 'POR CONFIRMAR', RETRY_REQUIRED: 'REQUIERE VERIFICACIÓN',
   };
-
-  const readyChecks = plan ? [
-    { label: 'Solicitud aprobada', ok: isFinal },
-    { label: 'Datos completos', ok: !!plan.payload.art_des && !!plan.payload.co_lin && !!plan.payload.co_subl },
-    { label: `Código Profit disponible (${plan.candidate})`, ok: plan.available },
-    { label: `Conexión Profit disponible (${writeStatus?.server ?? '—'})`, ok: !!writeStatus?.connected },
-    { label: 'Permiso de escritura disponible', ok: canWrite },
-    { label: 'Dry-run READY', ok: plan.available },
-  ] : [];
 
   return (
     <SectionCard
       title="Registro en Profit"
-      desc="Creación controlada del artículo aprobado. Visible siempre; la escritura requiere permiso y bandera."
+      desc="El artículo aprobado se registrará en Profit con el código indicado."
     >
       <div className="perm-toolbar">
-        <span className="muted small">Estado operativo:</span>
-        <Badge tone={opState === 'SUCCESS' ? 'green' : opState === 'FAILED' ? 'red' : opState === 'UNKNOWN' || opState === 'RETRY_REQUIRED' ? 'yellow' : 'gray'}>
-          {OP_LABEL[opState]}
-        </Badge>
+        <span className={`profit-dot${serviceUp ? ' profit-dot-ok' : ''}`} aria-hidden="true" />
+        <span className="muted small" role="status">
+          {serviceUp ? 'Profit disponible' : 'Profit no disponible'}
+        </span>
+        <span style={{ marginLeft: 'auto' }}>
+          <Badge tone={opState === 'SUCCESS' ? 'green' : opState === 'FAILED' ? 'red' : opState === 'UNKNOWN' || opState === 'RETRY_REQUIRED' ? 'yellow' : 'gray'}>
+            {OP_LABEL[opState]}
+          </Badge>
+        </span>
       </div>
-      {/* ESTADO 1 — configuración bloqueada / escritura deshabilitada */}
-      {notConfigured && (
+
+      {writeBlocked && (
         <Alert tone="info">
-          <strong>Escritura no disponible.</strong> Motivo: falta configuración
-          de conexión. Acción: configurar conexión.
+          <strong>Registro en Profit no disponible.</strong> El registro está
+          temporalmente deshabilitado.
         </Alert>
       )}
-      {writeStatus?.configured && !writeStatus.enabled && (
+      {!writeBlocked && !canWrite && (
         <Alert tone="warning">
-          <strong>🟡 REGISTRO PREPARADO.</strong> Los datos están validados y
-          el artículo está listo para registrarse en Profit, pero la escritura
-          está temporalmente deshabilitada.
-          <br />Destino: {writeStatus.server ?? '—'} / {writeStatus.database ?? '—'}
-          <br />Autenticación: {writeStatus.auth === 'windows' ? 'Windows integrada' : 'SQL'}
-          <br />Conexión: {writeStatus.connected ? 'OK' : 'no comprobada'}
-          <br />Permiso PROFIT.WRITE: {canWrite ? 'CONCEDIDO' : 'DENEGADO'}
-          <br />Código Profit: {plan?.candidate ?? 'pendiente de dry-run'}
-          <br />Disponibilidad: {plan ? (plan.available ? 'DISPONIBLE' : 'OCUPADO') : 'pendiente de dry-run'}
-          <br />Dry-run: {plan ? 'READY_TO_WRITE' : 'pendiente'}
-          <br />Para ejecutar una escritura real debe habilitarse temporalmente
-          la escritura de Profit.
+          <strong>Registro no disponible.</strong> Tu usuario no tiene
+          autorización para realizar este registro.
         </Alert>
-      )}
-      {!canWrite && (
-        <Alert tone="danger">
-          <strong>🔴 SIN PERMISO DE ESCRITURA.</strong> Contabilidad aprobada,
-          pero tu usuario no posee el permiso PROFIT.WRITE y no puede registrar
-          en Profit.
-          <br />Usuario: {user?.displayName ?? '—'}
-          <br />Roles: {roleCodes.length > 0 ? roleCodes.join(', ') : '—'}
-          <br />Permiso: DENEGADO (efectivo)
-          <br />Origen: RBAC efectivo (ningún rol asignado lo concede; el
-          detalle de overrides está en Personas y acceso para administradores).
-        </Alert>
-      )}
-      {canWrite && writeStatus?.configured && !writeStatus.enabled && (
-        <Alert tone="info">
-          <strong>🟡 LISTO — ESCRITURA TEMPORALMENTE DESHABILITADA.</strong> Tu
-          usuario tiene permiso para registrar en Profit y la conexión está
-          disponible, pero el motor de escritura está deshabilitado
-          temporalmente.
-        </Alert>
-      )}
-      {writeStatus?.configured && (
-        <p className="muted small">
-          Destino: {writeStatus.server ?? '—'} / {writeStatus.database ?? '—'} ·
-          Auth: {writeStatus.auth === 'windows' ? 'Windows integrada' : 'SQL'} ·
-          Conexión: {writeStatus.connected ? `OK${writeStatus.identity ? ` (${writeStatus.identity})` : ''}` : 'no comprobada'}
-        </p>
       )}
       {request.status === 'PROCESANDO_PROFIT' && (
-        <Alert tone="info">Estado: REGISTRANDO. Operación en curso; si no avanza, use la verificación posterior.</Alert>
+        <Alert tone="info">Enviando a Profit... Si no avanza, use la verificación posterior.</Alert>
       )}
       {request.status === 'INSERTADO_PROFIT' && (
-        <Alert tone="success">Estado: REGISTRADO. Artículo verificado en Profit (detalle abajo).</Alert>
+        <Alert tone="success">
+          <strong>✓ Registrado en Profit</strong>
+          {registeredCode && <><br />Código Profit: <Code>{registeredCode}</Code></>}
+        </Alert>
       )}
       {request.status === 'ERROR_PROFIT' && (
-        <Alert tone="danger">Estado: ERROR. Error técnico (no es rechazo de negocio). Verifique primero; la recuperación es una nueva creación, nunca automática.</Alert>
+        <Alert tone="danger">No fue posible registrar el artículo en Profit. Verifique primero; la recuperación es una nueva creación, nunca automática.</Alert>
       )}
 
-      {/* Resumen previo §28 con datos ya aprobados (nada se vuelve a pedir). */}
-      <div className="review-grid">
-        <div><span className="muted small">Código Master</span><br /><strong className="mono">{request.masterCode || '—'}</strong></div>
-        <div><span className="muted small">Código Profit previsto</span><br /><strong className="mono">{plan?.candidate ?? '—'}</strong></div>
-        <div><span className="muted small">Descripción</span><br /><strong>{request.requestedDescription}</strong></div>
-        <div><span className="muted small">Línea</span><br /><strong>{groupName}</strong></div>
-        <div><span className="muted small">Sub-línea</span><br /><strong>{subgroupName}</strong></div>
-        <div><span className="muted small">Unidad</span><br /><strong>{unitName}</strong></div>
-        <div><span className="muted small">Contabilidad</span><br /><strong>{accCount > 0 ? `✓ Validada (${accCount})` : 'Sin información'}</strong></div>
-        <div><span className="muted small">Estado Profit</span><br /><strong>{request.status === 'CONTABILIDAD_APROBADA' ? '✓ Listo para registrar' : request.status}</strong></div>
+      {/* Héroe corporativo: Master → Profit. */}
+      <div className="profit-hero" aria-label="Códigos del registro">
+        <div>
+          <span className="muted small">Código Master</span>
+          <div className="mono profit-hero-code">{request.masterCode || '—'}</div>
+        </div>
+        <span className="profit-hero-arrow" aria-hidden="true">→</span>
+        <div>
+          <span className="muted small">Código Profit</span>
+          <div className="mono profit-hero-code">{plan?.candidate ?? registeredCode ?? '—'}</div>
+        </div>
       </div>
+      <p className="muted small">{request.requestedDescription}</p>
+      {accCount > 0 && (
+        <p className="muted small">Contabilidad validada ({accCount}).</p>
+      )}
 
       {isFinal && !plan && !result && (
         <div className="stack-sm block-mt">
-          <p className="muted small">Ejecute primero la validación completa (dry-run, sin escritura).</p>
+          <p><strong>Listo para enviar a Profit</strong></p>
+          <p className="muted small">Valide la información antes de registrar.</p>
           <div className="action-bar" style={{ justifyContent: 'flex-start', marginTop: 0 }}>
             <Button variant="secondary" onClick={runPrepare} disabled={busy !== null}>{busy === 'plan' ? 'Validando...' : 'Preparar registro'}</Button>
           </div>
@@ -271,10 +237,10 @@ export const ProfitRegistrationPanel: React.FC<{ request: Request; onChanged?: (
         <div className="stack-sm block-mt">
           <p className="muted small">
             El registro anterior falló por un error técnico. Puede preparar una
-            recuperación: se revalidará todo y, solo si READY, volverá a
-            CONTABILIDAD_APROBADA para una nueva confirmación. El historial se conserva.
+            recuperación: se revalidará todo y, solo si está listo, volverá a
+            Contabilidad aprobada para una nueva confirmación. El historial se conserva.
           </p>
-          {!canWrite && <Alert tone="warning">Requiere permiso PROFIT.WRITE.</Alert>}
+          {!canWrite && <Alert tone="warning">Requiere autorización para registrar.</Alert>}
           <div>
             <Button variant="secondary" onClick={runRetry} disabled={busy !== null || !canWrite}>
               {busy === 'retry' ? 'Preparando...' : 'Reintentar registro en Profit'}
@@ -284,85 +250,60 @@ export const ProfitRegistrationPanel: React.FC<{ request: Request; onChanged?: (
         </div>
       )}
 
-      {/* ESTADO 2 — listo para registrar (sin verde: READY ≠ registrado). */}
       {isFinal && plan && !result && (
         <div className="stack-sm block-mt">
           <p><strong>✓ LISTO PARA REGISTRAR EN PROFIT</strong></p>
-          {readyChecks.map(c => (
-            <div key={c.label} className="dryrun-check">
-              <span aria-hidden>{c.ok ? '✓' : '✗'}</span>
-              <span className={c.ok ? '' : 'muted'}>{c.label}</span>
-            </div>
-          ))}
-          <div className="perm-toolbar">
-            <span>Candidato: <Code>{plan.candidate}</Code></span>
-            <Badge tone={plan.available ? 'blue' : 'yellow'}>{plan.available ? 'DISPONIBLE' : 'OCUPADO'}</Badge>
-          </div>
-          <div className="review-grid">
-            <div><span className="muted small">Tipo</span><br /><strong>{plan.payload.tipo}</strong></div>
-            <div><span className="muted small">Impuesto</span><br /><strong>{plan.payload.tipo_imp}</strong></div>
-            <div><span className="muted small">Categoría / Color</span><br /><strong>{plan.payload.co_cat} / {plan.payload.co_color}</strong></div>
-            <div><span className="muted small">Proveedor / Costo</span><br /><strong>{plan.payload.co_prov} / {plan.payload.tipo_cos}</strong></div>
-          </div>
+          <p className="muted small">Este artículo de Data-Maestra está listo para convertirse en este código de Profit.</p>
           {plan.warnings.map((w, i) => <Alert key={i} tone="info">{w}</Alert>)}
-          {!canWrite && <Alert tone="warning">Requiere permiso PROFIT.WRITE. Su usuario: {user?.displayName ?? '—'}.</Alert>}
           <div className="action-bar">
             <Button variant="secondary" onClick={runPlan} disabled={busy !== null}>Revalidar</Button>
             <Button
               onClick={() => setConfirmOpen(true)}
               disabled={busy !== null || !canWrite || !plan.available || !!writeBlocked}
-              title={writeBlocked ? 'Escritura deshabilitada' : undefined}
+              title={writeBlocked ? 'Registro no disponible' : undefined}
             >
-              {busy === 'create' ? 'Registrando...' : 'Registrar en Profit'}
+              {busy === 'create' ? 'Enviando...' : 'Registrar en Profit'}
             </Button>
           </div>
           {writeBlocked && (
-            <p className="muted small">Botón deshabilitado mientras la escritura esté deshabilitada.</p>
+            <p className="muted small">Botón deshabilitado mientras el registro esté deshabilitado.</p>
           )}
           {!plan.available && (
-            <p className="muted small">El candidato está ocupado: el motor avanzará al siguiente correlativo de la misma línea/sublinea.</p>
+            <p className="muted small">El código propuesto está ocupado: se usará el siguiente disponible.</p>
           )}
         </div>
       )}
 
-      {/* Registrando: un solo estado honesto (el motor no reporta sub-pasos). */}
       {busy === 'create' && (
-        <Alert tone="info">REGISTRANDO EN PROFIT... Revalidando solicitud, verificando código y registrando artículo.</Alert>
+        <Alert tone="info">Enviando a Profit... No cierre esta pantalla.</Alert>
       )}
 
-      {/* ESTADO 5 — éxito real y verificado (único verde permitido). */}
+      {/* Éxito real y verificado (único verde permitido). */}
       {success && result && (
         <div className="stack-sm block-mt">
           <Alert tone="success">
-            <strong>✓ ARTÍCULO REGISTRADO EN PROFIT</strong><br />
+            <strong>✓ Registrado en Profit</strong><br />
             Código Profit: <Code>{result.coArt}</Code><br />
-            Descripción: {request.requestedDescription}<br />
-            Código Master: <span className="mono">{request.masterCode || '—'}</span><br />
-            Solicitud: #{request.requestNumber}<br />
-            Destino: {writeStatus?.server ?? '—'} / {writeStatus?.database ?? '—'}<br />
-            Verificación: ✓ Confirmado en Profit<br />
-            {result.correlationId && <>Correlation ID: <Code>{result.correlationId}</Code><br /></>}
+            Verificación: ✓ Confirmado en Profit
           </Alert>
           <div className="perm-toolbar">
-            <span>Reconciliación:</span>
+            <span>Resultado:</span>
             <Badge tone={RECONCILE_LABELS[result.reconcile].tone}>{RECONCILE_LABELS[result.reconcile].text}</Badge>
           </div>
           <div>
             <Button variant="secondary" size="sm" onClick={() => navigate(`/requester/${request.id}`)}>Ver detalle</Button>
           </div>
           {result.differences.length > 0 && (
-            <Alert tone="warning">Diferencias Profit: {result.differences.join(', ')}.</Alert>
+            <Alert tone="warning">Diferencias en Profit: {result.differences.join(', ')}.</Alert>
           )}
         </div>
       )}
 
-      {/* ESTADO 6 — error real + acción recomendada. */}
+      {/* Error real + acción recomendada. */}
       {result && !result.ok && !ambiguous && (
         <div className="stack-sm block-mt">
           <Alert tone="danger">
-            <strong>✕ NO SE PUDO REGISTRAR EN PROFIT</strong><br />
-            Solicitud: #{request.requestNumber} · Código: <Code>{result.coArt || '—'}</Code><br />
-            Resultado: ERROR_PROFIT<br />
+            <strong>No fue posible registrar el artículo en Profit.</strong><br />
             Motivo: {profitErrorLabel(result.errorCode)}
             {result.errorDetail ? ` — ${result.errorDetail}` : ''}
           </Alert>
@@ -373,10 +314,10 @@ export const ProfitRegistrationPanel: React.FC<{ request: Request; onChanged?: (
             <div className="stack-sm">
               {result.attempts.map(a => (
                 <div key={a.attempt} className="dryrun-check">
-                  <span aria-hidden>{a.outcome === 'INSERTED' ? '✓' : a.outcome === 'COLLISION' ? '⇄' : '✗'}</span>
+                  <span aria-hidden>{a.outcome === 'INSERTED' ? '✓' : '✗'}</span>
                   <div>
                     <Code>{a.candidate}</Code>
-                    <span className="muted small"> — intento {a.attempt}: {a.outcome === 'INSERTED' ? 'insertado' : a.outcome === 'COLLISION' ? 'colisión, siguiente candidato' : `error${a.errorCode ? ` (${a.errorCode})` : ''}`}</span>
+                    <span className="muted small"> — intento {a.attempt}: {a.outcome === 'INSERTED' ? 'registrado' : 'no registrado'}</span>
                   </div>
                 </div>
               ))}
@@ -386,16 +327,15 @@ export const ProfitRegistrationPanel: React.FC<{ request: Request; onChanged?: (
         </div>
       )}
 
-      {/* ESTADO 7 — resultado incierto: solo VERIFY, jamás re-registro. */}
+      {/* Resultado incierto: solo verificación, jamás re-registro. */}
       {ambiguous && result && (
         <div className="stack-sm block-mt">
           <Alert tone="warning">
-            <strong>⚠ RESULTADO PENDIENTE DE VERIFICACIÓN</strong><br />
-            El sistema no pudo determinar con certeza si Profit completó la
-            operación. NO volver a insertar automáticamente.
+            <strong>No se pudo confirmar el resultado del registro.</strong><br />
+            No intentes registrarlo nuevamente sin verificar primero.
           </Alert>
           <div className="perm-toolbar">
-            <span>Candidato: <Code>{result.coArt || '—'}</Code></span>
+            <span>Código Profit: <Code>{result.coArt || '—'}</Code></span>
           </div>
         </div>
       )}
@@ -409,17 +349,15 @@ export const ProfitRegistrationPanel: React.FC<{ request: Request; onChanged?: (
             {attempts.map(a => (
               <div key={a.attempt} className="perm-row">
                 <div className="perm-main">
-                  <div className="perm-name">Intento #{a.attempt} — {a.result === 'SUCCESS' ? 'ÉXITO' : a.result === 'FAILED' ? 'FALLIDO' : 'INCIERTO'}</div>
+                  <div className="perm-name">Intento #{a.attempt} — {a.result === 'SUCCESS' ? 'REGISTRADO' : a.result === 'FAILED' ? 'NO REGISTRADO' : 'POR CONFIRMAR'}</div>
                   <div className="muted small">
                     {a.createdAt ? new Date(a.createdAt).toLocaleString('es-VE') : '—'}
                     {a.coArt ? <> · <Code>{a.coArt}</Code></> : null}
                     {a.errorCode ? <> · {a.errorCode}</> : null}
-                    {a.collisions.length > 0 ? <> · colisiones: {a.collisions.join(' → ')}</> : null}
-                    {a.correlationId ? <> · <span className="mono">{a.correlationId}</span></> : null}
                   </div>
                 </div>
                 <Badge tone={a.result === 'SUCCESS' ? 'green' : a.result === 'FAILED' ? 'red' : 'yellow'}>
-                  {a.result === 'SUCCESS' ? '✓' : a.result === 'FAILED' ? '✗' : '?'} {a.result}
+                  {a.result === 'SUCCESS' ? '✓' : a.result === 'FAILED' ? '✗' : '?'} {a.result === 'SUCCESS' ? 'REGISTRADO' : a.result === 'FAILED' ? 'FALLIDO' : 'INCIERTO'}
                 </Badge>
               </div>
             ))}
@@ -431,7 +369,7 @@ export const ProfitRegistrationPanel: React.FC<{ request: Request; onChanged?: (
         <h4 className="perm-domain">Verificación posterior</h4>
         <div className="toolbar">
           <span className="grow">
-            <SearchInput value={verifyCoArt} onChange={setVerifyCoArt} placeholder="co_art a verificar..." />
+            <SearchInput value={verifyCoArt} onChange={setVerifyCoArt} placeholder="Código Profit a verificar..." />
           </span>
           <Button variant="secondary" size="sm" onClick={runVerify} disabled={busy !== null || !verifyCoArt.trim() || !canWrite}>
             {busy === 'verify' ? 'Verificando...' : 'Verificar en Profit'}
@@ -443,9 +381,8 @@ export const ProfitRegistrationPanel: React.FC<{ request: Request; onChanged?: (
             <Badge tone={RECONCILE_LABELS[verifyResult.reconcile].tone}>{RECONCILE_LABELS[verifyResult.reconcile].text}</Badge>
           </div>
         )}
-        {/* ESTADO 8 — verificación fallida: distinguir no-encontrado de error. */}
         {verifyResult?.reconcile === 'NOT_FOUND' && (
-          <Alert tone="danger"><strong>✕ ARTÍCULO NO VERIFICADO.</strong> No se encontró en Profit; esto no afirma que el INSERT fallara — use el historial de intentos.</Alert>
+          <Alert tone="danger"><strong>Artículo no verificado.</strong> No se encontró en Profit; esto no afirma que el registro fallara — revise el historial de intentos.</Alert>
         )}
         {verifyResult && verifyResult.differences.length > 0 && (
           <p className="muted small">Diferencias: {verifyResult.differences.join(', ')}.</p>
@@ -454,11 +391,11 @@ export const ProfitRegistrationPanel: React.FC<{ request: Request; onChanged?: (
 
       {error && <Alert tone="danger">{error}</Alert>}
 
-      {/* ESTADO 3 — confirmación textual (no sustituye los gates del backend). */}
+      {/* Confirmación textual (no sustituye los gates del backend). */}
       <ConfirmDialog
         open={confirmOpen}
         title="Registrar artículo en Profit"
-        desc={plan ? `Estás a punto de registrar un artículo en Profit. Solicitud: ${request.requestNumber}. Artículo: ${plan.payload.art_des}. Código Profit: ${plan.candidate}. Línea: ${plan.payload.co_lin}. Sub-línea: ${plan.payload.co_subl}. Esta operación modificará la base de datos de Profit (UN INSERT, sin UPDATE ni DELETE). Para confirmar, escriba REGISTRAR EN PROFIT.` : undefined}
+        desc={plan ? `Está a punto de registrar este artículo en Profit. Solicitud: ${request.requestNumber}. Código Profit: ${plan.candidate}. Esta operación creará el artículo en Profit. Para confirmar, escriba REGISTRAR EN PROFIT.` : undefined}
         confirmLabel="Confirmar registro"
         busy={busy === 'create'}
         confirmDisabled={confirmText.trim() !== 'REGISTRAR EN PROFIT'}

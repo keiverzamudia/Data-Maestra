@@ -7,6 +7,7 @@ import { CatalogosService } from '../catalogos/catalogos.service';
 import { ProfitArticleCreationService, type CreationPlan, type CreationResult } from '../profit/profit-article-creation.service';
 import type { ProfitArticleInput } from '../profit/profit-article.payload';
 import { buildProfitArticlePayload } from '../profit/profit-article.payload';
+import { serializarDis } from '../contabilidad/dis.utils';
 import {
   checkTaxCoherence,
   isArticleTypeCode,
@@ -1018,7 +1019,7 @@ export class SolicitudesService {
   private async buildProfitInput(id: string): Promise<{ request: any; input: ProfitArticleInput; warnings: string[] }> {
     const request = await this.prisma.request.findUnique({
       where: { id },
-      include: { requestData: true },
+      include: { requestData: true, accountingCodes: true },
     });
     if (!request) throw new NotFoundException(`Request ${id} not found`);
     const rd = (request as any).requestData;
@@ -1036,6 +1037,19 @@ export class SolicitudesService {
       throw new BadRequestException(`Request ${id} sin tipo/unidad/impuesto (clasificación incompleta para Profit)`);
     }
     if (!rd.brandCode) warnings.push('Sin código de marca guardado: se usará 01 (NO APLICA)');
+    // dis_cen: MISMA fuente (códigos validados en Contabilidad) y MISMA
+    // construcción (serializarDis) que la interfaz contable. Sin códigos
+    // validados se envía vacío, como antes.
+    let disCen = '';
+    try {
+      const rec: Record<string, string> = {};
+      for (const a of (request as any).accountingCodes ?? []) {
+        if (a?.position && a?.code) rec[String(a.position).trim()] = String(a.code).trim();
+      }
+      if (Object.values(rec).some((c) => !!c)) disCen = serializarDis(rec);
+    } catch {
+      disCen = '';
+    }
     const input: ProfitArticleInput = {
       description: (request as any).requestedDescription ?? '',
       articleType: rd.articleType,
@@ -1045,6 +1059,7 @@ export class SolicitudesService {
       taxType: rd.taxType,
       categoryCode: (category as any)?.code,
       colorCode: rd.brandCode ?? undefined,
+      disCen: disCen || undefined,
     };
     return { request, input, warnings };
   }

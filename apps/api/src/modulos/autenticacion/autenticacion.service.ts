@@ -1,9 +1,8 @@
-import { Injectable, UnauthorizedException, ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ForbiddenException, ServiceUnavailableException, HttpException, HttpStatus, Inject, forwardRef, Optional } from '@nestjs/common';
 import { randomUUID, createHash } from 'crypto';
-import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
 import { PrismaService } from '../../comun/prisma/prisma.service';
-import { getInitialPassword } from './initial-password';
+import { ProfitAdapterService } from '../profit/profit-adapter.service';
 import { getJwtSecret, getSessionTtlHours } from './auth.config';
 import { resolveEffectivePermissions } from '../../comun/utilidades/permisos-efectivos';
 import { LoginDto } from './dto/login.dto';
@@ -17,7 +16,7 @@ export interface AuthMembership {
 }
 
 export interface ResolvedSession {
-  user: { id: string; displayName: string; active: boolean; mustChangePassword: boolean };
+  user: { id: string; displayName: string; active: boolean };
   session: { id: string };
   roleCodes: string[];
   permissions: string[];
@@ -29,7 +28,47 @@ export class AutenticacionService {
   // PrismaService es @Global: sin ciclos de módulos. La auditoría se escribe
   // directo vía prisma (mismo patrón que solicitud.service) para no crear
   // dependencia circular con AuditoriaModule (que importa AutenticacionModule).
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() @Inject(forwardRef(() => ProfitAdapterService))
+    private readonly profitAdapter?: ProfitAdapterService,
+  ) {}
+
+  // =====================================================================
+  // FASE 15 — La contraseña se valida contra Profit, nunca local.
+  // Rate limiting en memoria: 5 fallos / 60s por IP+usuario → bloqueo 60s.
+  // Sin bloqueos permanentes (un atacante no puede bloquear a otro usuario).
+  // =====================================================================
+  private readonly loginFailures = new Map<string, { count: number; blockedUntil: number }>();
+  private static readonly LOGIN_MAX_FAILURES = 5;
+  private static readonly LOGIN_WINDOW_MS = 60_000;
+
+  private rateLimitKey(ip: string | undefined, userId: string): string {
+    return `${ip ?? '?'}:${userId}`;
+  }
+
+  private checkRateLimit(ip: string | undefined, userId: string): void {
+    const entry = this.loginFailures.get(this.rateLimitKey(ip, userId));
+    if (entry && entry.blockedUntil > Date.now()) {
+      throw new HttpException('Demasiados intentos. Inténtalo nuevamente.', HttpStatus.TOO_MANY_REQUESTS);
+    }
+  }
+
+  private registerLoginFailure(ip: string | undefined, userId: string): void {
+    if (this.loginFailures.size > 5000) this.loginFailures.clear();
+    const key = this.rateLimitKey(ip, userId);
+    const entry = this.loginFailures.get(key) ?? { count: 0, blockedUntil: 0 };
+    entry.count += 1;
+    if (entry.count >= AutenticacionService.LOGIN_MAX_FAILURES) {
+      entry.blockedUntil = Date.now() + AutenticacionService.LOGIN_WINDOW_MS;
+      entry.count = 0;
+    }
+    this.loginFailures.set(key, entry);
+  }
+
+  private clearLoginFailures(ip: string | undefined, userId: string): void {
+    this.loginFailures.delete(this.rateLimitKey(ip, userId));
+  }
 
   // =====================================================================
   // FASE 10D — Autenticación real de credenciales (sin JWT; 10E).
@@ -52,15 +91,23 @@ export class AutenticacionService {
     }
   }
 
-  private async verifyPassword(user: { passwordHash: string | null }, plain: string): Promise<'hash' | 'initial' | null> {
-    if (user.passwordHash) {
-      return (await bcrypt.compare(plain, user.passwordHash)) ? 'hash' : null;
+  // =====================================================================
+  // FASE 15 — Verificación contra MasterProfit.dbo.autenticar().
+  // La contraseña solo existe en este scope y se descarta al retornar.
+  // Retorna true solo si el id devuelto coincide EXACTAMENTE con el
+  // profitCode esperado. Vacío o diferente → false. Fall closed ante
+  // errores de infraestructura (lanza, nunca autentica).
+  // =====================================================================
+
+  private async verifyProfitPassword(profitCode: string, plain: string): Promise<boolean> {
+    const expected = (profitCode ?? '').trim();
+    if (!expected || !plain) return false;
+    // Sin adapter no hay verificación posible: fail closed.
+    if (!this.profitAdapter) {
+      throw new ServiceUnavailableException('No fue posible validar el acceso. Inténtalo nuevamente.');
     }
-    const initial = getInitialPassword();
-    if (!initial) {
-      throw new ServiceUnavailableException('Configuración de contraseña inicial ausente.');
-    }
-    return plain === initial ? 'initial' : null;
+    const returnedId = await this.profitAdapter.autenticarProfit(expected, plain);
+    return returnedId !== null && returnedId === expected;
   }
 
   // =====================================================================
@@ -180,7 +227,7 @@ export class AutenticacionService {
     const { roleCodes, permissions } = await this.getEffectivePermissions(user.id);
     const memberships = await this.getMemberships(user.id);
     return {
-      user: { id: user.id, displayName: user.displayName, active: user.active, mustChangePassword: user.mustChangePassword },
+      user: { id: user.id, displayName: user.displayName, active: user.active },
       session: { id: session.id },
       roleCodes,
       permissions,
@@ -204,6 +251,15 @@ export class AutenticacionService {
     });
   }
 
+  /**
+   * FASE 15 — Login contra Profit.
+   * 1. Usuario local existe y activo (sin esto, ni se intenta Profit).
+   * 2. profitCode real desde DB local (jamás del frontend).
+   * 3. autenticar(profitCode, password) contra Profit; la contraseña se
+   *    descarta al terminar este método (nunca se persiste ni registra).
+   * 4. Solo si returnedId === expectedProfitCode se crea la sesión.
+   * Mensaje genérico siempre; infraestructura → 503 fail closed.
+   */
   async loginReal(dto: LoginDto, ip?: string, userAgent?: string) {
     const generic = 'Usuario o contraseña incorrectos.';
     const user = await this.prisma.user.findUnique({ where: { id: dto.userId } });
@@ -211,90 +267,42 @@ export class AutenticacionService {
       await this.auditAuth('LOGIN_FALLIDO', dto.userId, { reason: !user ? 'unknown_user' : 'inactive' });
       throw new UnauthorizedException(generic);
     }
+    this.checkRateLimit(ip, dto.userId);
 
-    let verified: 'hash' | 'initial' | null = null;
-    try {
-      verified = await this.verifyPassword(user, dto.password);
-    } catch (e: any) {
-      if (e instanceof ServiceUnavailableException) throw e;
-      verified = null;
-    }
-    if (!verified) {
-      await this.auditAuth('LOGIN_FALLIDO', user.id, { reason: 'bad_password' });
+    const expectedProfitCode = (user.profitCode ?? '').trim();
+    if (!expectedProfitCode) {
+      await this.auditAuth('LOGIN_FALLIDO', user.id, { reason: 'no_profit_code' });
+      this.registerLoginFailure(ip, dto.userId);
       throw new UnauthorizedException(generic);
     }
 
-    // Primer login con inicial: se materializa el hash; mustChangePassword
-    // sigue true y passwordChangedAt permanece null (10D §6/§16).
-    const data: { lastLoginAt: Date; passwordHash?: string } = { lastLoginAt: new Date() };
-    if (verified === 'initial') {
-      data.passwordHash = await bcrypt.hash(dto.password, 10);
+    let ok = false;
+    try {
+      ok = await this.verifyProfitPassword(expectedProfitCode, dto.password);
+    } catch {
+      await this.auditAuth('LOGIN_FALLIDO', user.id, { reason: 'profit_unavailable' });
+      throw new ServiceUnavailableException('No fue posible validar el acceso. Inténtalo nuevamente.');
     }
-    await this.prisma.user.update({ where: { id: user.id }, data });
+    if (!ok) {
+      await this.auditAuth('LOGIN_FALLIDO', user.id, { reason: 'bad_password' });
+      this.registerLoginFailure(ip, dto.userId);
+      throw new UnauthorizedException(generic);
+    }
+
+    this.clearLoginFailures(ip, dto.userId);
+    await this.prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
     const created = await this.createSession(user.id, ip, userAgent);
-    await this.auditAuth('LOGIN_EXITOSO', user.id, { mustChangePassword: user.mustChangePassword, sessionId: created.sessionId });
+    await this.auditAuth('LOGIN_EXITOSO', user.id, { sessionId: created.sessionId });
 
     return {
       authenticated: true,
       user: { id: user.id, displayName: user.displayName, active: user.active },
-      mustChangePassword: user.mustChangePassword,
       // token solo en memoria para que el controller lo ponga en cookie HttpOnly.
       // Nunca se registra en logs ni se persiste en claro.
       token: created.token,
       expiresAt: created.expiresAt,
       sessionId: created.sessionId,
     };
-  }
-
-  /**
-   * FASE 10E — Cambio con identidad de sesión (corrección #11).
-   * El userId proviene de request.user, NO del body.
-   */
-  async cambiarPasswordSesion(authUserId: string, dto: { currentPassword: string; newPassword: string }) {
-    const generic = 'No se pudo cambiar la contraseña.';
-    const user = await this.prisma.user.findUnique({ where: { id: authUserId } });
-    if (!user || !user.active) {
-      await this.auditAuth('CAMBIO_PASSWORD_FALLIDO', authUserId, { reason: !user ? 'unknown_user' : 'inactive' });
-      throw new UnauthorizedException(generic);
-    }
-
-    let verified: 'hash' | 'initial' | null = null;
-    try {
-      verified = await this.verifyPassword(user, dto.currentPassword);
-    } catch (e: any) {
-      if (e instanceof ServiceUnavailableException) throw e;
-      verified = null;
-    }
-    if (!verified) {
-      await this.auditAuth('CAMBIO_PASSWORD_FALLIDO', user.id, { reason: 'bad_current' });
-      throw new UnauthorizedException('Usuario o contraseña actual incorrectos.');
-    }
-
-    // Nueva diferente a la anterior (contra hash o contra inicial).
-    if (!dto.newPassword || dto.newPassword.length < 8) {
-      throw new UnauthorizedException('La nueva contraseña debe tener al menos 8 caracteres.');
-    }    if (user.passwordHash) {
-      if (await bcrypt.compare(dto.newPassword, user.passwordHash)) {
-        throw new UnauthorizedException('La nueva contraseña debe ser diferente a la actual.');
-      }
-    } else if (dto.newPassword === dto.currentPassword) {
-      throw new UnauthorizedException('La nueva contraseña debe ser diferente a la actual.');
-    }
-
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: {
-        passwordHash: await bcrypt.hash(dto.newPassword, 10),
-        mustChangePassword: false,
-        passwordChangedAt: new Date(),
-      },
-    });
-    // Corrección #12: al cambiar, se revocan TODAS las sesiones (incluida la
-    // actual). El frontend vuelve a LoginPage.
-    await this.revokeAllSessions(user.id);
-    await this.auditAuth('CAMBIO_PASSWORD', user.id, { mustChangePassword: false });
-    await this.auditAuth('SESSION_REVOCADA', user.id, { reason: 'password_change' });
-    return { ok: true };
   }
 
   /** Autocomplete del login: solo activos, solo id+displayName. */

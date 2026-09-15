@@ -95,11 +95,11 @@ describe('ProfitRegistrationPanel', () => {
     render(<MemoryRouter><ProfitRegistrationPanel request={REQ} onChanged={onChanged} /></MemoryRouter>);
     fireEvent.click(screen.getByRole('button', { name: 'Preparar registro' }));
     await waitFor(() => expect(screen.getAllByText('ACTEQT0001').length).toBeGreaterThan(0));
-    expect(screen.getByText('DISPONIBLE')).toBeDefined();
+    expect(screen.getByText('✓ LISTO PARA REGISTRAR EN PROFIT')).toBeDefined();
 
     fireEvent.click(screen.getByRole('button', { name: 'Registrar en Profit' }));
     const dialog = await screen.findByRole('alertdialog');
-    expect(dialog.textContent).toContain('sin UPDATE ni DELETE');
+    expect(dialog.textContent).toContain('creará el artículo en Profit');
     fireEvent.change(within(dialog).getByPlaceholderText('REGISTRAR EN PROFIT'), { target: { value: 'REGISTRAR EN PROFIT' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar registro' }));
     await waitFor(() => expect(apiProfitRegistrationService.create).toHaveBeenCalledWith('r1'));
@@ -112,7 +112,7 @@ describe('ProfitRegistrationPanel', () => {
       requestId: 'r1', coArt: 'ACTEQT0001', reconcile: 'NOT_FOUND', differences: [],
     });
     render(<MemoryRouter><ProfitRegistrationPanel request={REQ} /></MemoryRouter>);
-    fireEvent.change(screen.getByPlaceholderText('co_art a verificar...'), { target: { value: 'ACTEQT0001' } });
+    fireEvent.change(screen.getByPlaceholderText('Código Profit a verificar...'), { target: { value: 'ACTEQT0001' } });
     fireEvent.click(screen.getByRole('button', { name: 'Verificar en Profit' }));
     await waitFor(() => expect(apiProfitRegistrationService.verify).toHaveBeenCalledWith('r1', 'ACTEQT0001'));
     await screen.findByText('No encontrado');
@@ -121,7 +121,7 @@ describe('ProfitRegistrationPanel', () => {
   it('con escritura deshabilitada muestra aviso y bloquea el botón', async () => {
     (apiProfitRegistrationService.writeStatus as any).mockResolvedValue({ enabled: false, configured: false, auth: 'sql', connected: false });
     render(<MemoryRouter><ProfitRegistrationPanel request={REQ} /></MemoryRouter>);
-    await screen.findByText(/Escritura no disponible/);
+    await screen.findByText(/Registro en Profit no disponible/);
     fireEvent.click(screen.getByRole('button', { name: 'Preparar registro' }));
     await waitFor(() => expect(screen.getAllByText('ACTEQT0001').length).toBeGreaterThan(0));
     const btn = screen.getByRole('button', { name: 'Registrar en Profit' });
@@ -141,13 +141,14 @@ describe('ProfitRegistrationPanel', () => {
     render(<MemoryRouter><ProfitRegistrationPanel request={REQ} /></MemoryRouter>);
     fireEvent.click(screen.getByRole('button', { name: 'Preparar registro' }));
     await waitFor(() => expect(screen.getByText('✓ LISTO PARA REGISTRAR EN PROFIT')).toBeDefined());
-    expect(screen.getByText('Dry-run READY')).toBeDefined();
+    expect(screen.queryByText('Dry-run READY')).toBeNull();
+    expect(screen.queryByText(/Servidor|autenticación|Dry-run/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Registrar en Profit' }));
     const dialog = await screen.findByRole('alertdialog');
     fireEvent.change(within(dialog).getByPlaceholderText('REGISTRAR EN PROFIT'), { target: { value: 'REGISTRAR EN PROFIT' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar registro' }));
-    await screen.findByText('✓ ARTÍCULO REGISTRADO EN PROFIT');
-    expect(screen.getByText('DM-PROFIT-20260913-000055')).toBeDefined();
+    await screen.findByText('✓ Registrado en Profit');
+    expect(screen.queryByText('DM-PROFIT-20260913-000055')).toBeNull();
   });
 
   it('error muestra motivo y acción recomendada', async () => {
@@ -163,7 +164,7 @@ describe('ProfitRegistrationPanel', () => {
     const dialog = await screen.findByRole('alertdialog');
     fireEvent.change(within(dialog).getByPlaceholderText('REGISTRAR EN PROFIT'), { target: { value: 'REGISTRAR EN PROFIT' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar registro' }));
-    await screen.findByText('✕ NO SE PUDO REGISTRAR EN PROFIT');
+    await screen.findByText('No fue posible registrar el artículo en Profit.');
     expect(screen.getByText(/Acción recomendada/)).toBeDefined();
   });
 
@@ -179,7 +180,7 @@ describe('ProfitRegistrationPanel', () => {
     const dialog = await screen.findByRole('alertdialog');
     fireEvent.change(within(dialog).getByPlaceholderText('REGISTRAR EN PROFIT'), { target: { value: 'REGISTRAR EN PROFIT' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar registro' }));
-    await screen.findByText('⚠ RESULTADO PENDIENTE DE VERIFICACIÓN');
+    await screen.findByText('No se pudo confirmar el resultado del registro.');
   });
 
   it('confirmación exige texto exacto', async () => {
@@ -206,8 +207,8 @@ describe('ProfitRegistrationPanel', () => {
       verifications: [],
     });
     render(<MemoryRouter><ProfitRegistrationPanel request={REQ} /></MemoryRouter>);
-    await screen.findByText('Intento #1 — FALLIDO');
-    expect(screen.getByText('DM-PROFIT-20260913-000055')).toBeDefined();
+    await screen.findByText('Intento #1 — NO REGISTRADO');
+    expect(screen.queryByText('DM-PROFIT-20260913-000055')).toBeNull();
   });
 
   it('retry en ERROR_PROFIT revalida sin escribir', async () => {
@@ -260,21 +261,22 @@ describe('ProfitRegistrationPanel estados 14L', () => {
   });
   afterEach(() => cleanup());
 
-  it('REGISTRO PREPARADO con flag OFF y permiso vigente', async () => {
+  it('registro deshabilitado muestra aviso corporativo sin tecnicismos', async () => {
     render(<MemoryRouter><ProfitRegistrationPanel request={REQ} /></MemoryRouter>);
-    await screen.findByText(/REGISTRO PREPARADO/);
-    expect(screen.getByText(/temporalmente deshabilitada/)).toBeDefined();
-    expect(screen.getByText(/Permiso PROFIT.WRITE: CONCEDIDO/)).toBeDefined();
+    await screen.findByText(/Registro en Profit no disponible/);
+    expect(screen.getByText(/temporalmente deshabilitado/)).toBeDefined();
+    expect(screen.queryByText(/PROFIT.WRITE/)).toBeNull();
+    expect(screen.queryByText(/Dry-run/)).toBeNull();
   });
 
-  it('SIN PERMISO muestra usuario, roles y origen', async () => {
+  it('SIN PERMISO muestra mensaje corporativo sin detalle técnico', async () => {
     (useSession as any).mockReturnValue({ hasPermission: () => false, user: { displayName: 'Sin Perm' }, roleCodes: ['REQUESTER'] });
+    (apiProfitRegistrationService.writeStatus as any).mockResolvedValue({ enabled: true, configured: true, auth: 'sql', connected: true });
     render(<MemoryRouter><ProfitRegistrationPanel request={REQ} /></MemoryRouter>);
-    await screen.findByText(/SIN PERMISO DE ESCRITURA/);
-    await screen.findByText(/Contabilidad aprobada/);
-    const has = (t: string) => screen.getAllByText((_, el) => (el?.textContent ?? '').includes(t));
-    expect(has('REQUESTER').length).toBeGreaterThan(0);
-    expect(has('DENEGADO (efectivo)').length).toBeGreaterThan(0);
+    await screen.findByText(/Registro no disponible/);
+    await screen.findByText(/no tiene autorización/);
+    expect(screen.queryByText(/PROFIT.WRITE/)).toBeNull();
+    expect(screen.queryByText(/DENEGADO/)).toBeNull();
   });
 
   it('oculto antes de la aprobación contable', () => {

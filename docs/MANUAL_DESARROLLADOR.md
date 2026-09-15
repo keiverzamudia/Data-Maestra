@@ -153,11 +153,11 @@ pnpm --filter @master-data/api run db:studio     # Abrir Prisma Studio
 
 ## 7. Autenticación
 
-**Estado actual (FASE 10M — COMPLETA): autenticación real.**
+**Estado actual (FASE 15 — COMPLETA): autenticación contra Profit.**
 
 - JWT firmado + `Session` persistente + cookie HttpOnly `dm_session` (sin JWT en JS)
-- Contraseña inicial global configurable (`INITIAL_PASSWORD` o fallback dev); `passwordHash` NULL hasta el primer login
-- Cambio obligatorio (`mustChangePassword`) con revocación de sesiones
+- Sin contraseña local: el backend valida contra `MasterProfit.dbo.autenticar(profitCode, password)` y exige id === profitCode
+- Rate limiting temporal de login (sin bloqueos permanentes); 401 genérico; 503 fail closed si Profit no responde
 - `GET /auth/session` expone `{ user, roleCodes, permissions, memberships }` (permisos efectivos ya resueltos)
 - 401 = sin sesión (limpia estado); 403 = sin permiso (NO hace logout)
 

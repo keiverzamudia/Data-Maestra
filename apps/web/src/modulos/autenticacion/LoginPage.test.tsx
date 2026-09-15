@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { LoginPage } from './LoginPage';
 import { apiAuthService } from '../../servicios/api/api-auth-service';
 import { useSession } from '../../contextos/SessionContext';
@@ -11,7 +11,6 @@ vi.mock('../../servicios/api/api-auth-service', () => ({
     login: vi.fn(),
     logout: vi.fn(),
     session: vi.fn(),
-    cambiarPassword: vi.fn(),
   },
 }));
 
@@ -20,7 +19,6 @@ vi.mock('../../contextos/SessionContext', () => ({
 }));
 
 const buscarMock = apiAuthService.buscarUsuarios as any;
-const cambiarMock = apiAuthService.cambiarPassword as any;
 const loginMock = vi.fn();
 const refreshMock = vi.fn();
 
@@ -80,33 +78,17 @@ describe('LoginPage 10E', () => {
     expect(await screen.findByText('Usuario o contraseña incorrectos.')).toBeTruthy();
   });
 
-  it('must-change muestra cambio obligatorio sin exponer id', async () => {
-    loginMock.mockResolvedValue('must-change');
-    cambiarMock.mockResolvedValue({ ok: true });
+  it('FASE 15: la contraseña se limpia después del intento (K) y no va a stores globales (J)', async () => {
+    loginMock.mockRejectedValue({ message: 'Usuario o contraseña incorrectos.' });
     render(<LoginPage />);
     fireEvent.change(screen.getByPlaceholderText('Escribe tu nombre…'), { target: { value: 'KEI' } });
     fireEvent.click(await screen.findByText('KEIBER ZAMUDIA'));
-    fireEvent.change(screen.getByPlaceholderText('Contraseña'), { target: { value: 'Inicial123' } });
+    fireEvent.change(screen.getByPlaceholderText('Contraseña'), { target: { value: 'Secreta123' } });
     fireEvent.click(screen.getByRole('button', { name: 'Iniciar sesión' }));
-    expect(await screen.findByText('Debes cambiar tu contraseña')).toBeTruthy();
-    expect(document.body.textContent).not.toMatch(/u-1/);
-  });
-
-  it('cambio correcto usa sesión (sin userId) y vuelve al login', async () => {
-    cambiarMock.mockResolvedValue({ ok: true });
-    const { container } = render(<LoginPage forcedChange />);
-    const view = within(container as HTMLElement);
-    expect(await view.findByText('Debes cambiar tu contraseña')).toBeTruthy();
-    const inputs = container.querySelectorAll('input[type="password"]');
-    fireEvent.change(inputs[0]!, { target: { value: 'Inicial123' } });
-    fireEvent.change(inputs[1]!, { target: { value: 'NuevaClave1' } });
-    fireEvent.change(inputs[2]!, { target: { value: 'NuevaClave1' } });
-    fireEvent.click(view.getByText('Cambiar contraseña'));
-    await waitFor(() => expect(cambiarMock).toHaveBeenCalledWith('Inicial123', 'NuevaClave1'));
-    expect(await view.findByText(/actualizada correctamente/)).toBeTruthy();
-    expect(refreshMock).toHaveBeenCalled();
-    fireEvent.click(view.getByText('Volver al login'));
-    expect(view.getByRole('heading', { name: 'Iniciar sesión' })).toBeTruthy();
+    await screen.findByText('Usuario o contraseña incorrectos.');
+    // Campo limpio: la contraseña no permanece en memoria de la vista.
+    expect((screen.getByPlaceholderText('Contraseña') as HTMLInputElement).value).toBe('');
+    expect(document.body.textContent).not.toContain('Secreta123');
   });
 
   it('botón deshabilitado durante request', async () => {

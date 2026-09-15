@@ -5,6 +5,7 @@ import { useSession } from '../../contextos/SessionContext';
 import { useCompany } from '../../contextos/CompanyContext';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
 import { Page, Button, StatusBadge, Skeleton, ErrorState, Alert } from '../../componentes/ui';
+import { HelpButton } from '../../componentes/ayuda';
 import { RequestDetail, WorkflowStepper, ProfitRegistrationPanel } from '../../componentes/workflow';
 import type { Request, ApprovalRef } from '../../tipos';
 
@@ -125,7 +126,7 @@ export const RequestDetailPage: React.FC = () => {
     <Page
       title={`Solicitud #${request.requestNumber}`}
       desc={request.requestedDescription}
-      actions={<Button variant="secondary" onClick={() => navigate(-1)}>Volver</Button>}
+      actions={<span style={{ display: 'flex', gap: 8 }}><HelpButton helpKey="solicitud-detail" status={request.status} /><Button variant="secondary" onClick={() => navigate(-1)}>Volver</Button></span>}
     >
       <div className="card p16">
         <div className="review-grid">

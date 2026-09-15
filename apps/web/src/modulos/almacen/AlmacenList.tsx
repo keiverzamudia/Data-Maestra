@@ -4,6 +4,7 @@ import { Can } from '../../componentes/auth/Can';
 import { useCompany } from '../../contextos/CompanyContext';
 import { warehouseService } from '../../servicios';
 import { Page, Button, SearchInput, StatusBadge, PriorityBadge, EmptyState, ErrorState, Skeleton, DataTable, Pagination, type DataColumn } from '../../componentes/ui';
+import { HelpButton } from '../../componentes/ayuda';
 import type { Request } from '../../tipos';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
 
@@ -66,6 +67,7 @@ export const WarehouseList: React.FC = () => {
     <Page
       title="Almacén"
       desc={loading ? 'Clasifica y completa la información necesaria para continuar el proceso.' : `${filtered.length} solicitud${filtered.length === 1 ? '' : 'es'} por clasificar.`}
+      actions={<HelpButton helpKey="almacen" />}
     >
       <div className="toolbar" role="search">
         <span className="grow"><SearchInput value={search} onChange={onSearch} placeholder="Buscar por número, descripción, código..." /></span>

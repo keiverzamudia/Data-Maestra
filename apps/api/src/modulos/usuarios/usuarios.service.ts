@@ -19,10 +19,9 @@ export interface ProfitUserSyncResult {
  *
  * Reglas:
  * - Nuevo en Profit → crea usuario local (profitCode, displayName, defaults 10B).
- *   NO genera contraseña (10D); passwordHash queda NULL (no puede autenticarse).
- * - Existente → actualiza SOLO displayName. Nunca toca passwordHash,
- *   mustChangePassword, roles, permisos, overrides, empresa, departamento,
- *   auditoría, lastLoginAt ni passwordChangedAt.
+ *   Sin contraseña local (FASE 15: se autentica contra Profit).
+ * - Existente → actualiza SOLO displayName. Nunca toca roles, permisos,
+ *   overrides, empresa, departamento, auditoría ni lastLoginAt.
  * - Ausente de VUSUARIOS → active=false (conserva historia). Nunca elimina.
  *   Nunca reactiva por otra fuente.
  * - Reaparece en VUSUARIOS tras haber sido desactivado por el sync
@@ -151,7 +150,7 @@ export class UsuariosService {
   }
 
   /**
-   * 11G — Búsqueda admin paginada. Nunca expone passwordHash.
+   * 11G — Búsqueda admin paginada. Proyección segura sin secretos.
    * Server-side: filtra por displayName, username o profitCode (contains).
    * Incluye membresías activas (empresa/departamento/rol) para la tabla /admin.
    * Sin filtrar por active: el admin debe ver también inactivados por el sync.
@@ -183,7 +182,6 @@ export class UsuariosService {
       displayName: true,
       profitCode: true,
       active: true,
-      mustChangePassword: true,
       lastLoginAt: true,
       userRoles: {
         where: { active: true },
@@ -213,7 +211,7 @@ export class UsuariosService {
   // =====================================================================
   // 10G/10H — Administración de usuarios (solo ADMIN.MANAGE en controller).
   // Data-Maestra es fuente de configuración local; Profit solo identidad.
-  // Nunca se expone passwordHash. Toda acción relevante se audita.
+  // Proyección segura sin secretos. Toda acción relevante se audita.
   // =====================================================================
 
   private safeUserSelect() {
@@ -224,9 +222,7 @@ export class UsuariosService {
       email: true,
       profitCode: true,
       active: true,
-      mustChangePassword: true,
       lastLoginAt: true,
-      passwordChangedAt: true,
     };
   }
 
@@ -264,7 +260,7 @@ export class UsuariosService {
     return { roleCodes, detail };
   }
 
-  /** Detalle completo para /admin (sin passwordHash). */
+  /** Detalle completo para /admin (proyección segura). */
   async getDetalle(targetId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: targetId },
@@ -450,37 +446,10 @@ export class UsuariosService {
   }
 
   /**
-   * 10H — Restablece al mecanismo global de contraseña inicial:
-   * passwordHash=NULL + mustChangePassword=true + sesiones revocadas.
-   * Nunca expone ni registra secretos.
-   */
-  async resetPassword(targetId: string, actorId: string, actorCompanyId?: string) {
-    await this.requireTarget(targetId);
-    await this.prisma.user.update({
-      where: { id: targetId },
-      data: { passwordHash: null, mustChangePassword: true, passwordChangedAt: null },
-    });
-    await this.prisma.session.updateMany({
-      where: { userId: targetId, revokedAt: null },
-      data: { revokedAt: new Date() },
-    });
-    await this.auditoria.logEvent({
-      correlationId: randomUUID(),
-      actorId,
-      actorCompanyId,
-      entityType: 'User',
-      entityId: targetId,
-      action: 'USER_PASSWORD_RESET',
-      afterData: JSON.stringify({ mustChangePassword: true }),
-    });
-    return { ok: true, mustChangePassword: true };
-  }
-
-  /**
    * 10J — Asignación masiva de un rol a varios usuarios.
    * Crea únicamente membresías UserRole faltantes dentro de UNA transacción;
    * los ya asignados se reportan sin modificar nada ni auditar.
-   * No toca passwordHash, mustChangePassword, active, identidad Profit,
+   * No toca active, identidad Profit,
    * organización existente, overrides ni sesiones. Solo ADMIN.MANAGE (controller).
    */
   async assignRoleBulk(

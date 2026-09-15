@@ -6,6 +6,7 @@ import { useCompany } from '../../contextos/CompanyContext';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
 import { requestService } from '../../servicios';
 import { Page, Button, StatusBadge, SearchInput, EmptyState, ErrorState, Skeleton, Select, Tabs, DataTable, Pagination, type DataColumn } from '../../componentes/ui';
+import { HelpButton } from '../../componentes/ayuda';
 import type { Request } from '../../tipos';
 import { etapaActual } from '../../utilidades/presentacion';
 
@@ -120,7 +121,7 @@ export const RequesterList: React.FC = () => {
     <Page
       title="Solicitudes"
       desc={subtitle}
-      actions={<Can permission="REQUEST.CREATE"><Button onClick={() => navigate('/requester/new')}>+ Nueva solicitud</Button></Can>}
+      actions={<span style={{ display: 'flex', gap: 8 }}><HelpButton helpKey="solicitudes" /><Can permission="REQUEST.CREATE"><Button onClick={() => navigate('/requester/new')}>+ Nueva solicitud</Button></Can></span>}
     >
       <Tabs tabs={['Solicitudes activas', 'Historial']} active={scope === 'activas' ? 0 : 1} onChange={i => changeScope(i === 0 ? 'activas' : 'historial')} />
 

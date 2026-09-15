@@ -3,6 +3,7 @@ import { apiAuditService, type AuditEntry, type AuditQuery } from '../../servici
 import { useSession } from '../../contextos/SessionContext';
 import { Page, Input, Button, Badge, EmptyState, Skeleton,
 ErrorState, Field, Drawer, Pagination } from '../../componentes/ui';
+import { HelpButton } from '../../componentes/ayuda';
 import { getAuditActionLabel } from '../../utilidades/presentacion';
 
 const SENSITIVE_KEYS = /password|passwd|pwd|secret|token|cookie|session|hash|credential|private|initial/i;
@@ -144,7 +145,7 @@ export const AuditPage: React.FC = () => {
   };
 
   return (
-    <Page title="Auditoría" desc="Consulta las acciones registradas en el sistema.">
+    <Page title="Auditoría" desc="Consulta las acciones registradas en el sistema." actions={<HelpButton helpKey="auditoria" />}>
       <details className="card p16">
         <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
           Filtros{activeFilters > 0 ? ` (${activeFilters} activos)` : ''}

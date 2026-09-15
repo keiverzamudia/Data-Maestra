@@ -5,6 +5,7 @@ import {
   Page, Button, SearchInput, EmptyState, Alert, ConfirmDialog,
   Skeleton, ErrorState, DataTable, Pagination, Select, type DataColumn,
 } from '../../componentes/ui';
+import { HelpButton } from '../../componentes/ayuda';
 
 const TYPES: Array<{ key: CatalogTypeKey; label: string }> = [
   { key: 'GROUP', label: 'Grupos' },
@@ -188,6 +189,7 @@ export const CatalogosProfitAdmin: React.FC = () => {
     <Page
       title="Catálogos Profit"
       desc="Visibilidad local: qué valores de Profit se muestran en Data-Maestra. Ocultar nunca elimina de Profit."
+      actions={<HelpButton helpKey="catalogos" />}
     >
       {notice && <Alert tone="info">{notice}</Alert>}
       {error && <Alert tone="danger">{error}</Alert>}

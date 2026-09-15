@@ -4,15 +4,14 @@
     Identidad SAN LUIS: primario #003366, secundario #95C800, tipografía Rubik.
     Regla de oro (§43): ningún componente define tamaños/colores fuera de aquí. */
 :root{
-  /* brand SAN LUIS */
-  --blue:#003366; --blue-hover:#00264d; --blue-active:#001a38; --blue-soft:#e9eff5;
-  --brand-deep:#001f3d;
+  /* brand SAN LUIS — estándares exactos de la guía (sin variantes de tono) */
+  --blue:#003366; --blue-soft:#e9eff5;
+  --brand-deep:#003366;
   /* acento SAN LUIS: usar solo en identidad (marca, login, hitos), nunca para estados */
-  --color-secondary:#95C800; --color-secondary-hover:#7fae00; --color-secondary-active:#6b9400;
-  --color-secondary-soft:#f1f7df; --color-secondary-contrast:#003366;
+  --color-secondary:#95C800; --color-secondary-contrast:#003366;
   /* semantic aliases (§6): usar estos nombres en código nuevo */
-  --color-primary:var(--blue); --color-primary-hover:var(--blue-hover);
-  --color-primary-active:var(--blue-active); --color-primary-soft:var(--blue-soft);
+  --color-primary:var(--blue); --color-primary-hover:var(--blue);
+  --color-primary-active:var(--blue); --color-primary-soft:var(--blue-soft);
   --color-success:var(--success); --color-success-soft:var(--success-bg);
   --color-warning:var(--warning); --color-warning-soft:var(--warning-bg);
   --color-danger:var(--danger); --color-danger-soft:var(--danger-bg);
@@ -25,8 +24,8 @@
   --code-bg:#0f172a; --code-text:#e2e8f0;
   /* borders & text */
   --border:#e2e8f0; --border-soft:#f1f5f9; --text:#0f172a; --muted:#64748b; --slate:#475569;
-  /* sidebar: azul noche SAN LUIS */
-  --sidebar:#00263f; --sidebar-active:#003a5c; --sidebar-text:#cbd5e1; --sidebar-dim:#94a3b8;
+  /* sidebar: estándar exacto; activo = velo blanco (el matiz sigue siendo #003366) */
+  --sidebar:#003366; --sidebar-active:rgba(255,255,255,.12); --sidebar-text:#cbd5e1; --sidebar-dim:#94a3b8;
   /* status */
   --success:#16a34a; --success-bg:#dcfce7; --success-text:#166534;
   --warning:#ca8a04; --warning-bg:#fef9c3; --warning-text:#854d0e; --warning-border:#fde047;

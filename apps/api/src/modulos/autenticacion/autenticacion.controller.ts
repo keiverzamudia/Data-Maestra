@@ -3,9 +3,7 @@ import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { AutenticacionService } from './autenticacion.service';
 import { LoginDto } from './dto/login.dto';
-import { CambiarPasswordDto } from './dto/cambiar-password.dto';
 import { JwtGuard } from './jwt.guard';
-import { CurrentUser, RequestUser } from './current-user.decorator';
 import { AUTH_COOKIE_NAME, getSessionTtlHours } from './auth.config';
 
 function cookieOptions() {
@@ -34,7 +32,6 @@ export class AutenticacionController {
     return {
       authenticated: result.authenticated,
       user: result.user,
-      mustChangePassword: result.mustChangePassword,
     };
   }
 
@@ -64,21 +61,11 @@ export class AutenticacionController {
     return {
       authenticated: true,
       user: { id: resolved.user.id, displayName: resolved.user.displayName, active: resolved.user.active },
-      mustChangePassword: resolved.user.mustChangePassword,
       roleCodes: resolved.roleCodes,
       permissions: resolved.permissions,
       memberships: resolved.memberships,
       sessionId: resolved.session.id,
     };
-  }
-
-  // FASE 10E (corrección #11): identidad desde sesión, body sin userId.
-  @Post('cambiar-password')
-  @HttpCode(HttpStatus.OK)
-  @UseGuards(JwtGuard)
-  @ApiOperation({ summary: 'Change password for the authenticated user (revokes sessions)' })
-  async cambiarPassword(@CurrentUser() user: RequestUser, @Body() dto: CambiarPasswordDto) {
-    return this.authService.cambiarPasswordSesion(user.id, dto);
   }
 
   @Get('usuarios')

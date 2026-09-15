@@ -5,6 +5,7 @@ import { warehouseApprovalService, auditService } from '../../servicios';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
 import { useCatalogos } from '../../hooks/useCatalogos';
 import { Button, SearchInput, StatusBadge, PriorityBadge, EmptyState, Alert, ConfirmDialog, Modal, Textarea, Skeleton, ErrorState, DataTable, type DataColumn, Page } from '../../componentes/ui';
+import { HelpButton } from '../../componentes/ayuda';
 import { RequestDetail, WorkflowStepper, WorkflowStatusInfo } from '../../componentes/workflow';
 import type { Request } from '../../tipos';
 
@@ -171,7 +172,7 @@ export const AprobacionAlmacenPage: React.FC = () => {
       <Page
         title={`Aprobación Almacén — ${selected.requestNumber}`}
         desc={selected.requestedDescription}
-        actions={<Button variant="secondary" onClick={closeDetail}>Volver a la bandeja</Button>}
+        actions={<span style={{ display: 'flex', gap: 8 }}><HelpButton helpKey="aprobacion-almacen" status={selected.status} /><Button variant="secondary" onClick={closeDetail}>Volver a la bandeja</Button></span>}
       >
         <WorkflowStepper status={selected.status} />
         <WorkflowStatusInfo status={selected.status} />
@@ -274,6 +275,7 @@ export const AprobacionAlmacenPage: React.FC = () => {
     <Page
       title="Aprobación Almacén"
       desc={loading ? 'Solicitudes clasificadas pendientes de aprobación.' : `${filtered.length} solicitud${filtered.length === 1 ? '' : 'es'} por aprobar.`}
+      actions={<HelpButton helpKey="aprobacion-almacen" />}
     >
       {error && <Alert tone="danger">{error}</Alert>}
 

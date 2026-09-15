@@ -5,6 +5,7 @@ import { requestService } from '../../servicios';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
 import { Button, SearchInput, StatusBadge, PriorityBadge, EmptyState, Alert, ConfirmDialog, Skeleton, ErrorState, DataTable, type DataColumn } from '../../componentes/ui';
 import { Page } from '../../componentes/ui';
+import { HelpButton } from '../../componentes/ayuda';
 import { RequestDetail, WorkflowStepper, WorkflowStatusInfo } from '../../componentes/workflow';
 import type { Request } from '../../tipos';
 
@@ -83,7 +84,7 @@ export const ApprovalsPage: React.FC = () => {
       <Page
         title={`Aprobación Gerencial — ${selected.requestNumber}`}
         desc={selected.requestedDescription}
-        actions={<Button variant="secondary" onClick={() => setSelected(null)}>Volver a la bandeja</Button>}
+        actions={<span style={{ display: 'flex', gap: 8 }}><HelpButton helpKey="aprobaciones" status={selected.status} /><Button variant="secondary" onClick={() => setSelected(null)}>Volver a la bandeja</Button></span>}
       >
         <WorkflowStepper status={selected.status} />
         <WorkflowStatusInfo status={selected.status} />
@@ -124,6 +125,7 @@ export const ApprovalsPage: React.FC = () => {
     <Page
       title="Aprobaciones"
       desc={loading ? 'Solicitudes pendientes de aprobación gerencial.' : `${filtered.length} solicitud${filtered.length === 1 ? '' : 'es'} por aprobar.`}
+      actions={<HelpButton helpKey="aprobaciones" />}
     >
       {error && (
         <Alert tone="danger">{error}</Alert>

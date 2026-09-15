@@ -12,8 +12,8 @@ process.env.JWT_SECRET = 'test-secret-10gh';
 function baseUser(over: any = {}) {
   return {
     id: 'u1', username: 'j.perez', displayName: 'Juan Pérez', email: null,
-    profitCode: null, active: true, mustChangePassword: false,
-    lastLoginAt: null, passwordChangedAt: null, ...over,
+    profitCode: null, active: true,
+    lastLoginAt: null, ...over,
   };
 }
 
@@ -136,7 +136,7 @@ describe('10G — permisos individuales', () => {
 });
 
 describe('10H — administración de usuarios', () => {
-  it('8. detalle sin passwordHash, con membresías y permisos efectivos', async () => {
+  it('8. detalle sin secretos, con membresías y permisos efectivos', async () => {
     const o: any = {
       roles: [{ ...roleRow('REQUESTER', ['REQUEST.VIEW']), company: { id: 'c1', name: 'E', code: 'EMP-A' }, department: null, role: { code: 'REQUESTER', name: 'S' } }],
       catalog: ['ADMIN.MANAGE', 'REQUEST.VIEW'],
@@ -167,7 +167,7 @@ describe('10H — administración de usuarios', () => {
 
   it('11. usuario inactivo no puede login', async () => {
     const prisma: any = {
-      user: { findUnique: vi.fn(async () => baseUser({ id: 'u-off', active: false, passwordHash: 'x' })) },
+      user: { findUnique: vi.fn(async () => baseUser({ id: 'u-off', active: false })) },
       auditEvent: { create: vi.fn(async () => ({})) },
     };
     const auth = new AutenticacionService(prisma);
@@ -205,21 +205,9 @@ describe('10H — administración de usuarios', () => {
     ).rejects.toThrow(/no pertenece/);
   });
 
-  it('16/17/18. reset: hash NULL + mustChange + sesiones revocadas', async () => {
-    const prisma = mockPrisma({});
-    const aud = auditoria();
-    const s = new UsuariosService(prisma, {} as any, aud);
-    const res = await s.resetPassword('u1', 'u-admin');
-    expect(res).toEqual({ ok: true, mustChangePassword: true });
-    const upd = prisma.user.update.mock.calls[0][0];
-    expect(upd.data.passwordHash).toBeNull();
-    expect(upd.data.mustChangePassword).toBe(true);
-    expect(prisma.session.updateMany).toHaveBeenCalledTimes(1);
-    const sessArgs = prisma.session.updateMany.mock.calls[0][0];
-    expect(sessArgs.where).toEqual({ userId: 'u1', revokedAt: null });
-    expect(sessArgs.data.revokedAt).toBeInstanceOf(Date);
-    expect(aud.logEvent.mock.calls[0][0].action).toBe('USER_PASSWORD_RESET');
-    expect(JSON.stringify(aud.logEvent.mock.calls[0][0])).not.toContain('passwordHash');
+  it('16/17/18. FASE 15: no existe reset local de contraseña', async () => {
+    const s = svc({});
+    expect((s as any).resetPassword).toBeUndefined();
   });
 });
 

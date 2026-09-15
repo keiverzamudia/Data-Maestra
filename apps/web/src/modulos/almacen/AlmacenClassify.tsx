@@ -11,6 +11,7 @@ import type { DryRunResult } from '../../contratos';
 import { analyzerProposals } from '../../mock/source-items';
 import { Button, Select, Textarea, Modal, ImageLightbox, Alert, ConfirmDialog, Field, StatusBadge, Skeleton, SectionCard } from '../../componentes/ui';
 import { Page } from '../../componentes/ui';
+import { HelpButton, HelpFieldInfo } from '../../componentes/ayuda';
 import { WorkflowStepper, WorkflowStatusInfo, AnalyzerPanel, MasterCodePreview } from '../../componentes/workflow';
 import type { Request } from '../../tipos';
 
@@ -260,7 +261,7 @@ export const WarehouseClassify: React.FC = () => {
     <Page
       title={`Clasificación — ${request.requestNumber}`}
       desc={request.requestedDescription}
-      actions={<><StatusBadge status={request.status} /><Button variant="secondary" onClick={() => navigate('/warehouse')}>Volver</Button></>}
+      actions={<><HelpButton helpKey="almacen-classify" status={request.status} /><StatusBadge status={request.status} /><Button variant="secondary" onClick={() => navigate('/warehouse')}>Volver</Button></>}
     >
       <WorkflowStepper status={request.status} />
       <WorkflowStatusInfo status={request.status} />
@@ -326,6 +327,14 @@ export const WarehouseClassify: React.FC = () => {
 
         <div className="stack" aria-label="Código y resumen">
           <MasterCodePreview groupCode={groupCode} subgroupCode={subgroupCode} />
+          <div>
+            <HelpFieldInfo
+              label="Código Master"
+              what="Identifica de forma única el artículo homologado. Se propone desde el grupo y subgrupo que defines y Contabilidad lo confirma."
+              origin="Se genera a partir de tu clasificación; no lo inventes manualmente."
+              owner="Almacén lo propone, Contabilidad lo valida."
+            />
+          </div>
 
           {request.groupId && (
             <div className="card p16">
@@ -372,16 +381,9 @@ export const WarehouseClassify: React.FC = () => {
               <Field label="Tipo de artículo (Profit)" required>
                 <Select value={articleType} onChange={e => handleTypeChange(e.target.value.trim())} disabled={!canEditClassification}>
                   <option value="">Seleccionar tipo</option>
-                  <optgroup label="Funcionales">
-                    {pTipos.filter(t => t.functional).map(t => (
-                      <option key={t.code.trim()} value={t.code.trim()}>{t.code.trim()} — {t.label}</option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="Reservados (válidos en Profit, sin uso confirmado)">
-                    {pTipos.filter(t => !t.functional).map(t => (
-                      <option key={t.code.trim()} value={t.code.trim()}>{t.code.trim()} — {t.label}</option>
-                    ))}
-                  </optgroup>
+                  {pTipos.map(t => (
+                    <option key={t.code.trim()} value={t.code.trim()}>{t.code.trim()} — {t.label}</option>
+                  ))}
                 </Select>
                 {groupDefaultType && !articleTypeManual && articleType && (
                   <span className="muted small field-note">Sugerido por la línea {groupCode}.</span>
@@ -396,6 +398,12 @@ export const WarehouseClassify: React.FC = () => {
                   <option value="">Seleccionar grupo</option>
                   {pGrupos.map(g => <option key={g.co_lin.trim()} value={g.co_lin.trim()}>{g.co_lin.trim()} — {g.lin_des.trim()}</option>)}
                 </Select>
+                <HelpFieldInfo
+                  label="Grupo (Profit)"
+                  what="Define la clasificación principal del artículo dentro del catálogo de Profit. El subgrupo disponible depende del grupo que elijas."
+                  origin="Catálogo de líneas de Profit."
+                  owner="Almacén."
+                />
               </Field>
 
               <Field label="Subgrupo (del grupo seleccionado)" required>

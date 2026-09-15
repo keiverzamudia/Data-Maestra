@@ -212,7 +212,30 @@ export class ProfitAdapterService {
     }
   }
 
+  /**
+   * FASE 15 — Valida una contraseña contra Profit sin almacenarla.
+   * Ejecuta `SELECT id FROM MasterProfit.dbo.autenticar(@code, @password)`
+   * con parámetros (jamás concatenación). Retorna el id devuelto (trim) o
+   * null si no hay filas. La contraseña solo vive en este scope.
+   * No registra secretos: los errores solo exponen el mensaje del driver.
+   */
+  async autenticarProfit(profitCode: string, password: string): Promise<string | null> {
+    const code = (profitCode ?? '').trim();
+    if (!code || !password) return null;
+    const mssql: any = await profitDriver();
+    const rows = await this.query<{ id: string }>(
+      `SELECT id FROM MasterProfit.dbo.autenticar(@code, @password)`,
+      {
+        code: { type: mssql.VarChar(50), value: code },
+        password: { type: mssql.VarChar(100), value: password },
+      },
+    );
+    const id = rows[0]?.id;
+    return typeof id === 'string' && id.trim() ? id.trim() : null;
+  }
+
   async getArticle(co_art: string): Promise<ProfitArticle | null> {
+
     const mssql: any = await profitDriver();
     const rows = await this.query<ProfitArticle>(
       `SELECT TOP 1 co_art, art_des, co_lin, co_subl, co_cat, co_color, uni_venta, stock_act
