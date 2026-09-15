@@ -82,7 +82,7 @@ function mockDetail() {
 async function openContabilidadTab() {
   fireEvent.click(await screen.findByText('Revisar'));
   expect((await screen.findAllByText(/Aprobación Contable — 12/)).length).toBeGreaterThanOrEqual(1);
-  fireEvent.click(screen.getByRole('button', { name: 'Contabilidad' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Contabilidad' }));
 }
 
 describe('ContabilidadList 11C', () => {
@@ -103,10 +103,10 @@ describe('ContabilidadList 11C', () => {
     expect(await screen.findByText(/solo lectura/)).toBeTruthy();
     expect(screen.getAllByText(/Aprobación Contable — 12/).length).toBeGreaterThanOrEqual(1);
     // 16A — pestañas del workspace.
-    expect(screen.getByRole('button', { name: 'Información' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Contabilidad' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Registro en Profit/ })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Contabilidad' }));
+    expect(screen.getByRole('tab', { name: 'Información' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Contabilidad' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /Registro en Profit/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: 'Contabilidad' }));
     expect(screen.getByText('Información Contable Profit')).toBeTruthy();
   });
 
@@ -151,7 +151,7 @@ describe('ContabilidadList 11C', () => {
     fireEvent.click(confirms[confirms.length - 1]!);
     expect(approveMock).toHaveBeenCalledTimes(1);
     // El workspace sigue abierto y la pestaña Profit deja de estar bloqueada.
-    expect(await screen.findByRole('button', { name: 'Registro en Profit' })).toBeTruthy();
+    expect(await screen.findByRole('tab', { name: 'Registro en Profit' })).toBeTruthy();
     expect(screen.getAllByText(/Aprobación Contable — 12/).length).toBeGreaterThanOrEqual(1);
   });
 
@@ -159,7 +159,7 @@ describe('ContabilidadList 11C', () => {
     render(<MemoryRouter><AccountingList /></MemoryRouter>);
     fireEvent.click(await screen.findByText('Revisar'));
     expect((await screen.findAllByText(/Aprobación Contable — 12/)).length).toBeGreaterThanOrEqual(1);
-    fireEvent.click(screen.getByRole('button', { name: /Registro en Profit/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Registro en Profit/ }));
     expect(await screen.findByText(/registro en profit bloqueado/i)).toBeTruthy();
     expect(screen.getByText(/después de la aprobación de Contabilidad/)).toBeTruthy();
   });
@@ -204,8 +204,8 @@ describe('ContabilidadList 12C — estándar de grupo', () => {
     expect(screen.getByText(/Última verificación:/)).toBeTruthy();
     expect(stdMock).toHaveBeenCalledWith('FER');
     expect(screen.getByText('1.1.04.03.01.006')).toBeTruthy();
-    // Sin selector de posiciones ni edición manual
-    expect(screen.queryByRole('tablist')).toBeNull();
+    // Sin selector de posiciones ni edición manual (el workspace sí tiene tablist propia)
+    expect(screen.queryByRole('combobox')).toBeNull();
     expect(screen.queryByText(/Puede cambiarla/)).toBeNull();
     expect(screen.queryByText('Quitar cuenta')).toBeNull();
     const btn = screen.getAllByText(/Aprobar Solicitud/)[0] as HTMLButtonElement;
@@ -260,7 +260,7 @@ describe('ContabilidadList 12E — checklist y trazabilidad', () => {
     const btn = screen.getAllByText(/Aprobar Solicitud/)[0] as HTMLButtonElement;
     expect(btn.disabled).toBe(false);
     // 16A — la trazabilidad vive en la pestaña Información.
-    fireEvent.click(screen.getByRole('button', { name: 'Información' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Información' }));
     expect(await screen.findByText((_, el) => el?.textContent === 'Por: JUAN PEREZ')).toBeTruthy();
     expect(screen.getAllByText(/Aprobación Almacén/).length).toBeGreaterThanOrEqual(1);
   });

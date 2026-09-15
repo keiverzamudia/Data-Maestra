@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Page, Button, Input, Alert, Skeleton, ErrorState, EmptyState, SectionCard, DataTable, type DataColumn } from '../../componentes/ui';
+import { Page, Button, Input, Alert, Skeleton, ErrorState, EmptyState, SectionCard, DataTable, Pagination, type DataColumn } from '../../componentes/ui';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
 import { useSession } from '../../contextos/SessionContext';
 import { apiUsuariosService, type AdminUser, type ProfitSyncResult } from '../../servicios/api/api-usuarios-service';
@@ -88,6 +88,20 @@ const UsuariosSection: React.FC<{ empresas: Company[]; departamentos: Department
 
   const selectedUsers = users.filter(u => selected.has(u.id));
 
+  const allVisibleSelected = users.length > 0 && users.every(u => selected.has(u.id));
+
+  const userColumns: DataColumn<AdminUser>[] = [
+    { key: 'sel', header: '', label: 'Seleccionar', render: u => (
+      <input type="checkbox" checked={selected.has(u.id)} onChange={() => toggleOne(u.id)} aria-label={`Seleccionar ${u.displayName}`} />
+    ) },
+    { key: 'nom', header: 'Nombre', label: 'Nombre', render: u => <>{u.displayName}<br /><span className="cell-secondary">{u.username}</span></> },
+    { key: 'pc', header: 'Código Profit', label: 'Código Profit', render: u => u.profitCode || '—' },
+    { key: 'org', header: 'Organización', label: 'Organización', render: u => <span className="cell-secondary">{uniq(u.userRoles.map(m => m.company?.code || m.company?.name))}{uniq(u.userRoles.map(m => m.department?.code || m.department?.name)) !== '—' ? ` / ${uniq(u.userRoles.map(m => m.department?.code || m.department?.name))}` : ''}</span> },
+    { key: 'est', header: 'Estado', label: 'Estado', render: u => <span className={`badge ${u.active ? 'badge-green' : 'badge-yellow'}`}>{u.active ? 'Activo' : 'Inactivo'}</span> },
+    { key: 'rol', header: 'Rol', label: 'Rol', render: u => <>{uniq(u.userRoles.map(m => (m.role ? getRoleLabel(m.role.code, m.role.name) : null)))}</> },
+    { key: 'acc', header: 'Acción', label: 'Acción', render: u => <Button size="sm" variant="secondary" onClick={() => setAdminId(u.id)}>Administrar</Button> },
+  ];
+
   // Búsqueda server-side con debounce; descarta respuestas viejas.
   // La búsqueda reinicia a la página 1 sin alterar los totales globales.
   React.useEffect(() => {
@@ -169,9 +183,6 @@ const UsuariosSection: React.FC<{ empresas: Company[]; departamentos: Department
             <div className="summary-item"><div className="summary-num">{totals.inactiveTotal}</div><div className="summary-label">Inactivos</div></div>
           </div>
         )}
-        {!loading && !error && (text.trim() || totals.filteredTotal !== totals.total) && (
-          <p className="muted small" role="status">Mostrando {users.length} de {totals.filteredTotal} resultados (total global: {totals.total} usuarios).</p>
-        )}
         {syncResult && (
           <Alert tone="success">
             Sincronización completada — Creados: {syncResult.created} · Actualizados: {syncResult.updated} · Ausentes/inactivados: {syncResult.missing} · Errores: {syncResult.errors}
@@ -192,36 +203,21 @@ const UsuariosSection: React.FC<{ empresas: Company[]; departamentos: Department
           <EmptyState title="Sin usuarios" desc="No se encontraron usuarios con los filtros actuales." />
         )}
         {!loading && !error && users.length > 0 && (
-          <div className="card table-responsive">
-          <table className="table">
-            <thead><tr><th><input type="checkbox" checked={users.length > 0 && users.every(u => selected.has(u.id))} onChange={toggleAllVisible} aria-label="Seleccionar todos" /></th><th>Nombre</th><th>Código Profit</th><th>Organización</th><th>Estado</th><th>Rol</th><th>Acción</th></tr></thead>
-            <tbody>
-              {users.map(u => (
-                <tr key={u.id} className={selected.has(u.id) ? 'row-selected' : ''}>
-                  <td><input type="checkbox" checked={selected.has(u.id)} onChange={() => toggleOne(u.id)} aria-label={`Seleccionar ${u.displayName}`} /></td>
-                  <td data-label="Nombre" className="cell-primary">{u.displayName}<br /><span className="cell-secondary">{u.username}</span></td>
-                  <td data-label="Código Profit">{u.profitCode || '—'}</td>
-                  <td data-label="Organización" className="cell-secondary">{uniq(u.userRoles.map(m => m.company?.code || m.company?.name))}{uniq(u.userRoles.map(m => m.department?.code || m.department?.name)) !== '—' ? ` / ${uniq(u.userRoles.map(m => m.department?.code || m.department?.name))}` : ''}</td>
-                  <td data-label="Estado"><span className={`badge ${u.active ? 'badge-green' : 'badge-yellow'}`}>{u.active ? 'Activo' : 'Inactivo'}</span></td>
-                  <td data-label="Rol">{uniq(u.userRoles.map(m => (m.role ? getRoleLabel(m.role.code, m.role.name) : null)))}</td>
-                  <td data-label="Acción"><Button size="sm" variant="secondary" onClick={() => setAdminId(u.id)}>Administrar</Button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          </div>
+          <>
+            <label className="muted small" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} aria-label="Seleccionar visibles" />
+              Seleccionar visibles ({users.length})
+            </label>
+            <DataTable<AdminUser>
+              columns={userColumns}
+              rows={users}
+              rowKey={u => u.id}
+              caption={`Mostrando ${users.length} de ${totals.filteredTotal} resultados (total global: ${totals.total} usuarios).`}
+            />
+          </>
         )}
         {!loading && !error && totals.filteredTotal > 0 && (
-          <div className="pager" role="navigation" aria-label="Paginación de usuarios">
-            <label className="muted small">Por página
-              <select className="input" value={limit} onChange={e => changeLimit(Number(e.target.value))} aria-label="Usuarios por página" style={{ width: 'auto', marginLeft: 6 }}>
-                {[25, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
-            </label>
-            <span className="muted small">Página {page} de {totalPages}</span>
-            <Button size="sm" variant="secondary" onClick={() => goPage(page - 1)} disabled={page <= 1}>Anterior</Button>
-            <Button size="sm" variant="secondary" onClick={() => goPage(page + 1)} disabled={page >= totalPages}>Siguiente</Button>
-          </div>
+          <Pagination page={page} totalPages={totalPages} total={totals.filteredTotal} pageSize={limit} onPage={goPage} onPageSize={changeLimit} />
         )}
         {selected.size > 0 && (
           <div className="selection-bar" role="toolbar" aria-label="Acciones masivas">
@@ -302,6 +298,9 @@ const RolesSection: React.FC = () => {
 
   return (
     <SectionCard title="Roles y Permisos" desc="Roles del sistema con su descripción funcional y permisos.">
+      {adminCode ? (
+        <RoleAdminModal roleCode={adminCode} onClose={() => setAdminCode(null)} onChanged={() => void load()} />
+      ) : (
       <div className="stack-sm">
         {loading && (
           <div className="stack-sm" aria-label="Cargando roles">
@@ -321,10 +320,8 @@ const RolesSection: React.FC = () => {
             caption="Roles del sistema. Use Administrar para ver permisos y usuarios."
           />
         )}
-        {adminCode && (
-          <RoleAdminModal roleCode={adminCode} onClose={() => setAdminCode(null)} onChanged={() => void load()} />
-        )}
       </div>
+      )}
     </SectionCard>
   );
 };

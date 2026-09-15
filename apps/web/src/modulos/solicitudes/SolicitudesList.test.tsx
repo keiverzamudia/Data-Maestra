@@ -114,7 +114,7 @@ describe('SolicitudDetailPage 13A — seguimiento', () => {
     expect(await screen.findByText('Solicitud #101')).toBeTruthy();
     expect(screen.getByText('Carlos Rodríguez')).toBeTruthy();
     expect(screen.getByText('Cola de Contabilidad')).toBeTruthy();
-    expect(screen.getByText('Recorrido')).toBeTruthy();
+    expect(screen.getAllByText('Recorrido').length).toBeGreaterThanOrEqual(2);
   });
 
   it('mi participación y solo lectura al transferir', async () => {

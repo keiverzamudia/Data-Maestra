@@ -53,7 +53,7 @@ const UserMenu: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     .split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
   return (
     <div className="user-menu" onKeyDown={e => { if (e.key === 'Escape') setOpen(false); }}>
-      <button className="user-chip" onClick={() => setOpen(v => !v)} aria-haspopup="true" aria-expanded={open} aria-label="Menú de usuario">
+      <button className="user-chip" onClick={() => setOpen(v => !v)} aria-haspopup="menu" aria-expanded={open} aria-label="Menú de usuario">
         <span className="avatar">{initials}</span>
         <span className="user-menu-name">{user?.displayName ?? '—'}</span>
         <span aria-hidden="true" className="muted small">▾</span>
@@ -98,10 +98,19 @@ const NotifBell: React.FC = () => {
     }
   };
 
+  React.useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open ]);
+
+  const badge = unread > 99 ? '99+' : String(unread);
+
   return (
     <>
-      <button className="btn btn-ghost notif-btn" onClick={() => setOpen(v => !v)} aria-label="Notificaciones" aria-expanded={open}>
-        <BellIcon />{unread > 0 && <span className="notif-badge">{unread}</span>}
+      <button className="btn btn-ghost notif-btn" onClick={() => setOpen(v => !v)} aria-label={`Notificaciones${unread > 0 ? `, ${unread} sin leer` : ''}`} aria-expanded={open}>
+        <BellIcon />{unread > 0 && <span className="notif-badge" aria-live="polite">{badge}</span>}
       </button>
       {toast && !open && (
         <div className="notif-toast" role="status">
@@ -114,7 +123,7 @@ const NotifBell: React.FC = () => {
         </div>
       )}
       {open && (
-        <div className="notif-panel" role="dialog" aria-label="Notificaciones">
+        <div className="notif-panel" role="dialog" aria-modal="false" aria-label="Notificaciones">
           <div className="notif-head">
             <strong>Notificaciones{unread > 0 ? ` (${unread} sin leer)` : ''}</strong>
             <div style={{ display: 'flex', gap: 4 }}>
@@ -134,7 +143,7 @@ const NotifBell: React.FC = () => {
               </div>
               <div className="notif-actions">
                 {!n.readAt && <button className="btn btn-ghost btn-sm" onClick={() => void openNotif(n.id)}>Marcar leída</button>}
-                {n.link && <button className="btn btn-ghost btn-sm" onClick={() => void openNotif(n.id, n.link)}>Ver solicitud</button>}
+                {n.link && <button className="btn btn-primary btn-sm" onClick={() => void openNotif(n.id, n.link)}>Ver solicitud</button>}
               </div>
             </div>
           ))}
@@ -196,7 +205,7 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
           <span className="brand-mark" aria-hidden="true">DM</span>
           {!collapsed && (
             <span className="brand-text">
-              <span className="logo">Data-Maestra</span>
+              <span className="logo brand-display">Data-Maestra</span>
               <span className="brand-sub">Gestión de Datos Maestros</span>
             </span>
           )}
@@ -214,9 +223,6 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
             </div>
           ))}
         </nav>
-        <div className="sidebar-footer">
-          {!collapsed && <div className="muted small sidebar-foot-note">Gestión de Datos Maestros</div>}
-        </div>
       </aside>
       <div className="main">
         <header className="header">

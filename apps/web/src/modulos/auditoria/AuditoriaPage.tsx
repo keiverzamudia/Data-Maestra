@@ -2,7 +2,7 @@ import * as React from 'react';
 import { apiAuditService, type AuditEntry, type AuditQuery } from '../../servicios/api/api-audit-service';
 import { useSession } from '../../contextos/SessionContext';
 import { Page, Input, Button, Badge, EmptyState, Skeleton,
-ErrorState, Field, Drawer } from '../../componentes/ui';
+ErrorState, Field, Drawer, Pagination } from '../../componentes/ui';
 import { getAuditActionLabel } from '../../utilidades/presentacion';
 
 const SENSITIVE_KEYS = /password|passwd|pwd|secret|token|cookie|session|hash|credential|private|initial/i;
@@ -149,7 +149,10 @@ export const AuditPage: React.FC = () => {
         <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
           Filtros{activeFilters > 0 ? ` (${activeFilters} activos)` : ''}
         </summary>
-        <div className="toolbar" style={{ marginTop: 8 }} role="search">
+        <form
+          onSubmit={e => { e.preventDefault(); apply(); }}
+          className="toolbar" style={{ marginTop: 8 }}
+        >
           <Field label="Búsqueda"><Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Búsqueda general..." autoComplete="off" aria-label="Búsqueda" /></Field>
           <Field label="Acción"><Input value={action} onChange={e => setAction(e.target.value)} placeholder="Acción..." autoComplete="off" aria-label="Acción" /></Field>
           <Field label="Actor"><Input value={actorId} onChange={e => setActorId(e.target.value)} placeholder="Actor (id)..." autoComplete="off" aria-label="Actor" /></Field>
@@ -158,10 +161,10 @@ export const AuditPage: React.FC = () => {
           <Field label="Desde"><Input type="date" value={from} onChange={e => setFrom(e.target.value)} aria-label="Desde" /></Field>
           <Field label="Hasta"><Input type="date" value={to} onChange={e => setTo(e.target.value)} aria-label="Hasta" /></Field>
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-            <Button onClick={apply} disabled={loading}>Buscar</Button>
-            {activeFilters > 0 && <Button variant="secondary" onClick={clearFilters}>Limpiar</Button>}
+            <Button type="submit" disabled={loading}>Buscar</Button>
+            {activeFilters > 0 && <Button type="button" variant="secondary" onClick={clearFilters}>Limpiar</Button>}
           </div>
-        </div>
+        </form>
       </details>
 
       {loading && (
@@ -209,11 +212,7 @@ export const AuditPage: React.FC = () => {
               </tbody>
             </table>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <Button size="sm" variant="secondary" disabled={page <= 1} onClick={() => goPage(page - 1)}>Anterior</Button>
-            <span className="muted small">Página {page} de {totalPages} ({total} eventos)</span>
-            <Button size="sm" variant="secondary" disabled={page >= totalPages} onClick={() => goPage(page + 1)}>Siguiente</Button>
-          </div>
+          <Pagination page={page} totalPages={totalPages} total={total} pageSize={20} onPage={goPage} />
         </div>
       )}
 
@@ -233,7 +232,7 @@ export const AuditPage: React.FC = () => {
             </div>
             <div>
               <span className="muted small">Contexto</span>
-              <pre className="code" style={{ marginTop: 4 }}>{pretty(selected.afterData ?? selected.beforeData)}</pre>
+              <pre className="code code-block-scroll" style={{ marginTop: 4 }}>{pretty(selected.afterData ?? selected.beforeData)}</pre>
               <p className="muted small" style={{ marginTop: 4 }}>Los valores sensibles se muestran como [OCULTO].</p>
             </div>
             <Button variant="secondary" onClick={() => setSelected(null)}>Cerrar</Button>

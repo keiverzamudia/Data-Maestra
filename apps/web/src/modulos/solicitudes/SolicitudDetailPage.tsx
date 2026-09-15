@@ -144,6 +144,12 @@ export const RequestDetailPage: React.FC = () => {
         <EtapaLink status={request.status} />
       )}
 
+      <nav className="anchor-nav" aria-label="Secciones del detalle">
+        <a href="#detalle-recorrido">Recorrido</a>
+        <a href="#detalle-clasificacion">Clasificación</a>
+        <a href="#detalle-profit">Profit</a>
+      </nav>
+
       {(myLast || isMine) && (
         <div className="card p16" aria-label="Mi participación">
           <h3 className="subsection-title">Mi participación</h3>
@@ -166,8 +172,9 @@ export const RequestDetailPage: React.FC = () => {
         </div>
       )}
 
-      <div className="card p16" aria-label="Recorrido completo">
+      <div className="card p16" aria-label="Recorrido completo" id="detalle-recorrido">
         <h3 className="subsection-title">Recorrido</h3>
+        <p className="muted small">✓ aprobado · ↩ devuelto · ✕ rechazado</p>
         <div className="stack-sm" style={{ marginTop: 8 }}>
           {approvals.length === 0 && <p className="muted small">Aún sin acciones registradas.</p>}
           {approvals.map(a => (
@@ -184,9 +191,13 @@ export const RequestDetailPage: React.FC = () => {
         </div>
       </div>
 
-      <RequestDetail request={request} showWorkflow={false} />
+      <div id="detalle-clasificacion">
+        <RequestDetail request={request} showWorkflow={false} />
+      </div>
 
-      <ProfitRegistrationPanel request={request} onChanged={load} />
+      <div id="detalle-profit">
+        <ProfitRegistrationPanel request={request} onChanged={load} />
+      </div>
     </Page>
   );
 };

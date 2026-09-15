@@ -107,16 +107,16 @@ describe('Administración → Usuarios totales vs filtrados 11G', () => {
     buscarMock.mockResolvedValueOnce(page1).mockResolvedValueOnce(page2);
     render(<AdministracionPage />);
     await screen.findByText('Juan Pérez');
-    expect(await screen.findByText('Página 1 de 2')).toBeTruthy();
+    expect(await screen.findByText(/Página 1 de 2/)).toBeTruthy();
     fireEvent.click(screen.getByText('Siguiente'));
-    expect(await screen.findByText('Página 2 de 2')).toBeTruthy();
+    expect(await screen.findByText(/Página 2 de 2/)).toBeTruthy();
     expect(buscarMock).toHaveBeenLastCalledWith('', 2, 25);
   });
 
   it('cambia tamaño de página a 50', async () => {
     render(<AdministracionPage />);
     await screen.findByText('Juan Pérez');
-    fireEvent.change(screen.getByLabelText('Usuarios por página'), { target: { value: '50' } });
+    fireEvent.change(screen.getByLabelText('Registros por página'), { target: { value: '50' } });
     await waitFor(() => expect(buscarMock).toHaveBeenLastCalledWith('', 1, 50));
   });
 });
@@ -132,13 +132,13 @@ describe('Administración → Usuarios selección 10J', () => {
     fireEvent.click(screen.getByLabelText('Seleccionar Juan Pérez'));
     expect(await screen.findByText((_, el) => el?.textContent === '1 usuario seleccionado')).toBeTruthy();
     // seleccionar todos
-    fireEvent.click(screen.getByLabelText('Seleccionar todos'));
+    fireEvent.click(screen.getByLabelText('Seleccionar visibles'));
     expect(await screen.findByText((_, el) => el?.textContent === '2 usuarios seleccionados')).toBeTruthy();
     // deseleccionar todos
-    fireEvent.click(screen.getByLabelText('Seleccionar todos'));
+    fireEvent.click(screen.getByLabelText('Seleccionar visibles'));
     expect(screen.queryByText(/seleccionado/)).toBeNull();
     // re-seleccionar y abrir modal
-    fireEvent.click(screen.getByLabelText('Seleccionar todos'));
+    fireEvent.click(screen.getByLabelText('Seleccionar visibles'));
     fireEvent.click(await screen.findByText('Asignar rol'));
     expect(await screen.findByText('Asignar rol a 2 usuarios')).toBeTruthy();
     expect(await screen.findByText('Asignar rol a 2 usuarios')).toBeTruthy();

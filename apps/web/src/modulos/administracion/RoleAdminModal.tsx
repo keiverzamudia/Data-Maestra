@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Drawer, Button, Alert, ConfirmDialog, Skeleton, ErrorState, Badge, SearchInput } from '../../componentes/ui';
+import { Button, Alert, ConfirmDialog, Skeleton, ErrorState, Badge, SearchInput, Code } from '../../componentes/ui';
 import { apiRolesService, type RoleDetail } from '../../servicios/api/api-roles-service';
 import { getRoleLabel, getRoleDescription, getPermissionLabel } from '../../utilidades/presentacion';
 
@@ -72,7 +72,10 @@ export const RoleAdminModal: React.FC<Props> = ({ roleCode, onClose, onChanged }
   const roleDesc = detail ? (getRoleDescription(detail.code) || detail.description) : null;
 
   return (
-    <Drawer open onClose={onClose} title={roleName} subtitle="Administración del rol" size="narrow">
+    <div className="role-workspace">
+      <div className="workspace-head">
+        <Button variant="secondary" size="sm" onClick={onClose}>← Volver a roles</Button>
+      </div>
       {loading && (
         <div className="stack-sm" aria-label="Cargando rol">
           <Skeleton height={16} width="40%" /><Skeleton height={60} /><Skeleton height={60} />
@@ -86,8 +89,9 @@ export const RoleAdminModal: React.FC<Props> = ({ roleCode, onClose, onChanged }
           {msg && <Alert tone="success">{msg}</Alert>}
 
           <section className="role-head" aria-label="Resumen del rol">
-            <div className="eyebrow">Rol del sistema</div>
+            <div className="eyebrow">Rol del sistema · Administración del rol</div>
             <h2 className="role-name">{roleName}</h2>
+            <div className="block-mt-sm"><Code>{detail.code}</Code></div>
             {roleDesc && <p className="muted small">{roleDesc}</p>}
             <div className="role-stats">
               <div className="role-stat"><strong>{detail.users.length}</strong><span>usuario{detail.users.length === 1 ? '' : 's'}</span></div>
@@ -100,42 +104,47 @@ export const RoleAdminModal: React.FC<Props> = ({ roleCode, onClose, onChanged }
               <h3 className="subsection-title">Permisos del rol</h3>
               <Badge tone="blue">{detail.permissions.length} activos</Badge>
             </div>
+            <div className="legend-bar" aria-label="Leyenda de estados de permiso">
+              <span><strong>✓</strong> HEREDADO <span className="muted">— el usuario recibe lo concedido al rol</span></span>
+              <span><strong>+</strong> CONCEDIDO <span className="muted">— otorgado a este rol</span></span>
+              <span><strong>−</strong> DENEGADO <span className="muted">— excepción por usuario, en Personas y acceso</span></span>
+            </div>
             <div className="block-mt-sm">
               <SearchInput value={filter} onChange={setFilter} placeholder="Buscar permiso..." />
             </div>
             {catalog.length === 0 && <p className="muted small block-mt-sm">Sin permisos para este filtro.</p>}
-            {groupCatalog(catalog).map(g => (
-              <div key={g.domain} className="block-mt">
-                <h4 className="perm-domain">{g.domain} <span className="muted">· {g.items.length} permiso{g.items.length === 1 ? '' : 's'}</span></h4>
-                <div className="stack-sm">
-                  {g.items.map(p => {
-                    const on = assigned.has(p.code);
-                    return (
-                      <div key={p.code} className="perm-row">
-                        <div className="perm-main">
-                          <div className="perm-name">{getPermissionLabel(p.code)}</div>
-                          <div className="muted small">{p.description || '—'}</div>
+            <div className="perm-grid block-mt">
+              {groupCatalog(catalog).map(g => (
+                <div key={g.domain} className="card p16 perm-group">
+                  <h4 className="perm-domain">{g.domain} <span className="muted">· {g.items.length} permiso{g.items.length === 1 ? '' : 's'}</span></h4>
+                  <div className="stack-sm">
+                    {g.items.map(p => {
+                      const on = assigned.has(p.code);
+                      return (
+                        <div key={p.code} className="perm-row">
+                          <div className="perm-main">
+                            <div className="perm-name">{getPermissionLabel(p.code)}</div>
+                            <div className="muted small"><span className="mono">{p.code}</span>{p.description ? ` — ${p.description}` : ''}</div>
+                          </div>
+                          <Badge tone={on ? 'green' : 'gray'}>{on ? '+ CONCEDIDO' : 'Sin conceder'}</Badge>
+                          {on ? (
+                            <Button size="sm" variant="ghost" disabled={!!saving} onClick={() => setConfirmRemove(p.code)}>
+                              Retirar
+                            </Button>
+                          ) : (
+                            <Button size="sm" variant="secondary" disabled={!!saving} onClick={() => void toggle(p.code, false)}>
+                              Conceder
+                            </Button>
+                          )}
                         </div>
-                        <Badge tone={on ? 'green' : 'gray'}>{on ? '+ CONCEDIDO' : 'Sin conceder'}</Badge>
-                        {on ? (
-                          <Button size="sm" variant="ghost" disabled={!!saving} onClick={() => setConfirmRemove(p.code)}>
-                            Retirar
-                          </Button>
-                        ) : (
-                          <Button size="sm" variant="secondary" disabled={!!saving} onClick={() => void toggle(p.code, false)}>
-                            Conceder
-                          </Button>
-                        )}
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
             <p className="muted small block-mt">
-              Lo concedido al rol es heredado (✓) por sus usuarios. Prioridad efectiva:
-              − DENEGADO sobre + CONCEDIDO sobre ✓ HEREDADO. Las excepciones por
-              usuario se gestionan en Personas y acceso.
+              Prioridad efectiva: − DENEGADO sobre + CONCEDIDO sobre ✓ HEREDADO.
             </p>
           </section>
 
@@ -157,7 +166,7 @@ export const RoleAdminModal: React.FC<Props> = ({ roleCode, onClose, onChanged }
             </div>
           </section>
 
-          <div className="drawer-foot">
+          <div className="workspace-foot">
             <Button variant="secondary" onClick={onClose}>Cerrar</Button>
           </div>
 
@@ -176,7 +185,7 @@ export const RoleAdminModal: React.FC<Props> = ({ roleCode, onClose, onChanged }
           />
         </div>
       )}
-    </Drawer>
+    </div>
   );
 };
 

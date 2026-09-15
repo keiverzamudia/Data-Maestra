@@ -1,7 +1,8 @@
 import * as React from 'react';
-export const Button:React.FC<React.ButtonHTMLAttributes<HTMLButtonElement>&{variant?:'primary'|'secondary'|'ghost'|'danger';size?:'sm'|'md'}> = ({variant='primary',size='md',className='',...p})=>{
+export const Button:React.FC<React.ButtonHTMLAttributes<HTMLButtonElement>&{variant?:'primary'|'secondary'|'ghost'|'danger';size?:'sm'|'md';loading?:boolean}> = ({variant='primary',size='md',loading=false,className='',disabled,...p})=>{
   const v={primary:'btn-primary',secondary:'btn-secondary',ghost:'btn-ghost',danger:'btn-danger'}[variant];
-  const s=size==='sm'?'btn-sm':''; return <button className={`btn ${v} ${s} ${className}`} {...p}/>;
+  const s=size==='sm'?'btn-sm':'';
+  return <button className={`btn ${v} ${s} ${loading?'btn-loading':''} ${className}`} disabled={disabled||loading} aria-busy={loading||undefined} {...p}>{loading && <span className="spinner" aria-hidden="true" />} {p.children}</button>;
 };
 export const Input:React.FC<React.InputHTMLAttributes<HTMLInputElement>> = (p)=><input className="input" {...p}/>;
 export const Select:React.FC<React.SelectHTMLAttributes<HTMLSelectElement>> = (p)=><select className="input" {...p}/>;
@@ -29,9 +30,24 @@ export const PageHeader:React.FC<{title:string; subtitle?:string; action?:React.
     <div>{action}</div>
   </div>
 );
-export const Tabs:React.FC<{tabs:string[];active:number;onChange:(i:number)=>void}> = ({tabs,active,onChange})=>(
-  <div className="tabs">{tabs.map((t,i)=><button key={t} className={`tab ${i===active?'tab-active':''}`} onClick={()=>onChange(i)}>{t}</button>)}</div>
-);
+export const Tabs:React.FC<{tabs:string[];active:number;onChange:(i:number)=>void;ariaLabel?:string}> = ({tabs,active,onChange,ariaLabel})=>{
+  const onKeyDown=(e:React.KeyboardEvent)=>{
+    if(e.key!=='ArrowRight'&&e.key!=='ArrowLeft') return;
+    e.preventDefault();
+    const dir=e.key==='ArrowRight'?1:-1;
+    onChange((active+dir+tabs.length)%tabs.length);
+  };
+  return (
+    <div className="tabs" role="tablist" aria-label={ariaLabel||'Secciones'} onKeyDown={onKeyDown}>
+      {tabs.map((t,i)=>(
+        <button
+          key={t} role="tab" aria-selected={i===active} tabIndex={i===active?0:-1}
+          className={`tab ${i===active?'tab-active':''}`} onClick={()=>onChange(i)}
+        >{t}</button>
+      ))}
+    </div>
+  );
+};
 export const Modal:React.FC<{open:boolean; onClose:()=>void; title:string; children:React.ReactNode}> = ({open,onClose,title,children})=>{
   React.useEffect(()=>{
     if(!open) return;
@@ -39,11 +55,11 @@ export const Modal:React.FC<{open:boolean; onClose:()=>void; title:string; child
     window.addEventListener('keydown',onKey);
     return ()=>window.removeEventListener('keydown',onKey);
   },[open,onClose]);
-  if(!open) return null; return <div className="modal-overlay" onClick={onClose}><div className="modal" role="dialog" aria-label={title} onClick={e=>e.stopPropagation()}><div className="modal-head"><h3>{title}</h3><button className="btn btn-ghost" onClick={onClose} aria-label="Cerrar">✕</button></div><div className="modal-body">{children}</div></div></div>;
+  if(!open) return null; return <div className="modal-overlay" onClick={onClose}><div className="modal" role="dialog" aria-modal="true" aria-label={title} onClick={e=>e.stopPropagation()}><div className="modal-head"><h3>{title}</h3><button className="btn btn-ghost" onClick={onClose} aria-label="Cerrar">✕</button></div><div className="modal-body">{children}</div></div></div>;
 };
-export const EmptyState:React.FC<{title:string; desc?:string}> = ({title,desc})=><div className="empty"><div className="empty-title">{title}</div>{desc && <div className="muted">{desc}</div>}</div>;
-export const SearchInput:React.FC<{value:string; onChange:(v:string)=>void; placeholder?:string}> = ({value,onChange,placeholder})=>(
-  <input className="input" placeholder={placeholder||'Buscar...'} value={value} onChange={e=>onChange(e.target.value)} />
+export const EmptyState:React.FC<{title:string; desc?:string; icon?:React.ReactNode; action?:React.ReactNode}> = ({title,desc,icon,action})=><div className="empty">{icon && <div className="empty-icon" aria-hidden="true">{icon}</div>}<div className="empty-title">{title}</div>{desc && <div className="muted">{desc}</div>}{action && <div className="empty-action">{action}</div>}</div>;
+export const SearchInput:React.FC<{value:string; onChange:(v:string)=>void; placeholder?:string; ariaLabel?:string}> = ({value,onChange,placeholder,ariaLabel})=>(
+  <input className="input" role="searchbox" aria-label={ariaLabel||placeholder||'Buscar'} placeholder={placeholder||'Buscar...'} value={value} onChange={e=>onChange(e.target.value)} />
 );
 
 /* ── 11A Design System: componentes base reutilizables (tokens en app/tokens.css) ── */
@@ -71,7 +87,7 @@ export const ConfirmDialog:React.FC<{open:boolean;title:string;desc?:string;conf
     return ()=>window.removeEventListener('keydown',onKey);
   },[open,onCancel]);
   if(!open) return null;
-  return <div className="modal-overlay" onClick={onCancel}><div className="modal" role="alertdialog" aria-label={title} onClick={e=>e.stopPropagation()}><div className="modal-head"><h3>{title}</h3><button className="btn btn-ghost" onClick={onCancel} aria-label="Cerrar">✕</button></div><div className="modal-body"><div className="stack-sm">{desc && <p className="muted">{desc}</p>}{children}<div style={{display:'flex',gap:8,justifyContent:'flex-end'}}><Button variant="secondary" onClick={onCancel} disabled={busy}>Cancelar</Button><Button onClick={onConfirm} disabled={busy || confirmDisabled}>{busy ? 'Procesando...' : confirmLabel}</Button></div></div></div></div></div>;
+  return <div className="modal-overlay" onClick={onCancel}><div className="modal" role="alertdialog" aria-modal="true" aria-label={title} onClick={e=>e.stopPropagation()}><div className="modal-head"><h3>{title}</h3><button className="btn btn-ghost" onClick={onCancel} aria-label="Cerrar">✕</button></div><div className="modal-body"><div className="stack-sm">{desc && <p className="muted">{desc}</p>}{children}<div className="modal-foot"><Button variant="secondary" onClick={onCancel} disabled={busy}>Cancelar</Button><Button onClick={onConfirm} disabled={busy || confirmDisabled} loading={busy}>{busy ? 'Procesando...' : confirmLabel}</Button></div></div></div></div></div>;
 };
 
 export const Drawer:React.FC<{open:boolean;onClose:()=>void;title:string;subtitle?:string;children:React.ReactNode;size?:'default'|'narrow'}> = ({open,onClose,title,subtitle,children,size='default'})=>{
@@ -82,7 +98,7 @@ export const Drawer:React.FC<{open:boolean;onClose:()=>void;title:string;subtitl
     return ()=>window.removeEventListener('keydown',onKey);
   },[open,onClose]);
   if(!open) return null;
-  return <div className="drawer-overlay" onClick={onClose}><div className={`drawer${size==='narrow'?' drawer-narrow':''}`} role="dialog" aria-label={title} onClick={e=>e.stopPropagation()}><div className="drawer-head"><div><h3>{title}</h3>{subtitle && <p className="muted small drawer-subtitle">{subtitle}</p>}</div><button className="btn btn-ghost" onClick={onClose} aria-label="Cerrar">✕</button></div><div className="drawer-body">{children}</div></div></div>;
+  return <div className="drawer-overlay" onClick={onClose}><div className={`drawer${size==='narrow'?' drawer-narrow':''}`} role="dialog" aria-modal="true" aria-label={title} onClick={e=>e.stopPropagation()}><div className="drawer-head"><div><h3>{title}</h3>{subtitle && <p className="muted small drawer-subtitle">{subtitle}</p>}</div><button className="btn btn-ghost" onClick={onClose} aria-label="Cerrar">✕</button></div><div className="drawer-body">{children}</div></div></div>;
 };
 
 export const Field:React.FC<{label:string;required?:boolean;helper?:string;error?:string;children:React.ReactNode}> = ({label,required,helper,error,children})=>(

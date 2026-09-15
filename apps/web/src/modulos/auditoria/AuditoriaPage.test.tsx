@@ -50,7 +50,7 @@ describe('AuditoriaPage 10K', () => {
 
   it('paginación Anterior/Siguiente con datos del backend', async () => {
     render(<AuditPage />);
-    await screen.findByText('Página 1 de 2 (2 eventos)');
+    await screen.findByText(/Página 1 de 2/);
     getEventsMock.mockResolvedValueOnce({ ...structuredClone(PAGE1), data: [], page: 2 });
     fireEvent.click(screen.getByText('Siguiente'));
     await waitFor(() => expect(getEventsMock).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 })));

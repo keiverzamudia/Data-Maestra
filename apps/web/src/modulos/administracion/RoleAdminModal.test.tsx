@@ -41,7 +41,7 @@ describe('RoleAdminModal (consola RBAC)', () => {
   it('título es el rol con subtítulo, sin "Administrar rol —"', async () => {
     render(<RoleAdminModal roleCode="ACCOUNTING" onClose={() => {}} onChanged={() => {}} />);
     await waitFor(() => expect(screen.getAllByText('Contabilidad').length).toBeGreaterThan(0));
-    expect(screen.getByText('Administración del rol')).toBeDefined();
+    expect(screen.getByText(/Administración del rol/)).toBeDefined();
     expect(screen.queryByText(/Administrar rol —/)).toBeNull();
   });
 
@@ -78,7 +78,7 @@ describe('RoleAdminModal (consola RBAC)', () => {
     const { container } = render(<RoleAdminModal roleCode="ACCOUNTING" onClose={() => {}} onChanged={() => {}} />);
     await waitFor(() => expect(screen.getByText('Ana Pérez')).toBeDefined());
     expect(screen.getByText('Usuarios con este rol (1)')).toBeDefined();
-    // Pie fijo del drawer con Cerrar (además del cierre del encabezado).
-    expect(container.querySelector('.drawer-foot button')).not.toBeNull();
+    // Pie del workspace con Cerrar (además del volver del encabezado).
+    expect(container.querySelector('.workspace-foot button')).not.toBeNull();
   });
 });

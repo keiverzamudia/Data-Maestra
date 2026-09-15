@@ -4,7 +4,7 @@ import { useSession } from '../../contextos/SessionContext';
 import { useCompany } from '../../contextos/CompanyContext';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
 import { requestService } from '../../servicios';
-import { PageHeader, Button, Input, Textarea, Select, Modal, Alert, SectionCard, Field } from '../../componentes/ui';
+import { Page, Button, Input, Textarea, Select, Modal, Alert, SectionCard, Field } from '../../componentes/ui';
 import { WorkflowTimeline } from '../../componentes/workflow';
 import { compressImage, formatFileSize, validateImageFile, type CompressResult } from '../../utilidades/image';
 
@@ -172,8 +172,7 @@ export const RequestCreate: React.FC = () => {
 
   if (created) {
     return (
-      <div className="stack">
-        <PageHeader title="Solicitud Creada" />
+      <Page title="Solicitud Creada">
         <div className="card p16 success-hero">
           <div className="success-hero-mark" aria-hidden="true">✓</div>
           <h2>Solicitud creada correctamente</h2>
@@ -185,7 +184,7 @@ export const RequestCreate: React.FC = () => {
             <Button onClick={() => navigate('/solicitudes')} variant="secondary">Mis solicitudes</Button>
           </div>
         </div>
-      </div>
+      </Page>
     );
   }
 
@@ -198,9 +197,8 @@ export const RequestCreate: React.FC = () => {
   const readyCount = readyChecks.filter(c => c.ok).length;
 
   return (
-    <div className="stack" onPaste={handlePaste}>
-      <PageHeader title="Nueva Solicitud" subtitle="Solicitud de nuevo artículo" />
-
+    <Page title="Nueva Solicitud" desc="Solicitud de nuevo artículo">
+      <div className="stack" onPaste={handlePaste}>
       <WorkflowTimeline status="BORRADOR" />
 
       <div className="grid-main-side">
@@ -343,6 +341,7 @@ export const RequestCreate: React.FC = () => {
           )}
         </div>
       </Modal>
-    </div>
+      </div>
+    </Page>
   );
 };

@@ -120,7 +120,7 @@ export const RequesterList: React.FC = () => {
     <Page
       title="Solicitudes"
       desc={subtitle}
-      actions={<Can permission="REQUEST.CREATE"><a href="/requester/new"><Button>+ Nueva solicitud</Button></a></Can>}
+      actions={<Can permission="REQUEST.CREATE"><Button onClick={() => navigate('/requester/new')}>+ Nueva solicitud</Button></Can>}
     >
       <Tabs tabs={['Solicitudes activas', 'Historial']} active={scope === 'activas' ? 0 : 1} onChange={i => changeScope(i === 0 ? 'activas' : 'historial')} />
 

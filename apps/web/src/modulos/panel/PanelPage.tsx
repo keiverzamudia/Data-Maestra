@@ -141,8 +141,6 @@ export const DashboardPage: React.FC = () => {
     );
   }
 
-  const maxBar = Math.max(stats.pendingRequests, stats.inApproval, stats.completedRequests, stats.returnedRequests, 1);
-
   return (
     <Page title="Dashboard" desc={`Bienvenido, ${user?.displayName ?? ''}. Resumen de tu operación.`}>
       <section aria-label="Resumen">
@@ -175,7 +173,33 @@ export const DashboardPage: React.FC = () => {
         )}
       </SectionCard>
 
-      <div className="grid2">
+      <div className="dash-duo">
+        <section className="card p16" aria-label="Acciones rápidas">
+          <h2 className="section-title">Acciones rápidas</h2>
+          <div className="action-grid">
+            <Can permission="REQUEST.CREATE">
+              <button type="button" className="action-card" onClick={() => navigate('/requester/new')}>
+                <span className="action-icon" aria-hidden="true">✚</span>
+                <span className="action-text">
+                  <strong>Crear solicitud</strong>
+                  <span className="muted small">Registra un artículo nuevo</span>
+                </span>
+                <span aria-hidden="true" className="muted">›</span>
+              </button>
+            </Can>
+            <Can permission="REQUEST.VIEW">
+              <button type="button" className="action-card" onClick={() => navigate('/solicitudes')}>
+                <span className="action-icon" aria-hidden="true">☰</span>
+                <span className="action-text">
+                  <strong>Mis solicitudes</strong>
+                  <span className="muted small">Consulta tu historial</span>
+                </span>
+                <span aria-hidden="true" className="muted">›</span>
+              </button>
+            </Can>
+          </div>
+        </section>
+
         <section className="card p16" aria-label="Actividad reciente">
           <h2 className="section-title">Actividad reciente</h2>
           {activity.length === 0 ? (
@@ -188,7 +212,7 @@ export const DashboardPage: React.FC = () => {
                   type="button"
                   className="activity-row"
                   onClick={() => navigate(`/requester/${a.id}`)}
-                  aria-label={`Solicitud ${a.requestNumber}: ${a.description.slice(0, 60)}`}
+                  aria-label={`Ver solicitud ${a.requestNumber}: ${a.description.slice(0, 60)}`}
                 >
                   <span className="activity-main">
                     <span><strong>#{a.requestNumber}</strong> — {a.description.slice(0, 60)}</span>
@@ -203,37 +227,7 @@ export const DashboardPage: React.FC = () => {
             </div>
           )}
         </section>
-
-        <section className="card p16" aria-label="Resumen por estado">
-          <h2 className="section-title">Resumen por estado</h2>
-          <div className="stack-sm">
-            {[
-              { label: 'Pendientes', value: stats.pendingRequests },
-              { label: 'En aprobación', value: stats.inApproval },
-              { label: 'Completadas', value: stats.completedRequests },
-              { label: 'Devueltas', value: stats.returnedRequests },
-            ].map(item => (
-              <div key={item.label} className="state-row">
-                <span>{item.label}</span>
-                <span className="mini-bar" aria-hidden="true"><span style={{ width: `${(item.value / maxBar) * 100}%` }} /></span>
-                <strong>{item.value}</strong>
-              </div>
-            ))}
-          </div>
-        </section>
       </div>
-
-      <section aria-label="Acciones rápidas">
-        <h2 className="section-title">Acciones rápidas</h2>
-        <div className="quick-actions">
-          <Can permission="REQUEST.CREATE">
-            <Button variant="secondary" size="sm" onClick={() => navigate('/requester/new')}>Crear solicitud</Button>
-          </Can>
-          <Can permission="REQUEST.VIEW">
-            <Button variant="secondary" size="sm" onClick={() => navigate('/solicitudes')}>Mis solicitudes</Button>
-          </Can>
-        </div>
-      </section>
     </Page>
   );
 };

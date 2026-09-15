@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 import * as React from 'react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
-import { SectionCard, StatCard, Code, DataTable, Pagination, type DataColumn } from './index';
+import { SectionCard, StatCard, Code, DataTable, Pagination, Tabs, Button, EmptyState, Modal, type DataColumn } from './index';
 
 function noop() {}
 
 describe('Enterprise UI primitives', () => {
+  afterEach(() => cleanup());
+
   it('SectionCard muestra título y contenido con encabezado uniforme', () => {
     render(<SectionCard title="Mi sección" desc="Descripción"><p>Contenido</p></SectionCard>);
     expect(screen.getByText('Mi sección')).toBeDefined();
@@ -74,5 +76,39 @@ describe('Enterprise UI primitives', () => {
   it('Pagination no se muestra con una sola página', () => {
     const { container } = render(<Pagination page={1} totalPages={1} onPage={noop} />);
     expect(container.textContent).toBe('');
+  });
+
+  it('Tabs expone tablist con selección y flechas de teclado', () => {
+    const onChange = vi.fn();
+    render(<Tabs tabs={['A', 'B', 'C']} active={0} onChange={onChange} />);
+    const tablist = screen.getByRole('tablist');
+    expect(tablist).toBeDefined();
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs[0]!.getAttribute('aria-selected')).toBe('true');
+    expect(tabs[1]!.getAttribute('tabindex')).toBe('-1');
+    fireEvent.keyDown(tablist, { key: 'ArrowRight' });
+    expect(onChange).toHaveBeenCalledWith(1);
+    fireEvent.click(tabs[2]!);
+    expect(onChange).toHaveBeenCalledWith(2);
+  });
+
+  it('Button loading deshabilita, anuncia ocupado y conserva etiqueta', () => {
+    render(<Button loading>Guardar</Button>);
+    const btn = screen.getByRole('button', { name: /Guardar/ }) as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    expect(btn.getAttribute('aria-busy')).toBe('true');
+  });
+
+  it('EmptyState acepta icono y acción opcionales', () => {
+    render(<EmptyState title="Sin datos" desc="Nada aquí" icon={<span>◔</span>} action={<button>Crear</button>} />);
+    expect(screen.getByText('Sin datos')).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Crear' })).toBeDefined();
+  });
+
+  it('Modal es dialógico modal con etiqueta', () => {
+    render(<Modal open onClose={noop} title="Confirmar">Cuerpo</Modal>);
+    const dialog = screen.getByRole('dialog', { name: 'Confirmar' });
+    expect(dialog.getAttribute('aria-modal')).toBe('true');
+    expect(screen.getByText('Cuerpo')).toBeDefined();
   });
 });

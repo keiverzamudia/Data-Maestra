@@ -4,7 +4,7 @@ import { useCompany } from '../../contextos/CompanyContext';
 import { accountingService } from '../../servicios';
 import { useCatalogos } from '../../hooks/useCatalogos';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
-import { Button, SearchInput, StatusBadge, EmptyState, Modal, Textarea, Alert, ConfirmDialog, ErrorState, Skeleton, Tabs } from '../../componentes/ui';
+import { Button, SearchInput, StatusBadge, EmptyState, Modal, Textarea, Alert, ConfirmDialog, ErrorState, Skeleton, Tabs, DataTable, Pagination, type DataColumn } from '../../componentes/ui';
 import { Page } from '../../componentes/ui';
 import { WorkflowStepper, ProfitRegistrationPanel } from '../../componentes/workflow';
 import {
@@ -30,6 +30,9 @@ export const AccountingList: React.FC = () => {
   const [listError, setListError] = React.useState<string | null>(null);
   const [selected, setSelected] = React.useState<Request | null>(null);
   const [entries, setEntries] = React.useState<ContabilidadEntry[]>([]);
+  // Paginación en cliente: el backend entrega la cola completa (sin page/limit).
+  const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(10);
   // 12C — estándar del grupo desde Profit (lin_art.dis_cen), consultado en vivo.
   const [std, setStd] = React.useState<ProfitGroupStandard | null>(null);
   const [stdLoading, setStdLoading] = React.useState(false);
@@ -123,6 +126,26 @@ export const AccountingList: React.FC = () => {
   const filtered = search
     ? requests.filter(r => r.requestedDescription.toLowerCase().includes(search.toLowerCase()))
     : requests;
+  const totalPages = Math.max(Math.ceil(filtered.length / pageSize), 1);
+  const safePage = Math.min(page, totalPages);
+  const visible = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const onSearch = (v: string) => { setSearch(v); setPage(1); };
+
+  const masterCodeOf = (r: Request): string =>
+    r.masterCode || (r.groupId && r.subgroupId
+      ? `${grupos.find(g => g.id === r.groupId)?.code || ''}${subgrupos.find(s => s.id === r.subgroupId)?.code || ''}000001`
+      : '—');
+
+  const listColumns: DataColumn<Request>[] = [
+    { key: 'num', header: 'N°', label: 'N°', render: r => <strong>#{r.requestNumber}</strong> },
+    { key: 'desc', header: 'Descripción', label: 'Descripción', render: r => <span className="ellipsis">{r.requestedDescription}</span> },
+    { key: 'gru', header: 'Grupo', label: 'Grupo', render: r => findName(grupos, r.groupId) },
+    { key: 'sub', header: 'Subgrupo', label: 'Subgrupo', render: r => findName(subgrupos, r.subgroupId) },
+    { key: 'mar', header: 'Marca', label: 'Marca', render: r => findName(marcas, r.brandId) },
+    { key: 'mc', header: 'Código Master', label: 'Código Master', render: r => <span className="master-code-sm">{masterCodeOf(r)}</span> },
+    { key: 'sol', header: 'Solicitante', label: 'Solicitante', render: r => usuarios.find(u => u.id === r.requesterId)?.displayName || '—' },
+    { key: 'acc', header: 'Acción', label: 'Acción', render: r => <Button size="sm" onClick={() => openDetail(r)}>Revisar</Button> },
+  ];
 
   const reloadDetail = React.useCallback((id: string, fallback: Request) => {
     accountingService.getAccountingDetail(id).then(
@@ -395,7 +418,7 @@ export const AccountingList: React.FC = () => {
       desc={loading ? 'Revisa y aprueba las clasificaciones desde el punto de vista contable.' : `${filtered.length} clasificación${filtered.length === 1 ? '' : 'es'} por revisar.`}
     >
       <div className="toolbar" role="search">
-        <span className="grow"><SearchInput value={search} onChange={setSearch} placeholder="Buscar por descripción..." /></span>
+        <span className="grow"><SearchInput value={search} onChange={onSearch} placeholder="Buscar por descripción..." /></span>
       </div>
 
       {loading && (
@@ -408,44 +431,15 @@ export const AccountingList: React.FC = () => {
         <EmptyState title="No hay clasificaciones pendientes" desc="Todas las clasificaciones han sido procesadas" />
       )}
       {!loading && !listError && filtered.length > 0 && (
-        <div className="card table-responsive">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>N°</th>
-                <th>Descripción</th>
-                <th>Grupo</th>
-                <th>Subgrupo</th>
-                <th>Marca</th>
-                <th>Código Master</th>
-                <th>Solicitante</th>
-                <th>Acción</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(r => (
-                <tr key={r.id}>
-                  <td data-label="N°"><strong>#{r.requestNumber}</strong></td>
-                  <td data-label="Descripción" className="ellipsis">{r.requestedDescription}</td>
-                  <td data-label="Grupo">{findName(grupos, r.groupId)}</td>
-                  <td data-label="Subgrupo">{findName(subgrupos, r.subgroupId)}</td>
-                  <td data-label="Marca">{findName(marcas, r.brandId)}</td>
-                  <td data-label="Código Master">
-                    <span className="master-code-sm">
-                      {r.masterCode || (r.groupId && r.subgroupId
-                        ? `${grupos.find(g => g.id === r.groupId)?.code || ''}${subgrupos.find(s => s.id === r.subgroupId)?.code || ''}000001`
-                        : '—')}
-                    </span>
-                  </td>
-                  <td data-label="Solicitante">{usuarios.find(u => u.id === r.requesterId)?.displayName || '—'}</td>
-                  <td data-label="Acción">
-                    <Button size="sm" onClick={() => openDetail(r)}>Revisar</Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <DataTable<Request>
+            columns={listColumns}
+            rows={visible}
+            rowKey={r => r.id}
+            caption={`${filtered.length} por revisar.`}
+          />
+          <Pagination page={safePage} totalPages={totalPages} total={filtered.length} pageSize={pageSize} onPage={setPage} onPageSize={n => { setPageSize(n); setPage(1); }} />
+        </>
       )}
     </Page>
   );

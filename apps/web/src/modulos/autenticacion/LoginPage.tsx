@@ -8,6 +8,22 @@ interface Props {
   forcedChange?: boolean;
 }
 
+/** Iconos propios del sistema (trazo actual, sin emojis como icono). */
+const EyeIcon: React.FC = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+const EyeOffIcon: React.FC = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M17.94 17.94A10.5 10.5 0 0 1 12 19c-6.5 0-10-7-10-7a17.6 17.6 0 0 1 4.06-4.94" />
+    <path d="M9.9 4.24A10.5 10.5 0 0 1 12 5c6.5 0 10 7 10 7a17.7 17.7 0 0 1-2.16 3.19" />
+    <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+    <line x1="2" y1="2" x2="22" y2="22" />
+  </svg>
+);
+
 /**
  * FASE 10E — Login real de aplicación (sin JWT en JS; cookie HttpOnly).
  * Autocomplete muestra solo displayName; el id queda interno.
@@ -32,6 +48,10 @@ export const LoginPage: React.FC<Props> = ({ forcedChange }) => {
   const [confirm, setConfirm] = React.useState('');
   const [changed, setChanged] = React.useState(false);
   const reqId = React.useRef(0);
+  // FASE CIERRE VISUAL — asset oficial SAN LUIS (public/brand/isologo-san-luis.svg).
+  // Si el archivo no existe, se muestra el wordmark textual. Nunca inventar logo.
+  const [brandOk, setBrandOk] = React.useState(true);
+  const [brandAzulOk, setBrandAzulOk] = React.useState(true);
 
   // Autocomplete server-side con debounce; descarta respuestas viejas.
   // Sin filtrado en frontend: los candidatos son siempre los del servidor.
@@ -130,9 +150,16 @@ export const LoginPage: React.FC<Props> = ({ forcedChange }) => {
   return (
     <div className="login-page">
       <aside className="login-brand" aria-label="Data-Maestra">
+        {brandOk ? (
+          <img src="/brand/isologo-san-luis.svg" alt="San Luis" className="brand-asset brand-asset-invert" onError={() => setBrandOk(false)} />
+        ) : (
+          <p className="login-sl">San Luis</p>
+        )}
         <div className="login-brand-top">
-          <span className="login-brand-mark" aria-hidden="true">DM</span>
-          <span className="login-brand-name">Data-Maestra</span>
+          <span className="login-product">
+            <span className="login-brand-name brand-display">Data-Maestra</span>
+            <span className="login-brand-sub">Gestión de Datos Maestros</span>
+          </span>
         </div>
         <h1 className="login-tagline">Gestión inteligente de datos maestros</h1>
         <p className="login-brand-desc">
@@ -152,7 +179,7 @@ export const LoginPage: React.FC<Props> = ({ forcedChange }) => {
         <ul className="login-points">
           <li><strong>Normalización</strong><span>Estandariza descripciones y atributos.</span></li>
           <li><strong>Gobernanza</strong><span>Cada artículo pasa por aprobación responsable.</span></li>
-          <li><strong>Validación</strong><span>Almacén, contabilidad y revisión final verifican.</span></li>
+          <li><strong>Validación</strong><span>Almacén y contabilidad verifican.</span></li>
           <li><strong>Trazabilidad</strong><span>Cada acción queda en auditoría.</span></li>
         </ul>
         <p className="login-brand-foot">Acceso corporativo</p>
@@ -161,6 +188,9 @@ export const LoginPage: React.FC<Props> = ({ forcedChange }) => {
         <div className="login-form">
           {!mustChange ? (
             <div className="stack-sm">
+              {brandAzulOk && (
+                <img src="/brand/isologo-san-luis-azul.svg" alt="San Luis" className="brand-asset-sm" onError={() => setBrandAzulOk(false)} />
+              )}
               <h2 className="login-title">Iniciar sesión</h2>
               <p className="muted small">Ingresa con tu usuario corporativo</p>
               <label>
@@ -172,16 +202,21 @@ export const LoginPage: React.FC<Props> = ({ forcedChange }) => {
                   placeholder="Escribe tu nombre…"
                   autoComplete="off"
                   disabled={loading}
+                  role="combobox"
+                  aria-expanded={open && candidates.length > 0}
+                  aria-controls="login-user-listbox"
+                  aria-autocomplete="list"
                 />
               </label>
-              {searching && <span className="muted small">Buscando…</span>}
+              {searching && <span className="muted small" role="status">Buscando…</span>}
               {open && candidates.length > 0 && (
-                <div className="card p16" style={{ marginTop: -4 }}>
+                <div className="card p16 login-suggest" role="listbox" id="login-user-listbox" aria-label="Usuarios encontrados">
                   {candidates.map(c => (
                     <button
                       key={c.id}
-                      className="btn btn-ghost"
-                      style={{ display: 'block', width: '100%', textAlign: 'left' }}
+                      role="option"
+                      aria-selected={selected?.id === c.id}
+                      className="btn btn-ghost login-suggest-item"
                       onClick={() => { setSelected(c); setOpen(false); setSearchError(null); setError(null); }}
                     >
                       {c.displayName}
@@ -190,7 +225,7 @@ export const LoginPage: React.FC<Props> = ({ forcedChange }) => {
                 </div>
               )}
               {!selected && !searching && !searchError && open && candidates.length === 0 && text.trim().length >= 2 && (
-                <div className="card p16" style={{ marginTop: -4 }}>
+                <div className="card p16 login-suggest">
                   <span className="muted small">Sin resultados</span>
                 </div>
               )}
@@ -199,7 +234,7 @@ export const LoginPage: React.FC<Props> = ({ forcedChange }) => {
               )}
               <label>
                 <span className="muted small">Contraseña</span>
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div className="pass-wrap">
                   <Input
                     type={showPass ? 'text' : 'password'}
                     value={password}
@@ -208,9 +243,17 @@ export const LoginPage: React.FC<Props> = ({ forcedChange }) => {
                     placeholder="Contraseña"
                     disabled={loading || !selected}
                   />
-                  <Button variant="secondary" onClick={() => setShowPass(v => !v)} disabled={loading}>
-                    {showPass ? 'Ocultar' : 'Ver'}
-                  </Button>
+                  <button
+                    type="button"
+                    className="pass-toggle"
+                    onClick={() => setShowPass(v => !v)}
+                    disabled={loading}
+                    aria-label={showPass ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                    aria-pressed={showPass}
+                    title={showPass ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  >
+                    {showPass ? <EyeOffIcon /> : <EyeIcon />}
+                  </button>
                 </div>
               </label>
               <Button onClick={handleLogin} disabled={loading || !selected || !password}>

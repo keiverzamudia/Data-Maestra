@@ -301,11 +301,10 @@ export const WarehouseClassify: React.FC = () => {
       )}
 
       <div className="grid2">
-        <div className="stack">
-          <SectionCard
-            title="Información recibida"
-            desc="Datos de la solicitud. Solo lectura: Almacén no modifica la descripción original."
-          >
+        <SectionCard
+          title="Información recibida"
+          desc="Datos de la solicitud. Solo lectura: Almacén no modifica la descripción original."
+        >
             <div>
               <span className="muted small">Descripción original</span>
               <p className="received-desc">{request.requestedDescription}</p>
@@ -323,21 +322,35 @@ export const WarehouseClassify: React.FC = () => {
                 />
               </div>
             )}
-          </SectionCard>
+        </SectionCard>
 
-          {analyzerProposal && (
-            <AnalyzerPanel
-              groupCode={analyzerProposal.groupCode}
-              subgroupCode={analyzerProposal.subgroupCode}
-              brand={analyzerProposal.brand}
-              application={analyzerProposal.application}
-              confidence={analyzerProposal.confidence}
-              evidence={analyzerProposal.evidence}
-            />
+        <div className="stack" aria-label="Código y resumen">
+          <MasterCodePreview groupCode={groupCode} subgroupCode={subgroupCode} />
+
+          {request.groupId && (
+            <div className="card p16">
+              <span className="muted small">Código de Origen (Profit)</span>
+              <div className="origin-code">
+                {request.partNumber || '—'}
+              </div>
+            </div>
           )}
+        </div>
+      </div>
 
-          <SectionCard
-            title="Clasificación"
+      {analyzerProposal && (
+        <AnalyzerPanel
+          groupCode={analyzerProposal.groupCode}
+          subgroupCode={analyzerProposal.subgroupCode}
+          brand={analyzerProposal.brand}
+          application={analyzerProposal.application}
+          confidence={analyzerProposal.confidence}
+          evidence={analyzerProposal.evidence}
+        />
+      )}
+
+      <SectionCard
+        title="Clasificación"
             desc={canEditClassification
               ? 'Catálogos directos desde Profit. El subgrupo depende del grupo; categoría y marca son independientes.'
               : 'Clasificación registrada (solo lectura).'}
@@ -531,21 +544,6 @@ export const WarehouseClassify: React.FC = () => {
           {error && (
             <Alert tone="danger">{error}</Alert>
           )}
-        </div>
-
-        <div className="side-panel">
-          <MasterCodePreview groupCode={groupCode} subgroupCode={subgroupCode} />
-
-          {request.groupId && (
-            <div className="card p16 block-mt">
-              <span className="muted small">Código de Origen (Profit)</span>
-              <div className="origin-code">
-                {request.partNumber || '—'}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
 
       <Modal open={returnModal} onClose={() => setReturnModal(false)} title="Devolver Solicitud">
         <div className="stack-sm">

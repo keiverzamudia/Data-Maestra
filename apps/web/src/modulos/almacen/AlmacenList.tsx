@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Can } from '../../componentes/auth/Can';
 import { useCompany } from '../../contextos/CompanyContext';
 import { warehouseService } from '../../servicios';
-import { Page, Button, SearchInput, StatusBadge, PriorityBadge, EmptyState, ErrorState, Skeleton, DataTable, type DataColumn } from '../../componentes/ui';
+import { Page, Button, SearchInput, StatusBadge, PriorityBadge, EmptyState, ErrorState, Skeleton, DataTable, Pagination, type DataColumn } from '../../componentes/ui';
 import type { Request } from '../../tipos';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
 
@@ -16,6 +16,9 @@ export const WarehouseList: React.FC = () => {
   const [search, setSearch] = React.useState('');
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  // Paginación en cliente: el backend entrega la cola completa (sin page/limit).
+  const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(10);
 
   const load = React.useCallback(() => {
     setLoading(true);
@@ -39,6 +42,10 @@ export const WarehouseList: React.FC = () => {
   const filtered = q
     ? requests.filter(r => r.requestedDescription.toLowerCase().includes(q) || String(r.requestNumber).includes(q))
     : requests;
+  const totalPages = Math.max(Math.ceil(filtered.length / pageSize), 1);
+  const safePage = Math.min(page, totalPages);
+  const visible = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const onSearch = (v: string) => { setSearch(v); setPage(1); };
 
   const columns: DataColumn<Request>[] = [
     { key: 'num', header: 'N°', label: 'N°', render: r => <strong>#{r.requestNumber}</strong> },
@@ -61,7 +68,7 @@ export const WarehouseList: React.FC = () => {
       desc={loading ? 'Clasifica y completa la información necesaria para continuar el proceso.' : `${filtered.length} solicitud${filtered.length === 1 ? '' : 'es'} por clasificar.`}
     >
       <div className="toolbar" role="search">
-        <span className="grow"><SearchInput value={search} onChange={setSearch} placeholder="Buscar por número, descripción, código..." /></span>
+        <span className="grow"><SearchInput value={search} onChange={onSearch} placeholder="Buscar por número, descripción, código..." /></span>
       </div>
 
       {loading && (
@@ -74,12 +81,15 @@ export const WarehouseList: React.FC = () => {
         <EmptyState title="No hay solicitudes pendientes" desc="Todas las solicitudes han sido procesadas" />
       )}
       {!loading && !error && filtered.length > 0 && (
-        <DataTable<Request>
-          columns={columns}
-          rows={filtered}
-          rowKey={r => r.id}
-          caption={`${filtered.length} por clasificar.`}
-        />
+        <>
+          <DataTable<Request>
+            columns={columns}
+            rows={visible}
+            rowKey={r => r.id}
+            caption={`${filtered.length} por clasificar.`}
+          />
+          <Pagination page={safePage} totalPages={totalPages} total={filtered.length} pageSize={pageSize} onPage={setPage} onPageSize={n => { setPageSize(n); setPage(1); }} />
+        </>
       )}
     </Page>
   );

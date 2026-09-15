@@ -53,7 +53,7 @@ describe('Campana 11G', () => {
   it('muestra contador de no leídas y lista propia al abrir', async () => {
     renderShell();
     expect(await screen.findByText('1')).toBeTruthy();
-    fireEvent.click(screen.getByLabelText('Notificaciones'));
+    fireEvent.click(screen.getByLabelText(/^Notificaciones/));
     expect(await screen.findByText('Solicitud REQ-0001 en PENDIENTE_ALMACEN')).toBeTruthy();
     expect(screen.getByText((_, el) => el?.textContent === 'Notificaciones (1 sin leer)')).toBeTruthy();
   });

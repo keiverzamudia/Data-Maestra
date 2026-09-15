@@ -1,11 +1,15 @@
 /* Enterprise Edition — Design tokens centralizados de Data-Maestra.
     Única fuente de color, tipografía, spacing, radius, sombras y z-index.
     globals.css conserva la estructura; los valores viven aquí.
+    Identidad SAN LUIS: primario #003366, secundario #95C800, tipografía Rubik.
     Regla de oro (§43): ningún componente define tamaños/colores fuera de aquí. */
 :root{
-  /* brand */
-  --blue:#2563eb; --blue-hover:#1d4ed8; --blue-active:#1e40af; --blue-soft:#eff6ff;
-  --brand-deep:#1e3a8a;
+  /* brand SAN LUIS */
+  --blue:#003366; --blue-hover:#00264d; --blue-active:#001a38; --blue-soft:#e9eff5;
+  --brand-deep:#001f3d;
+  /* acento SAN LUIS: usar solo en identidad (marca, login, hitos), nunca para estados */
+  --color-secondary:#95C800; --color-secondary-hover:#7fae00; --color-secondary-active:#6b9400;
+  --color-secondary-soft:#f1f7df; --color-secondary-contrast:#003366;
   /* semantic aliases (§6): usar estos nombres en código nuevo */
   --color-primary:var(--blue); --color-primary-hover:var(--blue-hover);
   --color-primary-active:var(--blue-active); --color-primary-soft:var(--blue-soft);
@@ -21,15 +25,16 @@
   --code-bg:#0f172a; --code-text:#e2e8f0;
   /* borders & text */
   --border:#e2e8f0; --border-soft:#f1f5f9; --text:#0f172a; --muted:#64748b; --slate:#475569;
-  /* sidebar */
-  --sidebar:#0f172a; --sidebar-active:#1e293b; --sidebar-text:#cbd5e1; --sidebar-dim:#94a3b8;
+  /* sidebar: azul noche SAN LUIS */
+  --sidebar:#00263f; --sidebar-active:#003a5c; --sidebar-text:#cbd5e1; --sidebar-dim:#94a3b8;
   /* status */
   --success:#16a34a; --success-bg:#dcfce7; --success-text:#166534;
   --warning:#ca8a04; --warning-bg:#fef9c3; --warning-text:#854d0e; --warning-border:#fde047;
   --danger:#dc2626; --danger-bg:#fee2e2; --danger-text:#991b1b; --danger-border:#fca5a5;
   --info:#1d4ed8; --info-bg:#dbeafe; --info-text:#1e40af;
-  /* typography (§4): Inter base, JetBrains Mono solo códigos técnicos */
-  --font-sans:"Inter",-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  /* typography (§4 + identidad SAN LUIS): Rubik en todo el producto;
+     JetBrains Mono solo códigos técnicos; ExtraBold Italic solo identidad (.brand-display) */
+  --font-sans:"Rubik",-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
   --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   --text-caption:11px; --text-xs:11px; --text-sm:12px; --text-md:13px; --text-base:14px;
   --text-lg:15px; --text-h3:15px; --text-h2:16px; --text-card-title:17px;
@@ -43,9 +48,14 @@
   --shadow-sm:0 1px 2px rgba(15,23,42,.06);
   --shadow-md:0 10px 30px rgba(0,0,0,.15);
   --shadow-card:0 1px 3px rgba(15,23,42,.08);
+  --shadow-lg:0 18px 50px rgba(15,23,42,.22);
   /* controls */
   --control-h:36px; --sidebar-w:240px; --sidebar-w-collapsed:64px;
-  --content-max:1280px;
+  --content-max:1280px; --header-h:56px;
+  /* contraste sobre brand (§36): texto/borde sobre --color-primary */
+  --color-primary-contrast:#ffffff;
+  /* foco accesible (§38): anillo único en todo el sistema */
+  --focus-ring:0 0 0 3px rgba(0,51,102,.35);
   /* breakpoints (§9): desktop >=1200, tablet 768-1199, mobile <768 */
   --bp-tablet:768px; --bp-desktop:1200px;
   /* z-index */
@@ -56,7 +66,9 @@
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{transition:none!important;animation:none!important}
 }
-/* focus visible accesible global */
-:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+/* focus visible accesible global (§38): anillo + outline nunca solo color */
+:focus-visible{outline:2px solid var(--blue);outline-offset:2px;box-shadow:var(--focus-ring)}
+/* texto solo para lectores de pantalla (iconos con aria-label, estados extra) */
+.visually-hidden{position:absolute!important;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 /* page container estándar (fases 11 siguientes lo adoptarán por página) */
 .page-container{max-width:1280px;margin:0 auto;width:100%}

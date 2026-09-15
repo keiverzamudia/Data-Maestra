@@ -39,13 +39,14 @@ describe('DashboardPage 14H — centro de resumen', () => {
   });
   afterEach(() => cleanup());
 
-  it('cuatro métricas, sin tarjeta total', async () => {
+  it('cuatro métricas únicas, sin tarjeta total ni barras duplicadas', async () => {
     render(<MemoryRouter><DashboardPage /></MemoryRouter>);
-    await screen.findByText('Resumen por estado');
+    await screen.findByText('Resumen');
     for (const label of ['Pendientes de atención', 'En aprobación', 'Completadas', 'Devueltas']) {
-      expect(screen.getAllByText(label).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(label)).toHaveLength(1);
     }
     expect(screen.queryByText('Solicitudes totales')).toBeNull();
+    expect(screen.queryByText('Resumen por estado')).toBeNull();
   });
 
   it('actividad compacta con estado y enlace a mis solicitudes', async () => {
