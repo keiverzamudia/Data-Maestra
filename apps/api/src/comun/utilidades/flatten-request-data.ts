@@ -19,5 +19,6 @@ export function flattenRequestData(raw: any) {
     taxType: requestData.taxType,
     unitCode: requestData.unitCode,
     brandCode: requestData.brandCode,
+    profitCode: requestData.profitCode,
   };
 }

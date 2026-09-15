@@ -282,6 +282,44 @@ model UnitOfMeasure {
   @@map("units_of_measure")
 }
 
+// --- Catálogos Profit: visibilidad local (FASE CAT) ---
+//
+// Profit es la fuente oficial (solo lectura). Estas tablas NUNCA modifican
+// Profit: controlan qué valores son visibles/seleccionables en Data-Maestra
+// (catálogo efectivo = Profit + configuración). companyId NULL = global;
+// si existe fila por empresa, prevalece sobre la global.
+
+model CatalogVisibilityMode {
+  id          String   @id @default(uuid())
+  catalogType String   @map("catalog_type")
+  companyId   String   @default("") @map("company_id")
+  mode        String   @default("ALL")
+  actorId     String?  @map("actor_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @map("updated_at")
+
+  @@unique([catalogType, companyId])
+  @@map("catalog_visibility_modes")
+}
+
+model CatalogVisibilityItem {
+  id                String    @id @default(uuid())
+  catalogType       String    @map("catalog_type")
+  profitCode        String    @map("profit_code")
+  parentCode        String    @default("") @map("parent_code")
+  companyId         String    @default("") @map("company_id")
+  description       String?
+  availableInProfit Boolean   @default(true) @map("available_in_profit")
+  visible           Boolean   @default(false)
+  decided           Boolean   @default(false)
+  synchronizedAt    DateTime? @map("synchronized_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @default(now()) @map("updated_at")
+
+  @@unique([catalogType, profitCode, parentCode, companyId])
+  @@map("catalog_visibility_items")
+}
+
 // --- Master Items ---
 
 model MasterItem {
@@ -367,6 +405,8 @@ model RequestData {
   articleTypeManual Boolean  @default(false) @map("article_type_manual")
   taxType           String?  @map("tax_type")
   unitCode          String?  @map("unit_code")
+  // Código Profit real tras registro exitoso (14L: visible en bandejas).
+  profitCode          String?  @map("profit_code")
   // Código Profit de marca/color tal como lo eligió Warehouse (14E: el espejo
   // Brand solo guarda nombre; el código se necesita para co_color).
   brandCode         String?  @map("brand_code")

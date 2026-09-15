@@ -12,12 +12,13 @@ const AREA_ACTUAL: Record<string, string> = {
   BORRADOR: 'Borrador',
   PENDIENTE_GERENTE: 'Gerente del departamento',
   PENDIENTE_ALMACEN: 'Cola de Almacén',
-  ALMACEN_APROBADO: 'Cola de Almacén',
+  // 15A — clasificado por Almacén, pendiente del Encargado.
+  ALMACEN_APROBADO: 'Aprobación de Almacén',
   PENDIENTE_CONTABILIDAD: 'Cola de Contabilidad',
-  PENDIENTE_VALIDACION_MAESTRA: 'Cola de Validación Maestra',
-  APROBADO_FINAL: 'Completada',
+  // 16A — Contabilidad es la última aprobación humana; Profit es técnico.
+  CONTABILIDAD_APROBADA: 'Contabilidad aprobada',
   PROCESANDO_PROFIT: 'Registrando en Profit',
-  REGISTRADO_PROFIT: 'Completada',
+  INSERTADO_PROFIT: 'Registrado en Profit',
   ERROR_PROFIT: 'Error técnico',
   DEVUELTO: 'Devuelta',
   RECHAZADO: 'Rechazada',
@@ -34,6 +35,30 @@ function fmtFecha(iso: string): string {
   const d = new Date(iso);
   return `${d.toLocaleDateString('es-VE')} — ${d.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })}`;
 }
+
+/** Bandeja natural de cada estado (14G §21, solo navegación). */
+const ETAPA_TO: Record<string, { label: string; to: string }> = {  PENDIENTE_GERENTE: { label: 'Aprobaciones', to: '/approvals' },
+  PENDIENTE_ALMACEN: { label: 'Almacén', to: '/warehouse' },
+  // 15A — la etapa corresponde a la bandeja del Encargado.
+  ALMACEN_APROBADO: { label: 'Aprobación Almacén', to: '/aprobacion-almacen' },
+  PENDIENTE_CONTABILIDAD: { label: 'Contabilidad', to: '/accounting' },
+  // 16A — Profit vive dentro del workspace de Contabilidad.
+  CONTABILIDAD_APROBADA: { label: 'Contabilidad', to: '/accounting' },
+  PROCESANDO_PROFIT: { label: 'Contabilidad', to: '/accounting' },
+  INSERTADO_PROFIT: { label: 'Contabilidad', to: '/accounting' },
+  ERROR_PROFIT: { label: 'Contabilidad', to: '/accounting' },
+};
+
+const EtapaLink: React.FC<{ status: string }> = ({ status }) => {
+  const navigate = useNavigate();
+  const etapa = ETAPA_TO[status];
+  if (!etapa) return null;
+  return (
+    <p className="muted small">
+      Ver en: <button type="button" className="link" onClick={() => navigate(etapa.to)}>{etapa.label}</button>
+    </p>
+  );
+};
 
 /** 13A — Detalle como vista de seguimiento: recorrido, mi participación y responsable. */
 export const RequestDetailPage: React.FC = () => {
@@ -114,6 +139,10 @@ export const RequestDetailPage: React.FC = () => {
       </div>
 
       <WorkflowStepper status={request.status} />
+
+      {ETAPA_TO[request.status] && (
+        <EtapaLink status={request.status} />
+      )}
 
       {(myLast || isMine) && (
         <div className="card p16" aria-label="Mi participación">

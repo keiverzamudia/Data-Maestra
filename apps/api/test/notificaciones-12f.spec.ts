@@ -88,12 +88,12 @@ describe('12F — SSE por usuario', () => {
 });
 
 describe('12F — mensajes accionables por etapa', () => {
-  it('6. almacén/contabilidad/maestra/gerente accionables', () => {
+  it('6. almacén/contabilidad/encargado/gerente accionables', () => {
     expect(stepNotificationMessage('PENDIENTE_ALMACEN', 'REQ-0045')).toMatchObject({
       title: 'REQ-0045 requiere clasificación.', toRequester: false,
     });
     expect(stepNotificationMessage('PENDIENTE_CONTABILIDAD', 'REQ-0045').title).toBe('REQ-0045 requiere aprobación contable.');
-    expect(stepNotificationMessage('PENDIENTE_VALIDACION_MAESTRA', 'REQ-0045').title).toBe('REQ-0045 requiere validación maestra.');
+    expect(stepNotificationMessage('ALMACEN_APROBADO', 'REQ-0045').title).toBe('REQ-0045 requiere aprobación del encargado de almacén.');
     expect(stepNotificationMessage('PENDIENTE_GERENTE', 'REQ-0045').title).toBe('REQ-0045 requiere aprobación de gerente.');
   });
 
@@ -108,8 +108,8 @@ describe('12F — mensajes accionables por etapa', () => {
   it('8. rechazo y final al solicitante sin afirmar registro Profit', () => {
     const r = stepNotificationMessage('RECHAZADO', 'REQ-0045', 'REJECT', 'no');
     expect(r.title).toBe('Tu solicitud REQ-0045 fue rechazada.');
-    const f = stepNotificationMessage('APROBADO_FINAL', 'REQ-0045', 'APPROVE');
-    expect(f.title).toBe('Tu solicitud REQ-0045 fue aprobada.');
+    const f = stepNotificationMessage('CONTABILIDAD_APROBADA', 'REQ-0045', 'APPROVE');
+    expect(f.title).toBe('Tu solicitud REQ-0045 fue aprobada por Contabilidad.');
     expect(f.body).toMatch(/lista para su registro en Profit/);
     expect(f.body).not.toMatch(/registrada en Profit|fue introducida/);
   });

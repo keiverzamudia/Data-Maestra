@@ -180,8 +180,9 @@ export const RequestCreate: React.FC = () => {
           <p className="muted" style={{ marginTop: 8 }}>N° {created.number}</p>
           <p className="muted">Estado: <strong>Enviada a Gerente</strong></p>
           <p className="muted">Fecha: {new Date().toLocaleDateString('es-VE')}</p>
-          <div style={{ marginTop: 24 }}>
-            <Button onClick={() => navigate('/requester')} variant="secondary">Volver a Solicitudes</Button>
+          <div style={{ marginTop: 24, display: 'flex', gap: 8, justifyContent: 'center' }}>
+            <Button onClick={() => navigate(`/requester/${created.id}`)}>Ver solicitud</Button>
+            <Button onClick={() => navigate('/solicitudes')} variant="secondary">Mis solicitudes</Button>
           </div>
         </div>
       </div>

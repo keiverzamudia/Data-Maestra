@@ -6,8 +6,8 @@ import { SaludModule } from './modulos/salud/salud.module';
 import { AutenticacionModule } from './modulos/autenticacion/autenticacion.module';
 import { SolicitudesModule } from './modulos/solicitudes/solicitud.module';
 import { AlmacenModule } from './modulos/almacen/almacen.module';
+import { AprobacionAlmacenModule } from './modulos/aprobacion-almacen/aprobacion-almacen.module';
 import { ContabilidadModule } from './modulos/contabilidad/contabilidad.module';
-import { RevisionFinalModule } from './modulos/revision-final/revision-final.module';
 import { AuditoriaModule } from './modulos/auditoria/auditoria.module';
 import { ArchivosModule } from './modulos/archivos/archivos.module';
 import { OrganizacionModule } from './modulos/organizacion/organizacion.module';
@@ -31,8 +31,8 @@ import { PrismaModule } from './comun/prisma/prisma.module';
     AutenticacionModule,
     SolicitudesModule,
     AlmacenModule,
+    AprobacionAlmacenModule,
     ContabilidadModule,
-    RevisionFinalModule,
     AuditoriaModule,
     ArchivosModule,
     OrganizacionModule,

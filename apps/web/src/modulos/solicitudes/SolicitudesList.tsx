@@ -7,6 +7,7 @@ import { useOrganizacion } from '../../hooks/useOrganizacion';
 import { requestService } from '../../servicios';
 import { Page, Button, StatusBadge, SearchInput, EmptyState, ErrorState, Skeleton, Select, Tabs, DataTable, Pagination, type DataColumn } from '../../componentes/ui';
 import type { Request } from '../../tipos';
+import { etapaActual } from '../../utilidades/presentacion';
 
 type Scope = 'activas' | 'historial';
 type Bucket = '' | 'proceso' | 'completadas' | 'rechazadas';
@@ -21,8 +22,8 @@ const BUCKETS: Array<{ value: Bucket; label: string }> = [
 function scopeSubtitle(has: (p: string) => boolean): string {
   if (has('ADMIN.MANAGE')) return 'Todas las solicitudes';
   if (has('WAREHOUSE.CLASSIFY')) return 'Cola de Almacén';
+  if (has('WAREHOUSE_MANAGER.APPROVE')) return 'Cola de Aprobación Almacén';
   if (has('ACCOUNTING.APPROVE')) return 'Cola de Contabilidad';
-  if (has('FINAL_REVIEW.APPROVE')) return 'Cola de Validación Maestra';
   if (has('MANAGER.APPROVE')) return 'Solicitudes de mi departamento';
   return 'Mis solicitudes';
 }
@@ -106,6 +107,7 @@ export const RequesterList: React.FC = () => {
     { key: 'dept', header: 'Departamento', label: 'Departamento', render: r => deptOf(r.departmentId) },
     ...(isAdmin ? [{ key: 'emp', header: 'Empresa', label: 'Empresa', render: (r: Request) => <span className="cell-secondary">{companyOf(r.companyId)}</span> } as DataColumn<Request>] : []),
     { key: 'est', header: 'Estado', label: 'Estado', render: r => <StatusBadge status={r.status} /> },
+    { key: 'etapa', header: 'Etapa actual', label: 'Etapa actual', render: r => etapaActual(r.status) },
     ...(scope === 'historial' ? [{ key: 'part', header: 'Mi participación', label: 'Mi participación', render: (r: Request) => (
       r.requesterId === user?.id && !r.miParticipacion ? <span>✓ Solicité</span>
       : r.miParticipacion ? <span>✓ {r.miParticipacion.accion}</span>

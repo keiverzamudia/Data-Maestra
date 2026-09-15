@@ -68,8 +68,11 @@ export function classifyProfitWriteError(err: any): ClassifiedProfitError {
   if (num === 50000) {
     return { kind: 'TRIGGER_REJECT', retryableAsCollision: false, needsVerify: false, code: num, message };
   }
-  // Timeout / conexión: ambiguos → VERIFY.
-  if (num === -2 || e.code === 'ETIMEOUT' || e.code === 'EREQUEST' || /timeout/i.test(message)) {
+  // Timeout: solo con evidencia de timeout (número -2, código ETIMEOUT o el
+  // texto). 14K.3: EREQUEST es el código genérico del wrapper para CUALQUIER
+  // error SQL (incl. deterministas como tipos inválidos); tratarlo como
+  // timeout producía RESULT_UNKNOWN falsos. Sin evidencia → UNKNOWN.
+  if (num === -2 || e.code === 'ETIMEOUT' || /timeout/i.test(message)) {
     return { kind: 'TIMEOUT', retryableAsCollision: false, needsVerify: true, code: e.code ?? num, message };
   }
   if (e.code === 'ESOCKET' || e.code === 'ECONNRESET' || e.code === 'ECONNCLOSED' || /connection (lost|closed|reset)|socket hang up/i.test(message)) {

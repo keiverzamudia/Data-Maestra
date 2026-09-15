@@ -128,9 +128,10 @@ describe('Flujo Completo de Datos — Solicitante, Área, Autorizador', () => {
 
     await service.submit(request.id, 'u1', 'c1');
     await service.approve(request.id, { action: 'APPROVE' }, 'u2', 'c1');
-    // classify and approve warehouse
+    // classify and approve warehouse (borrador no mueve estado; finalizar sí)
     await service.classify(request.id, { groupId: 'g1', subgroupId: 'sg1' }, 'u3', 'c1');
     await service.approve(request.id, { action: 'APPROVE', comment: 'WH OK' }, 'u3', 'c1');
+    await service.approve(request.id, { action: 'APPROVE', comment: 'Encargado OK' }, 'u-enc', 'c1');
 
     const detail = await service.findOne(request.id);
     expect(detail.requesterId).toBe('u1');
@@ -148,6 +149,7 @@ describe('Flujo Completo de Datos — Solicitante, Área, Autorizador', () => {
     await service.approve(request.id, { action: 'APPROVE' }, 'u2', 'c1');
     await service.classify(request.id, { groupId: 'g1', subgroupId: 'sg1' }, 'u3', 'c1');
     await service.approve(request.id, { action: 'APPROVE', comment: 'WH OK' }, 'u3', 'c1');
+    await service.approve(request.id, { action: 'APPROVE', comment: 'Encargado OK' }, 'u-enc', 'c1');
 
     // Now in PENDIENTE_CONTABILIDAD
     const result = await service.approve(
@@ -169,6 +171,7 @@ describe('Flujo Completo de Datos — Solicitante, Área, Autorizador', () => {
     await service.approve(request.id, { action: 'APPROVE' }, 'u2', 'c1');
     await service.classify(request.id, { groupId: 'g1', subgroupId: 'sg1' }, 'u3', 'c1');
     await service.approve(request.id, { action: 'APPROVE', comment: 'WH OK' }, 'u3', 'c1');
+    await service.approve(request.id, { action: 'APPROVE', comment: 'Encargado OK' }, 'u-enc', 'c1');
 
     // Reject from accounting → PENDIENTE_ALMACEN
     await service.approve(request.id, { action: 'RETURN', comment: 'Fix classification' }, 'u4', 'c1');
@@ -176,6 +179,7 @@ describe('Flujo Completo de Datos — Solicitante, Área, Autorizador', () => {
     // Re-classify and approve from warehouse
     await service.classify(request.id, { groupId: 'g1', subgroupId: 'sg1' }, 'u3', 'c1');
     await service.approve(request.id, { action: 'APPROVE', comment: 'Fixed' }, 'u3', 'c1');
+    await service.approve(request.id, { action: 'APPROVE', comment: 'Encargado OK' }, 'u-enc', 'c1');
 
     const detail = await service.findOne(request.id);
     expect(detail.status).toBe('PENDIENTE_CONTABILIDAD');
@@ -183,7 +187,7 @@ describe('Flujo Completo de Datos — Solicitante, Área, Autorizador', () => {
     expect(detail.departmentId).toBe('d1');
   });
 
-  it('TEST L: Aprobación Final conserva datos', async () => {
+  it('TEST L: Aprobación Contable (última humana) conserva datos', async () => {
     const request = await service.create(
       { requestedDescription: 'Test', purpose: 'Test' },
       'u1', 'c1', 'd1',
@@ -193,14 +197,15 @@ describe('Flujo Completo de Datos — Solicitante, Área, Autorizador', () => {
     await service.approve(request.id, { action: 'APPROVE' }, 'u2', 'c1');
     await service.classify(request.id, { groupId: 'g1', subgroupId: 'sg1' }, 'u3', 'c1');
     await service.approve(request.id, { action: 'APPROVE', comment: 'WH OK' }, 'u3', 'c1');
+    await service.approve(request.id, { action: 'APPROVE', comment: 'Encargado OK' }, 'u-enc', 'c1');
     await service.approve(request.id, { action: 'APPROVE', comment: 'ACC OK' }, 'u4', 'c1');
 
-    // Now in PENDIENTE_VALIDACION_MAESTRA
+    // Now in CONTABILIDAD_APROBADA
     const detail = await service.findOne(request.id);
 
     expect(detail.requesterId).toBe('u1');
     expect(detail.departmentId).toBe('d1');
-    expect(detail.status).toBe('PENDIENTE_VALIDACION_MAESTRA');
+    expect(detail.status).toBe('CONTABILIDAD_APROBADA');
     expect(detail.groupId).toBe('g1');
     expect(detail.masterCode).toBeDefined();
   });

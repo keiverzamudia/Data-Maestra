@@ -145,12 +145,24 @@ export const RequestDetail: React.FC<{ request: Request; showWorkflow?: boolean 
         </div>
       )}
 
-      {request.masterCode && (
+      {(request.masterCode || request.profitCode) && (
         <div className="card p16">
-          <span className="muted small">Código Master</span>
-          <div className="master-code-display" style={{ marginTop: 4 }}>
-            {request.masterCode}
-          </div>
+          {request.masterCode && (
+            <>
+              <span className="muted small">Código Master</span>
+              <div className="master-code-display" style={{ marginTop: 4 }}>
+                {request.masterCode}
+              </div>
+            </>
+          )}
+          {request.profitCode && (
+            <div style={{ marginTop: 8 }}>
+              <span className="muted small">Código Profit</span>
+              <div className="master-code-display" style={{ marginTop: 4 }}>
+                {request.profitCode}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

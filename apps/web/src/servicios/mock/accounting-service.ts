@@ -19,7 +19,8 @@ export const mockAccountingService: AccountingService = {
   async approveAccounting(id, codes) {
     await delay();
     const r = requests.find(x => x.id === id);
-    if (r) { r.status = 'PENDIENTE_VALIDACION_MAESTRA'; r.updatedAt = new Date().toISOString(); }
+    // 16A — Contabilidad es la última aprobación humana.
+    if (r) { r.status = 'CONTABILIDAD_APROBADA'; r.updatedAt = new Date().toISOString(); }
   },
   async rejectAccounting(id, comment) {
     await delay();

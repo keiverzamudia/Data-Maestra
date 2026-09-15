@@ -20,13 +20,13 @@ export class PanelService {
         where: { ...where, status: { in: ['PENDIENTE_GERENTE', 'PENDIENTE_ALMACEN'] } },
       }),
       this.prisma.request.count({
-        where: { ...where, status: { in: ['PENDIENTE_CONTABILIDAD', 'PENDIENTE_VALIDACION_MAESTRA'] } },
+        where: { ...where, status: { in: ['PENDIENTE_CONTABILIDAD', 'CONTABILIDAD_APROBADA'] } },
       }),
       this.prisma.request.count({
         where: { ...where, status: 'DEVUELTO' },
       }),
       this.prisma.request.count({
-        where: { ...where, status: 'APROBADO_FINAL' },
+        where: { ...where, status: 'INSERTADO_PROFIT' },
       }),
       this.prisma.request.count({ where }),
       this.prisma.importRun.count({

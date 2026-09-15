@@ -1,5 +1,6 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { profitDriver, PROFIT_ODBC_DRIVER, PROFIT_SQL_PORT } from './profit-driver';
 import {
   ARTICLE_TYPE_LABELS,
   FUNCTIONAL_ARTICLE_TYPES,
@@ -132,14 +133,17 @@ export class ProfitAdapterService {
       return this.poolPromise;
     }
 
-    // Lazy import to allow app to start without mssql if not needed
-    // @ts-ignore
-    const mssql: any = await import('mssql');
+    // Driver único del módulo (14K.2): msnodesqlv8. Jamás tedious directo,
+    // porque mezclar drivers corrompe el global shared.driver de mssql.
+    const sqlw: any = await profitDriver();
 
     const config: any = {
+      driver: PROFIT_ODBC_DRIVER,
       server,
       database,
+      port: PROFIT_SQL_PORT,
       options: {
+        trustedConnection: !(user && password),
         encrypt: false,
         trustServerCertificate: true,
         connectTimeout: 5000,
@@ -157,15 +161,11 @@ export class ProfitAdapterService {
     if (user && password) {
       config.user = user;
       config.password = password;
-    } else {
-      // Windows Authentication
-      config.options.trustedConnection = true;
     }
 
     this.logger.log(`Connecting to Profit ${server}/${database} (user=${user ? '***' : 'WindowsAuth'})`);
 
-    // @ts-ignore - mssql types provided via @types/mssql
-    this.poolPromise = new (mssql as any).ConnectionPool(config)
+    this.poolPromise = new sqlw.ConnectionPool(config)
       .connect()
       .then((pool: any) => {
         this.pool = pool;
@@ -196,8 +196,6 @@ export class ProfitAdapterService {
     }
 
     try {
-      // @ts-ignore
-    const mssql: any = await import('mssql');
       const request = pool.request();
       request.timeout = 10000;
       for (const [name, def] of Object.entries(params)) {
@@ -215,8 +213,7 @@ export class ProfitAdapterService {
   }
 
   async getArticle(co_art: string): Promise<ProfitArticle | null> {
-    // @ts-ignore
-    const mssql: any = await import('mssql');
+    const mssql: any = await profitDriver();
     const rows = await this.query<ProfitArticle>(
       `SELECT TOP 1 co_art, art_des, co_lin, co_subl, co_cat, co_color, uni_venta, stock_act
        FROM dbo.art WHERE LTRIM(RTRIM(co_art)) = LTRIM(RTRIM(@co_art))`,
@@ -226,8 +223,7 @@ export class ProfitAdapterService {
   }
 
   async getArticles(limit = 20, search?: string, co_lin?: string): Promise<ProfitArticle[]> {
-    // @ts-ignore
-    const mssql: any = await import('mssql');
+    const mssql: any = await profitDriver();
     let sql = `SELECT TOP (@limit) co_art, art_des, co_lin, co_subl, co_cat, co_color, uni_venta, stock_act FROM dbo.art`;
     const params: any = { limit: { type: mssql.Int, value: limit } };
     const conditions: string[] = [];
@@ -249,8 +245,7 @@ export class ProfitAdapterService {
   }
 
   async getGroup(co_lin: string): Promise<ProfitGroup | null> {
-    // @ts-ignore
-    const mssql: any = await import('mssql');
+    const mssql: any = await profitDriver();
     const rows = await this.query<ProfitGroup>(
       `SELECT TOP 1 co_lin, lin_des FROM dbo.lin_art WHERE LTRIM(RTRIM(co_lin)) = LTRIM(RTRIM(@co_lin))`,
       { co_lin: { type: mssql.VarChar(6), value: co_lin } },
@@ -259,8 +254,7 @@ export class ProfitAdapterService {
   }
 
   async getSubgroups(co_lin?: string): Promise<ProfitSubgroup[]> {
-    // @ts-ignore
-    const mssql: any = await import('mssql');
+    const mssql: any = await profitDriver();
     if (co_lin) {
       return this.query<ProfitSubgroup>(
         `SELECT co_lin, co_subl, subl_des FROM dbo.sub_lin WHERE LTRIM(RTRIM(co_lin)) = LTRIM(RTRIM(@co_lin)) ORDER BY co_subl`,
@@ -271,8 +265,7 @@ export class ProfitAdapterService {
   }
 
   async getSubgroup(co_lin: string, co_subl: string): Promise<ProfitSubgroup | null> {
-    // @ts-ignore
-    const mssql: any = await import('mssql');
+    const mssql: any = await profitDriver();
     const rows = await this.query<ProfitSubgroup>(
       `SELECT TOP 1 co_lin, co_subl, subl_des FROM dbo.sub_lin WHERE LTRIM(RTRIM(co_lin)) = LTRIM(RTRIM(@co_lin)) AND LTRIM(RTRIM(co_subl)) = LTRIM(RTRIM(@co_subl))`,
       {
@@ -288,8 +281,7 @@ export class ProfitAdapterService {
   }
 
   async getUnit(co_uni: string): Promise<ProfitUnit | null> {
-    // @ts-ignore
-    const mssql: any = await import('mssql');
+    const mssql: any = await profitDriver();
     const rows = await this.query<ProfitUnit>(
       `SELECT TOP 1 co_uni, des_uni FROM dbo.unidades WHERE LTRIM(RTRIM(co_uni)) = LTRIM(RTRIM(@co_uni))`,
       { co_uni: { type: mssql.VarChar(6), value: co_uni } },
@@ -327,8 +319,7 @@ export class ProfitAdapterService {
    * No impone nada: el tipo pertenece a la solicitud.
    */
   async getLineDefaultType(co_lin: string): Promise<{ groupCode: string; defaultType: string | null }> {
-    // @ts-ignore
-    const mssql: any = await import('mssql');
+    const mssql: any = await profitDriver();
     const rows = await this.query<{ tipo: string; n: number }>(
       `SELECT TOP 1 CAST(tipo AS VARCHAR(5)) AS tipo, COUNT(*) AS n FROM dbo.art WHERE LTRIM(RTRIM(co_lin)) = LTRIM(RTRIM(@co_lin)) GROUP BY CAST(tipo AS VARCHAR(5)) ORDER BY COUNT(*) DESC`,
       { co_lin: { type: mssql.VarChar(6), value: co_lin } },
@@ -344,12 +335,32 @@ export class ProfitAdapterService {
   }
 
   /**
+   * Lectura completa de un artículo para VERIFY/RECONCILE (14K.0).
+   * Solo lectura por el pool READ: verificar no requiere el flag de
+   * escritura (el flag gobierna WRITES, no SELECTs). Misma base/destino.
+   */
+  async getArticleForVerify(coArt: string): Promise<Record<string, string> | null> {
+    const mssql: any = await profitDriver();
+    const rows = await this.query<Record<string, string>>(
+      `SELECT TOP 1 LTRIM(RTRIM(co_art)) AS co_art, LTRIM(RTRIM(art_des)) AS art_des,
+        LTRIM(RTRIM(tipo)) AS tipo, LTRIM(RTRIM(co_lin)) AS co_lin, LTRIM(RTRIM(co_subl)) AS co_subl,
+        LTRIM(RTRIM(uni_venta)) AS uni_venta, LTRIM(RTRIM(suni_venta)) AS suni_venta,
+        LTRIM(RTRIM(tipo_imp)) AS tipo_imp, LTRIM(RTRIM(co_cat)) AS co_cat, LTRIM(RTRIM(co_color)) AS co_color,
+        LTRIM(RTRIM(procedenci)) AS procedenci, LTRIM(RTRIM(co_prov)) AS co_prov,
+        LTRIM(RTRIM(tipo_cos)) AS tipo_cos, LTRIM(RTRIM(CAST(ISNULL(dis_cen,'') AS VARCHAR(MAX)))) AS dis_cen,
+        LTRIM(RTRIM(co_us_in)) AS co_us_in
+       FROM dbo.art WHERE co_art = @coArt`,
+      { coArt: { type: mssql.Char(30), value: coArt.trim() } },
+    );
+    return rows[0] ?? null;
+  }
+
+  /**
    * Existence check indexado sobre la PK para el plan sin escritura
    * (14E §2/§9: SELECT 1, sin traer ART a memoria). Solo lectura.
    */
   async articleExists(coArt: string): Promise<boolean> {
-    // @ts-ignore
-    const mssql: any = await import('mssql');
+    const mssql: any = await profitDriver();
     const rows = await this.query<{ one: number }>(
       `SELECT 1 AS one FROM dbo.art WHERE co_art = @coArt`,
       { coArt: { type: mssql.Char(30), value: coArt.trim() } },
@@ -359,8 +370,7 @@ export class ProfitAdapterService {
 
   /** Máximo sufijo numérico del prefijo sistemático (punto de partida, READ-ONLY). */
   async maxSequenceFor(prefix: string): Promise<number> {
-    // @ts-ignore
-    const mssql: any = await import('mssql');
+    const mssql: any = await profitDriver();
     const rows = await this.query<{ m: string | null }>(
       `SELECT MAX(RIGHT(LTRIM(RTRIM(co_art)), 4)) AS m FROM dbo.art
        WHERE LTRIM(RTRIM(co_art)) LIKE @pfx + '[0-9][0-9][0-9][0-9]'
@@ -376,8 +386,7 @@ export class ProfitAdapterService {
   }
 
   async getCategory(co_cat: string): Promise<ProfitCategory | null> {
-    // @ts-ignore
-    const mssql: any = await import('mssql');
+    const mssql: any = await profitDriver();
     const rows = await this.query<ProfitCategory>(
       `SELECT TOP 1 co_cat, cat_des FROM dbo.cat_art WHERE LTRIM(RTRIM(co_cat)) = LTRIM(RTRIM(@co_cat))`,
       { co_cat: { type: mssql.VarChar(6), value: co_cat } },
@@ -394,8 +403,7 @@ export class ProfitAdapterService {
    * (y origen de c9, que no existe en columnas), no como catálogo.
    */
   async getAccounts(limit = 20, offset = 0, search?: string): Promise<ProfitAccount[]> {
-    // @ts-ignore
-    const mssql: any = await import('mssql');
+    const mssql: any = await profitDriver();
     let sql = `SELECT LTRIM(RTRIM(co_cue)) AS code, LTRIM(RTRIM(des_cue)) AS description FROM C_DIST.dbo.sccuenta WHERE detalle = 1 AND inactivo = 0`;
     const params: any = {
       limit: { type: mssql.Int, value: limit },
@@ -413,8 +421,7 @@ export class ProfitAdapterService {
     return this.query<ProfitBrand>(`SELECT co_col, des_col FROM dbo.colores ORDER BY co_col`);
   }
   async getBrand(co_col: string): Promise<ProfitBrand | null> {
-    // @ts-ignore
-    const mssql: any = await import('mssql');
+    const mssql: any = await profitDriver();
     const rows = await this.query<ProfitBrand>(
       `SELECT TOP 1 co_col, des_col FROM dbo.colores WHERE LTRIM(RTRIM(co_col)) = LTRIM(RTRIM(@co_col))`,
       { co_col: { type: mssql.VarChar(6), value: co_col } },
@@ -441,8 +448,7 @@ export class ProfitAdapterService {
    * inCatalog:false (cuentas obsoletas con uso vivo, ver 12A) sin bloquear.
    */
   async getGroupAccountingStandard(groupCode: string): Promise<ProfitGroupStandard> {
-    // @ts-ignore
-    const mssql: any = await import('mssql');
+    const mssql: any = await profitDriver();
     const code = (groupCode ?? '').trim();
     const rows = await this.query<{ dis: string | null }>(
       `SELECT CAST(dis_cen AS VARCHAR(2000)) AS dis FROM dbo.lin_art WHERE LTRIM(RTRIM(co_lin)) = LTRIM(RTRIM(@co))`,
@@ -473,8 +479,7 @@ export class ProfitAdapterService {
   }
 
   async getAccountByCode(code: string): Promise<ProfitAccount | null> {
-    // @ts-ignore
-    const mssql: any = await import('mssql');
+    const mssql: any = await profitDriver();
     const rows = await this.query<ProfitAccount>(
       `SELECT TOP 1 LTRIM(RTRIM(co_cue)) AS code, LTRIM(RTRIM(des_cue)) AS description FROM C_DIST.dbo.sccuenta WHERE LTRIM(RTRIM(co_cue)) = LTRIM(RTRIM(@code))`,
       { code: { type: mssql.VarChar(40), value: (code ?? '').trim() } },

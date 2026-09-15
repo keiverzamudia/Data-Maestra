@@ -10,6 +10,12 @@ import { useCompany } from '../../contextos/CompanyContext';
 vi.mock('../../servicios/api/api-panel-service', () => ({
   apiPanelService: { getStats: vi.fn(), getActivity: vi.fn() },
 }));
+vi.mock('../../servicios', () => ({
+  requestService: { list: vi.fn().mockResolvedValue({ data: [], total: 0, filteredTotal: 0 }) },
+  warehouseService: { getPendingRequests: vi.fn().mockResolvedValue([]) },
+  warehouseApprovalService: { getPendingApprovals: vi.fn().mockResolvedValue([]) },
+  accountingService: { getPendingApprovals: vi.fn().mockResolvedValue([]) },
+}));
 vi.mock('../../contextos/SessionContext', () => ({ useSession: vi.fn() }));
 vi.mock('../../contextos/CompanyContext', () => ({ useCompany: vi.fn() }));
 
@@ -24,7 +30,7 @@ function mockCtx(permissions: string[]) {
   (useCompany as any).mockReturnValue({ companyId: 'c1' });
 }
 
-describe('DashboardPage 11B', () => {
+describe('DashboardPage 14H — centro de resumen', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCtx(['DASHBOARD.VIEW', 'REQUEST.VIEW', 'REQUEST.CREATE']);
@@ -33,11 +39,36 @@ describe('DashboardPage 11B', () => {
   });
   afterEach(() => cleanup());
 
-  it('render normal con métricas reales y actividad', async () => {
+  it('cuatro métricas, sin tarjeta total', async () => {
     render(<MemoryRouter><DashboardPage /></MemoryRouter>);
-    expect(await screen.findByText('Solicitudes totales')).toBeTruthy();
-    expect(screen.getByText('#101')).toBeTruthy();
+    await screen.findByText('Resumen por estado');
+    for (const label of ['Pendientes de atención', 'En aprobación', 'Completadas', 'Devueltas']) {
+      expect(screen.getAllByText(label).length).toBeGreaterThan(0);
+    }
+    expect(screen.queryByText('Solicitudes totales')).toBeNull();
+  });
+
+  it('actividad compacta con estado y enlace a mis solicitudes', async () => {
+    render(<MemoryRouter><DashboardPage /></MemoryRouter>);
+    expect(await screen.findByText('#101')).toBeTruthy();
+    expect(screen.getByText('Ver mis solicitudes')).toBeTruthy();
+  });
+
+  it('acciones rápidas reducidas según permisos', async () => {
+    render(<MemoryRouter><DashboardPage /></MemoryRouter>);
+    await screen.findByText('Acciones rápidas');
     expect(screen.getByText('Crear solicitud')).toBeTruthy();
+    expect(screen.getByText('Mis solicitudes')).toBeTruthy();
+    expect(screen.queryByText('Registro en Profit')).toBeNull();
+  });
+
+  it('trabajo pendiente muestra Aprobación Almacén según permiso (16A)', async () => {
+    mockCtx(['DASHBOARD.VIEW', 'WAREHOUSE_MANAGER.VIEW']);
+    const { warehouseApprovalService } = await import('../../servicios');
+    (warehouseApprovalService.getPendingApprovals as any).mockResolvedValue([{ id: 'r1' }, { id: 'r2' }]);
+    render(<MemoryRouter><DashboardPage /></MemoryRouter>);
+    expect(await screen.findByText('Aprobación Almacén')).toBeTruthy();
+    expect(screen.getByText(/2 pendientes/)).toBeTruthy();
   });
 
   it('loading con skeleton', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { AlmacenService } from '../src/modulos/almacen/almacen.service';
 
 function createPrismaMock() {
@@ -141,7 +141,7 @@ describe('AlmacenService', () => {
         unitCode: 'UND',
         taxType: '1',
       });
-      SolicitudesService.approve.mockResolvedValue({ id: 'req-1', status: 'PENDIENTE_CONTABILIDAD' });
+      SolicitudesService.approve.mockResolvedValue({ id: 'req-1', status: 'ALMACEN_APROBADO' });
 
       const result = await service.approve('req-1', 'user-1', 'c1');
 
@@ -151,7 +151,19 @@ describe('AlmacenService', () => {
         'user-1',
         'c1',
       );
-      expect(result.status).toBe('PENDIENTE_CONTABILIDAD');
+      // 15A — Almacén completa la clasificación; a Contabilidad solo vía Encargado.
+      expect(result.status).toBe('ALMACEN_APROBADO');
+    });
+
+    it('throws ForbiddenException when request is already classified (15A: solo el Encargado aprueba)', async () => {
+      prisma.request.findUnique.mockResolvedValue({
+        id: 'req-1',
+        status: 'ALMACEN_APROBADO',
+        requestData: { requestId: 'req-1' },
+      });
+
+      await expect(service.approve('req-1', 'user-1', 'c1')).rejects.toThrow(ForbiddenException);
+      expect(SolicitudesService.approve).not.toHaveBeenCalled();
     });
 
     it('throws NotFoundException when request is not in classifiable status', async () => {

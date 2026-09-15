@@ -24,7 +24,8 @@ export const mockWarehouseService: WarehouseService = {
   async approveClassification(id) {
     await delay();
     const r = requests.find(x => x.id === id);
-    if (r) { r.status = 'PENDIENTE_CONTABILIDAD'; r.updatedAt = new Date().toISOString(); }
+    // 15A — Almacén completa la clasificación; a Contabilidad solo vía Encargado.
+    if (r && r.status === 'PENDIENTE_ALMACEN') { r.status = 'ALMACEN_APROBADO'; r.updatedAt = new Date().toISOString(); }
   },
   async returnRequest(id, comment) {
     await delay();

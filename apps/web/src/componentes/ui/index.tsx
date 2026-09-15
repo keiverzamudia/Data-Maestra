@@ -8,8 +8,8 @@ export const Select:React.FC<React.SelectHTMLAttributes<HTMLSelectElement>> = (p
 export const Textarea:React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement>> = (p)=><textarea className="input" rows={3} {...p}/>;
 export const Badge:React.FC<{children:React.ReactNode; tone?:'gray'|'green'|'yellow'|'red'|'blue'}> = ({children,tone='gray'})=><span className={`badge badge-${tone}`}>{children}</span>;
 export const StatusBadge:React.FC<{status:string}> = ({status})=>{
-  const map:Record<string,string>={ACTIVE:'green',BORRADOR:'gray',PENDIENTE_GERENTE:'yellow',PENDIENTE_ALMACEN:'yellow',ALMACEN_APROBADO:'blue',PENDIENTE_CONTABILIDAD:'yellow',PENDIENTE_VALIDACION_MAESTRA:'yellow',APROBADO_FINAL:'blue',PROCESANDO_PROFIT:'blue',REGISTRADO_PROFIT:'green',ERROR_PROFIT:'red',DEVUELTO:'red',RECHAZADO:'red',LINKED:'green',IMPORTED:'gray',PENDING_REVIEW:'yellow',REVIEW_REQUIRED:'yellow',COMPLETED:'green',RUNNING:'blue',FAILED:'red'};
-  const label:Record<string,string>={BORRADOR:'Borrador',PENDIENTE_GERENTE:'Pendiente de Gerente',PENDIENTE_ALMACEN:'Pendiente de Almacén',ALMACEN_APROBADO:'Almacén aprobado',PENDIENTE_CONTABILIDAD:'Pendiente de Contabilidad',PENDIENTE_VALIDACION_MAESTRA:'Pendiente de Validación Maestra',APROBADO_FINAL:'Aprobación Final',PROCESANDO_PROFIT:'Procesando en Profit',REGISTRADO_PROFIT:'Registrado en Profit',ERROR_PROFIT:'Error en Profit',DEVUELTO:'Devuelto',RECHAZADO:'Rechazado'};
+  const map:Record<string,string>={ACTIVE:'green',BORRADOR:'gray',PENDIENTE_GERENTE:'yellow',PENDIENTE_ALMACEN:'yellow',ALMACEN_APROBADO:'blue',PENDIENTE_CONTABILIDAD:'yellow',CONTABILIDAD_APROBADA:'blue',PROCESANDO_PROFIT:'blue',INSERTADO_PROFIT:'green',ERROR_PROFIT:'red',DEVUELTO:'red',RECHAZADO:'red',LINKED:'green',IMPORTED:'gray',PENDING_REVIEW:'yellow',REVIEW_REQUIRED:'yellow',COMPLETED:'green',RUNNING:'blue',FAILED:'red'};
+  const label:Record<string,string>={BORRADOR:'Borrador',PENDIENTE_GERENTE:'Pendiente de Gerente',PENDIENTE_ALMACEN:'Pendiente de Almacén',ALMACEN_APROBADO:'Aprobación Almacén',PENDIENTE_CONTABILIDAD:'Pendiente de Contabilidad',CONTABILIDAD_APROBADA:'Contabilidad aprobada',PROCESANDO_PROFIT:'Procesando en Profit',INSERTADO_PROFIT:'Registrado en Profit',ERROR_PROFIT:'Error en Profit',DEVUELTO:'Devuelto',RECHAZADO:'Rechazado'};
   return <Badge tone={(map[status] as any)||'gray'}>{label[status]||status}</Badge>;
 };
 export const PriorityBadge:React.FC<{priority:number}> = ({priority})=>{
@@ -63,7 +63,7 @@ export const ErrorState:React.FC<{title?:string;desc?:string;onRetry?:()=>void}>
     {onRetry && <Button variant="secondary" onClick={onRetry}>Reintentar</Button>}
   </div>;
 
-export const ConfirmDialog:React.FC<{open:boolean;title:string;desc?:string;confirmLabel?:string;onConfirm:()=>void;onCancel:()=>void;busy?:boolean}> = ({open,title,desc,confirmLabel='Confirmar',onConfirm,onCancel,busy})=>{
+export const ConfirmDialog:React.FC<{open:boolean;title:string;desc?:string;confirmLabel?:string;onConfirm:()=>void;onCancel:()=>void;busy?:boolean;children?:React.ReactNode;confirmDisabled?:boolean}> = ({open,title,desc,confirmLabel='Confirmar',onConfirm,onCancel,busy,children,confirmDisabled})=>{
   React.useEffect(()=>{
     if(!open) return;
     const onKey=(e:KeyboardEvent)=>{ if(e.key==='Escape') onCancel(); };
@@ -71,7 +71,7 @@ export const ConfirmDialog:React.FC<{open:boolean;title:string;desc?:string;conf
     return ()=>window.removeEventListener('keydown',onKey);
   },[open,onCancel]);
   if(!open) return null;
-  return <div className="modal-overlay" onClick={onCancel}><div className="modal" role="alertdialog" aria-label={title} onClick={e=>e.stopPropagation()}><div className="modal-head"><h3>{title}</h3><button className="btn btn-ghost" onClick={onCancel} aria-label="Cerrar">✕</button></div><div className="modal-body"><div className="stack-sm">{desc && <p className="muted">{desc}</p>}<div style={{display:'flex',gap:8,justifyContent:'flex-end'}}><Button variant="secondary" onClick={onCancel} disabled={busy}>Cancelar</Button><Button onClick={onConfirm} disabled={busy}>{busy ? 'Procesando...' : confirmLabel}</Button></div></div></div></div></div>;
+  return <div className="modal-overlay" onClick={onCancel}><div className="modal" role="alertdialog" aria-label={title} onClick={e=>e.stopPropagation()}><div className="modal-head"><h3>{title}</h3><button className="btn btn-ghost" onClick={onCancel} aria-label="Cerrar">✕</button></div><div className="modal-body"><div className="stack-sm">{desc && <p className="muted">{desc}</p>}{children}<div style={{display:'flex',gap:8,justifyContent:'flex-end'}}><Button variant="secondary" onClick={onCancel} disabled={busy}>Cancelar</Button><Button onClick={onConfirm} disabled={busy || confirmDisabled}>{busy ? 'Procesando...' : confirmLabel}</Button></div></div></div></div></div>;
 };
 
 export const Drawer:React.FC<{open:boolean;onClose:()=>void;title:string;subtitle?:string;children:React.ReactNode;size?:'default'|'narrow'}> = ({open,onClose,title,subtitle,children,size='default'})=>{

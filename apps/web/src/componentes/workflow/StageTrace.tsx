@@ -17,18 +17,18 @@ interface Props {
   approvals?: ApprovalRef[];
   /** Posiciones contables aprobadas (línea de Contabilidad). */
   accCount?: number;
-  /** En Aprobación Final la validación maestra es la etapa actual. */
-  validationCurrent?: boolean;
+  /** Código Profit real tras INSERT + VERIFY (16A). */
+  profitCode?: string | null;
 }
 
 /**
- * 12E — Trazabilidad por etapa con el actor REAL del historial (approvals),
- * nunca el usuario conectado. Solo lectura.
+ * 12E/16A — Trazabilidad por etapa con el actor REAL del historial (approvals),
+ * nunca el usuario conectado. Solo lectura. Contabilidad es la última
+ * aprobación humana; Profit es operación técnica posterior.
  */
-export const StageTrace: React.FC<Props> = ({ approvals, accCount, validationCurrent }) => {
-  const almacen = lastApprove(approvals, 'PENDIENTE_CONTABILIDAD') ?? lastApprove(approvals, 'ALMACEN_APROBADO');
-  const contab = lastApprove(approvals, 'PENDIENTE_VALIDACION_MAESTRA');
-  const validacion = lastApprove(approvals, 'APROBADO_FINAL');
+export const StageTrace: React.FC<Props> = ({ approvals, accCount, profitCode }) => {
+  const almacen = lastApprove(approvals, 'PENDIENTE_CONTABILIDAD');
+  const contab = lastApprove(approvals, 'CONTABILIDAD_APROBADA');
 
   const row = (done: boolean, title: string, by?: string | null, extra?: string | null, date?: string | null) => (
     <div className="trace-row">
@@ -45,13 +45,12 @@ export const StageTrace: React.FC<Props> = ({ approvals, accCount, validationCur
 
   return (
     <div className="stack-sm" aria-label="Trazabilidad de aprobaciones">
-      {row(!!almacen, 'Almacén aprobado', almacen?.actor?.displayName, undefined, fmtDate(almacen?.createdAt))}
-      {row(!!contab, 'Contabilidad validada', contab?.actor?.displayName,
+      {row(!!almacen, 'Aprobación Almacén', almacen?.actor?.displayName, undefined, fmtDate(almacen?.createdAt))}
+      {row(!!contab, 'Contabilidad aprobada', contab?.actor?.displayName,
         accCount != null && contab ? `${accCount} posición${accCount === 1 ? '' : 'es'} contable${accCount === 1 ? '' : 's'}` : undefined,
         fmtDate(contab?.createdAt))}
-      {validationCurrent && !validacion
-        ? row(false, 'Validación Maestra (etapa actual)', undefined, 'Se completa con tu aprobación.')
-        : row(!!validacion, 'Validación Maestra completada', validacion?.actor?.displayName, undefined, fmtDate(validacion?.createdAt))}
+      {row(!!profitCode, 'Registro Profit',
+        profitCode ? `Código ${profitCode}` : undefined, undefined, undefined)}
     </div>
   );
 };

@@ -22,13 +22,13 @@ function seed(): { requests: R[] } {
       { id: 'r4', requestNumber: 'REQ-0004', requesterId: 'juan', companyId: 'c1', departmentId: 'dCompras', status: 'RECHAZADO', createdAt: D('2026-09-05'),
         approvals: [{ actorId: 'maria', action: 'REJECT', createdAt: D('2026-09-06') }] },
       { id: 'r5', requestNumber: 'REQ-0005', requesterId: 'luis', companyId: 'c1', departmentId: 'dCompras', status: 'PENDIENTE_GERENTE', createdAt: D('2026-09-06') },
-      { id: 'r6', requestNumber: 'REQ-0006', requesterId: 'ana', companyId: 'c1', departmentId: 'dVentas', status: 'APROBADO_FINAL', createdAt: D('2026-09-07'),
+      { id: 'r6', requestNumber: 'REQ-0006', requesterId: 'ana', companyId: 'c1', departmentId: 'dVentas', status: 'INSERTADO_PROFIT', createdAt: D('2026-09-07'),
         approvals: [{ actorId: 'luis', action: 'APPROVE', createdAt: D('2026-09-08') }] },
     ],
   };
 }
 
-// Usuarios: juan/ana/luis requesters; carlos gerente Compras; w1 almacén; m1 contabilidad; f1 final; admin.
+// Usuarios: juan/ana/luis requesters; carlos gerente Compras; w1 almacén; m1 contabilidad; f1 sin cola (solo lectura); admin.
 const USERS: Record<string, { memberships: { companyId: string }[]; perms: Record<string, string[]>; managed: { id: string; companyId: string }[]; admin: boolean }> = {
   juan: { memberships: [{ companyId: 'c1' }], perms: { c1: ['REQUEST.CREATE', 'REQUEST.VIEW'] }, managed: [], admin: false },
   ana: { memberships: [{ companyId: 'c1' }], perms: { c1: ['REQUEST.CREATE', 'REQUEST.VIEW'] }, managed: [], admin: false },
@@ -36,7 +36,7 @@ const USERS: Record<string, { memberships: { companyId: string }[]; perms: Recor
   carlos: { memberships: [{ companyId: 'c1' }], perms: { c1: ['REQUEST.CREATE', 'REQUEST.VIEW', 'MANAGER.APPROVE'] }, managed: [{ id: 'dCompras', companyId: 'c1' }], admin: false },
   w1: { memberships: [{ companyId: 'c1' }], perms: { c1: ['REQUEST.VIEW', 'WAREHOUSE.CLASSIFY'] }, managed: [], admin: false },
   m1: { memberships: [{ companyId: 'c1' }], perms: { c1: ['REQUEST.VIEW', 'ACCOUNTING.APPROVE'] }, managed: [], admin: false },
-  f1: { memberships: [{ companyId: 'c1' }], perms: { c1: ['REQUEST.VIEW', 'FINAL_REVIEW.APPROVE'] }, managed: [], admin: false },
+  f1: { memberships: [{ companyId: 'c1' }], perms: { c1: ['REQUEST.VIEW'] }, managed: [], admin: false },
   admin: { memberships: [{ companyId: 'c1' }], perms: { c1: ['ADMIN.MANAGE', 'REQUEST.VIEW'] }, managed: [], admin: true },
 };
 

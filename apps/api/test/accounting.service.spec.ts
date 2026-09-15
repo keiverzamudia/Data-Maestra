@@ -93,7 +93,7 @@ describe('ContabilidadService', () => {
         accountingCodes: [],
       });
       prisma.requestAccountingCode.createMany.mockResolvedValue({ count: 1 });
-      SolicitudesService.approve.mockResolvedValue({ id: 'req-1', status: 'PENDIENTE_VALIDACION_MAESTRA' });
+      SolicitudesService.approve.mockResolvedValue({ id: 'req-1', status: 'CONTABILIDAD_APROBADA' });
 
       const result = await service.approve(
         'req-1',
@@ -111,7 +111,7 @@ describe('ContabilidadService', () => {
         'user-1',
         'c1',
       );
-      expect(result.status).toBe('PENDIENTE_VALIDACION_MAESTRA');
+      expect(result.status).toBe('CONTABILIDAD_APROBADA');
     });
 
     it('12C — rechaza aprobar sin posiciones (mínimo 1)', async () => {
@@ -159,7 +159,7 @@ describe('ContabilidadService', () => {
     it('throws NotFoundException when request is not PENDIENTE_CONTABILIDAD', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'APROBADO_FINAL',
+        status: 'CONTABILIDAD_APROBADA',
         requestData: { groupId: 'g1' },
         accountingCodes: [],
       });
@@ -177,7 +177,7 @@ describe('ContabilidadService', () => {
         accountingCodes: [],
       });
       prisma.requestAccountingCode.createMany.mockResolvedValue({ count: 1 });
-      SolicitudesService.approve.mockResolvedValue({ id: 'req-1', status: 'PENDIENTE_VALIDACION_MAESTRA' });
+      SolicitudesService.approve.mockResolvedValue({ id: 'req-1', status: 'CONTABILIDAD_APROBADA' });
 
       await service.approve(
         'req-1',
@@ -203,7 +203,7 @@ describe('ContabilidadService', () => {
         accountingCodes: [],
       });
       prisma.requestAccountingCode.createMany.mockResolvedValue({ count: 2 });
-      SolicitudesService.approve.mockResolvedValue({ id: 'req-1', status: 'PENDIENTE_VALIDACION_MAESTRA' });
+      SolicitudesService.approve.mockResolvedValue({ id: 'req-1', status: 'CONTABILIDAD_APROBADA' });
 
       await service.approve(
         'req-1',
@@ -266,7 +266,7 @@ describe('ContabilidadService', () => {
         requestData: { groupId: 'g1' },
         accountingCodes: [],
       });
-      SolicitudesService.approve.mockResolvedValue({ id: 'req-1', status: 'PENDING_WAREHOUSE' });
+      SolicitudesService.approve.mockResolvedValue({ id: 'req-1', status: 'PENDIENTE_ALMACEN' });
 
       await service.reject('req-1', 'Codes incorrect', 'user-1', 'c1');
 
@@ -292,7 +292,7 @@ describe('ContabilidadService', () => {
     it('throws NotFoundException when request is not PENDIENTE_CONTABILIDAD', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
-        status: 'APROBADO_FINAL',
+        status: 'CONTABILIDAD_APROBADA',
         requestData: { groupId: 'g1' },
         accountingCodes: [],
       });

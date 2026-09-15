@@ -27,16 +27,22 @@ const P_UNIDADES = [{ co_uni: 'UND', des_uni: 'UNIDAD' }];
 
 const mockGetRequest = vi.fn();
 const mockValidate = vi.fn();
+const mockSave = vi.fn();
+const mockApprove = vi.fn();
+const mockAuditEvents = vi.fn();
 
 // AlmacenClassify ya no consume SessionContext (10E).
 
 vi.mock('../../servicios', () => ({
   warehouseService: {
     getRequestForClassification: (...args: unknown[]) => mockGetRequest(...args),
-    saveClassification: vi.fn(),
-    approveClassification: vi.fn(),
+    saveClassification: (...args: unknown[]) => mockSave(...args),
+    approveClassification: (...args: unknown[]) => mockApprove(...args),
     returnRequest: vi.fn(),
     validateArticle: (...args: unknown[]) => mockValidate(...args),
+  },
+  auditService: {
+    getEvents: (...args: unknown[]) => mockAuditEvents(...args),
   },
 }));
 
@@ -53,9 +59,18 @@ vi.mock('../../hooks/useCatalogos', () => ({
   useCatalogos: () => LOCAL_CATALOGS,
 }));
 
-// Can evalúa permisos de sesión: en tests se conceden todos.
+// Can y edición evalúan permiso × estado: en tests se controla el permiso.
+const { sessionAllow } = vi.hoisted(() => ({ sessionAllow: { value: true } }));
+
 vi.mock('../../contextos/SessionContext', () => ({
-  useSession: () => ({ hasPermission: () => true, loading: false, authenticated: true }),
+  useSession: () => ({ hasPermission: () => sessionAllow.value, loading: false, authenticated: true }),
+}));
+vi.mock('../../contextos/CompanyContext', () => ({ useCompany: () => ({ companyId: 'c1' }) }));
+vi.mock('../../hooks/useOrganizacion', () => ({
+  useOrganizacion: () => ({
+    usuarios: [{ id: 'u9', displayName: 'Carlos Almacén' }],
+    departamentos: [{ id: 'd1', name: 'Mantenimiento' }],
+  }),
 }));
 
 const { hookCalls } = vi.hoisted(() => ({ hookCalls: [] as (string | undefined)[] }));
@@ -99,7 +114,9 @@ function renderClassify() {
 
 describe('AlmacenClassify con catálogos Profit (FASE 8F)', () => {
   beforeEach(() => {
+    sessionAllow.value = true;
     mockGetRequest.mockResolvedValue(REQUEST);
+    mockAuditEvents.mockResolvedValue({ data: [], total: 0 });
   });
 
   afterEach(() => {
@@ -155,8 +172,10 @@ describe('AlmacenClassify con catálogos Profit (FASE 8F)', () => {
 
 describe('AlmacenClassify 14C-FORM: tipo, unidad Profit, impuesto, dry-run', () => {
   beforeEach(() => {
+    sessionAllow.value = true;
     mockGetRequest.mockResolvedValue(REQUEST);
     mockValidate.mockResolvedValue({ ready: true, checks: [], warnings: [], wouldProvision: [] });
+    mockAuditEvents.mockResolvedValue({ data: [], total: 0 });
   });
 
   afterEach(() => {
@@ -223,5 +242,137 @@ describe('AlmacenClassify 14C-FORM: tipo, unidad Profit, impuesto, dry-run', () 
     fireEvent.click(screen.getByRole('button', { name: /Validar art/i }));
     await waitFor(() => expect(mockValidate).toHaveBeenCalled());
     await screen.findByText(/ARTÍCULO LISTO/i);
+  });
+});
+
+describe('AlmacenClassify vista post-clasificación (solo lectura por estado)', () => {
+  const CLASSIFIED: any = {
+    ...REQUEST,
+    status: 'ALMACEN_APROBADO',
+    partNumber: 'P-001',
+    application: 'Bomba hidráulica',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sessionAllow.value = true;
+    mockValidate.mockResolvedValue({ ready: true, checks: [], warnings: [], wouldProvision: [] });
+    mockSave.mockResolvedValue({});
+    mockApprove.mockResolvedValue({});
+    mockAuditEvents.mockResolvedValue({
+      data: [{ actorId: 'u9', action: 'CLASSIFIED', createdAt: '2026-09-01T10:00:00.000Z' }],
+      total: 1,
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  function renderWithStatus(status: string) {
+    mockGetRequest.mockResolvedValue({ ...CLASSIFIED, status });
+    renderClassify();
+  }
+
+  it('1. PENDIENTE_ALMACEN renderiza formulario editable', async () => {
+    mockGetRequest.mockResolvedValue(REQUEST);
+    renderClassify();
+    const groupSel = await screen.findByLabelText(/Grupo \(Profit\)/i) as HTMLSelectElement;
+    expect(groupSel.disabled).toBe(false);
+    expect(screen.getByRole('button', { name: 'Guardar Borrador' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Validar art/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Aprobar Clasificación' })).toBeTruthy();
+    expect(screen.queryByText(/Clasificación enviada/)).toBeNull();
+  });
+
+  it('2/3/4. ALMACEN_APROBADO bloquea campos y oculta acciones de edición', async () => {
+    renderWithStatus('ALMACEN_APROBADO');
+    const groupSel = await screen.findByLabelText(/Grupo \(Profit\)/i) as HTMLSelectElement;
+    expect(groupSel.disabled).toBe(true);
+    expect((screen.getByLabelText(/Tipo de art/i) as HTMLSelectElement).disabled).toBe(true);
+    expect((screen.getByLabelText(/Unidad de venta/i) as HTMLSelectElement).disabled).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Aprobar Clasificación' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Guardar Borrador' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Validar art/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Devolver' })).toBeNull();
+    expect(mockSave).not.toHaveBeenCalled();
+    expect(mockApprove).not.toHaveBeenCalled();
+  });
+
+  it('5. ALMACEN_APROBADO muestra mensaje de pendiente y datos clasificados', async () => {
+    renderWithStatus('ALMACEN_APROBADO');
+    expect(await screen.findByText(/Clasificación enviada/)).toBeTruthy();
+    expect(screen.getAllByText(/pendiente de aprobación del Encargado de Almacén/).length).toBeGreaterThanOrEqual(1);
+    expect(await screen.findByText(/Clasificada por: Carlos Almacén/)).toBeTruthy();
+    // Datos visibles de solo lectura.
+    expect(screen.getAllByText('TORNILLO').length).toBeGreaterThanOrEqual(1);
+    expect((screen.getByPlaceholderText('Part Number') as HTMLInputElement).value).toBe('P-001');
+    expect((screen.getByPlaceholderText('Part Number') as HTMLInputElement).disabled).toBe(true);
+  });
+
+  it('6. recarga con ALMACEN_APROBADO mantiene modo solo lectura', async () => {
+    renderWithStatus('ALMACEN_APROBADO');
+    await screen.findByText(/Clasificación enviada/);
+    cleanup();
+    // F5: montaje nuevo, estado real desde API.
+    renderWithStatus('ALMACEN_APROBADO');
+    expect(await screen.findByText(/Clasificación enviada/)).toBeTruthy();
+    expect((await screen.findByLabelText(/Grupo \(Profit\)/i) as HTMLSelectElement).disabled).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Aprobar Clasificación' })).toBeNull();
+  });
+
+  it.each([
+    ['PENDIENTE_CONTABILIDAD'],
+    ['CONTABILIDAD_APROBADA'],
+    ['INSERTADO_PROFIT'],
+  ])('7/8/9. %s no permite editar', async (status) => {
+    renderWithStatus(status);
+    expect(await screen.findByText(/Clasificación enviada/)).toBeTruthy();
+    expect((await screen.findByLabelText(/Grupo \(Profit\)/i) as HTMLSelectElement).disabled).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Guardar Borrador' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Aprobar Clasificación' })).toBeNull();
+  });
+
+  it('10. usuario sin permiso no obtiene controles de edición en PENDIENTE_ALMACEN', async () => {
+    sessionAllow.value = false;
+    mockGetRequest.mockResolvedValue(REQUEST);
+    renderClassify();
+    expect((await screen.findByLabelText(/Grupo \(Profit\)/i) as HTMLSelectElement).disabled).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Guardar Borrador' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Aprobar Clasificación' })).toBeNull();
+  });
+
+  it('borrador: guardar conserva PENDIENTE_ALMACEN, avisa y sigue editable', async () => {
+    mockGetRequest.mockResolvedValue(REQUEST);
+    renderClassify();
+    await screen.findByLabelText(/Grupo \(Profit\)/i);
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar Borrador' }));
+    await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/Borrador guardado correctamente/)).toBeTruthy();
+    expect(screen.getByText(/continúa pendiente en Almacén/)).toBeTruthy();
+    // Sigue editable: sin banner de enviada y con acciones visibles.
+    // (el botón pasa a "Guardar Borrador ✓", prueba de que el guardado completó).
+    expect(screen.queryByText(/Clasificación enviada/)).toBeNull();
+    expect((screen.getByLabelText(/Grupo \(Profit\)/i) as HTMLSelectElement).disabled).toBe(false);
+    expect(screen.getByRole('button', { name: 'Guardar Borrador ✓' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Aprobar Clasificación' })).toBeTruthy();
+  });
+
+  it('borrador: varios guardados parciales conservan lo anterior', async () => {
+    mockGetRequest.mockResolvedValue(REQUEST);
+    renderClassify();
+    await screen.findByLabelText(/Grupo \(Profit\)/i);
+    const partInput = screen.getByPlaceholderText('Part Number') as HTMLInputElement;
+    fireEvent.change(partInput, { target: { value: 'P-001' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar Borrador' }));
+    await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
+    expect(mockSave.mock.calls[0]![1]).toMatchObject({ partNumber: 'P-001' });
+    const appInput = screen.getByPlaceholderText('Aplicación del artículo') as HTMLInputElement;
+    fireEvent.change(appInput, { target: { value: 'Bomba' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar Borrador ✓' }));
+    await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(2));
+    // El segundo payload conserva el part number del primero (estado del formulario).
+    expect(mockSave.mock.calls[1]![1]).toMatchObject({ partNumber: 'P-001', application: 'Bomba' });
+    expect((screen.getByPlaceholderText('Part Number') as HTMLInputElement).value).toBe('P-001');
   });
 });

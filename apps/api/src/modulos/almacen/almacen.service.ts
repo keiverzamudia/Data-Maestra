@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../comun/prisma/prisma.service';
 import { SolicitudesService } from '../solicitudes/solicitud.service';
 import { flattenRequestData } from '../../comun/utilidades/flatten-request-data';
@@ -47,7 +47,8 @@ export class AlmacenService {
   async classify(id: string, data: Record<string, unknown>, userId: string, companyId: string) {
     const request = await this.findOneForClassification(id);
 
-    if (request.status !== 'PENDIENTE_ALMACEN' && request.status !== 'ALMACEN_APROBADO') {
+    // Borrador: solo en PENDIENTE_ALMACEN, sin cambiar estado. Finalizar es approve().
+    if (request.status !== 'PENDIENTE_ALMACEN') {
       throw new NotFoundException(`Request ${id} is not pending warehouse classification`);
     }
 
@@ -68,7 +69,13 @@ export class AlmacenService {
   async approve(id: string, userId: string, companyId: string) {
     const request = await this.findOneForClassification(id);
 
-    if (request.status !== 'PENDIENTE_ALMACEN' && request.status !== 'ALMACEN_APROBADO') {
+    // 15A — Almacén completa la clasificación (PENDIENTE_ALMACEN → ALMACEN_APROBADO).
+    // Una solicitud ya clasificada solo la aprueba el Encargado de Almacén
+    // (módulo Aprobación Almacén); Almacén no puede enviarla a Contabilidad.
+    if (request.status === 'ALMACEN_APROBADO') {
+      throw new ForbiddenException(`Request ${id} ya fue clasificada: está pendiente de aprobación del Encargado de Almacén.`);
+    }
+    if (request.status !== 'PENDIENTE_ALMACEN') {
       throw new NotFoundException(`Request ${id} is not pending warehouse classification`);
     }
 

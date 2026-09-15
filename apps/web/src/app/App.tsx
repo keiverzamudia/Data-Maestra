@@ -4,10 +4,10 @@ import { SessionProvider, useSession } from '../contextos/SessionContext';
 import { AppLayout } from '../componentes/diseno/AppLayout';
 import { LoginPage } from '../modulos/autenticacion';
 import { PanelPage } from '../modulos/panel';
-import { SolicitudesList, SolicitudCreate, SolicitudDetailPage } from '../modulos/solicitudes';
+import { SolicitudesList, SolicitudCreate, SolicitudDetailPage, MisSolicitudesPage } from '../modulos/solicitudes';
 import { AlmacenList, AlmacenClassify } from '../modulos/almacen';
+import { AprobacionAlmacenPage } from '../modulos/aprobacion-almacen';
 import { ContabilidadList } from '../modulos/contabilidad';
-import { RevisionFinalPage } from '../modulos/revision-final';
 import { AprobacionesPage } from '../modulos/aprobaciones';
 import { ImportacionesPage } from '../modulos/importaciones';
 import { AuditoriaPage } from '../modulos/auditoria';
@@ -45,6 +45,7 @@ function Gate() {
               <Route path="/" element={<RequirePermission permission="DASHBOARD.VIEW"><PanelPage /></RequirePermission>} />
 
               {/* Solicitudes */}
+              <Route path="/solicitudes" element={<RequirePermission permission="REQUEST.VIEW"><MisSolicitudesPage /></RequirePermission>} />
               <Route path="/requester" element={<RequirePermission permission="REQUEST.VIEW"><SolicitudesList /></RequirePermission>} />
               <Route path="/requester/new" element={<RequirePermission permission="REQUEST.CREATE"><SolicitudCreate /></RequirePermission>} />
               <Route path="/requester/:id" element={<RequirePermission permission="REQUEST.VIEW"><SolicitudDetailPage /></RequirePermission>} />
@@ -53,14 +54,14 @@ function Gate() {
               <Route path="/warehouse" element={<RequirePermission permission="WAREHOUSE.VIEW"><AlmacenList /></RequirePermission>} />
               <Route path="/warehouse/:id" element={<RequirePermission permission="WAREHOUSE.VIEW"><AlmacenClassify /></RequirePermission>} />
 
+              {/* Aprobación Almacén (15A: Encargado revisa lo clasificado) */}
+              <Route path="/aprobacion-almacen" element={<RequirePermission permission="WAREHOUSE_MANAGER.VIEW"><AprobacionAlmacenPage /></RequirePermission>} />
+
               {/* Aprobaciones */}
               <Route path="/approvals" element={<RequirePermission permission="MANAGER.APPROVE"><AprobacionesPage /></RequirePermission>} />
 
-              {/* Contabilidad */}
+              {/* Contabilidad (16A: última aprobación humana + pestaña Profit) */}
               <Route path="/accounting" element={<RequirePermission permission="ACCOUNTING.VIEW"><ContabilidadList /></RequirePermission>} />
-
-              {/* Revision Final */}
-              <Route path="/final-review" element={<RequirePermission permission="FINAL_REVIEW.APPROVE"><RevisionFinalPage /></RequirePermission>} />
 
               {/* Importaciones */}
               <Route path="/imports" element={<RequirePermission permission="IMPORT.VIEW"><ImportacionesPage /></RequirePermission>} />
@@ -72,6 +73,7 @@ function Gate() {
               <Route path="/admin" element={<RequirePermission permission="ADMIN.MANAGE"><AdministracionPage /></RequirePermission>} />
               <Route path="/admin/organizacion" element={<RequirePermission permission="ADMIN.MANAGE"><AdministracionPage section="organizacion" /></RequirePermission>} />
               <Route path="/admin/roles" element={<RequirePermission permission="ADMIN.MANAGE"><AdministracionPage section="roles" /></RequirePermission>} />
+              <Route path="/admin/catalogos" element={<RequirePermission permission="ADMIN.MANAGE"><AdministracionPage section="catalogos" /></RequirePermission>} />
 
               {/* Legacy routes */}
               <Route path="/requests" element={<RequirePermission permission="REQUEST.VIEW"><SolicitudesList /></RequirePermission>} />

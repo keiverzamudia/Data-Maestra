@@ -56,12 +56,15 @@ async function main() {
     console.log('Created 6 users');
     
     // Roles
+    // 16A — el rol de revisión final salió del flujo (Contabilidad es la última
+    // aprobación humana). La auditoría histórica se conserva; el rol ya no se crea.
     const roles = [
       { id: 'r1', code: 'REQUESTER', name: 'Solicitante' },
       { id: 'r2', code: 'DEPARTMENT_MANAGER', name: 'Gerente' },
       { id: 'r3', code: 'WAREHOUSE', name: 'Almacén' },
+      // 15A — revisa y aprueba lo clasificado por Almacén (no clasifica).
+      { id: 'r8', code: 'WAREHOUSE_MANAGER', name: 'Encargado de Almacén' },
       { id: 'r4', code: 'ACCOUNTING', name: 'Contabilidad' },
-      { id: 'r5', code: 'FINAL_REVIEWER', name: 'Revisión Final' },
       { id: 'r6', code: 'MASTER_DATA_ADMIN', name: 'Admin MDM' },
       { id: 'r7', code: 'AUDITOR', name: 'Auditor' },
     ];
@@ -73,9 +76,11 @@ async function main() {
     // Permissions
     const permissions = [
       'REQUEST.CREATE', 'REQUEST.VIEW', 'WAREHOUSE.CLASSIFY', 'WAREHOUSE.VIEW',
+      // 15A — cola y decisión del Encargado de Almacén.
+      'WAREHOUSE_MANAGER.VIEW', 'WAREHOUSE_MANAGER.APPROVE',
       'ACCOUNTING.APPROVE', 'ACCOUNTING.VIEW', 'IMPORT.RUN', 'IMPORT.VIEW',
       'AUDIT.VIEW', 'ADMIN.MANAGE', 'DASHBOARD.VIEW', 'MANAGER.APPROVE',
-      'FINAL_REVIEW.APPROVE',
+      // 16A — permiso de revisión final eliminado (sin etapa de revisión final).
       // 14E: existe pero NO se otorga a ningún rol (deny by default).
       // Otorgarlo requiere acción administrativa explícita en fase posterior.
       'PROFIT.WRITE',
@@ -83,7 +88,7 @@ async function main() {
     for (const code of permissions) {
       await prisma.permission.create({ data: { code } });
     }
-    console.log('Created 14 permissions');
+    console.log('Created 15 permissions');
 
     // RolePermissions (10F): conjuntos reales por rol.
     // AUDITOR queda sin permisos (mismo comportamiento efectivo que el puente 10E).
@@ -91,8 +96,9 @@ async function main() {
       REQUESTER: ['REQUEST.CREATE', 'REQUEST.VIEW', 'DASHBOARD.VIEW'],
       DEPARTMENT_MANAGER: ['MANAGER.APPROVE', 'REQUEST.VIEW', 'DASHBOARD.VIEW'],
       WAREHOUSE: ['WAREHOUSE.CLASSIFY', 'WAREHOUSE.VIEW', 'REQUEST.VIEW', 'DASHBOARD.VIEW'],
+      // 15A — revisa/aprueba; no clasifica (sin WAREHOUSE.CLASSIFY).
+      WAREHOUSE_MANAGER: ['WAREHOUSE_MANAGER.VIEW', 'WAREHOUSE_MANAGER.APPROVE', 'REQUEST.VIEW', 'DASHBOARD.VIEW'],
       ACCOUNTING: ['ACCOUNTING.APPROVE', 'ACCOUNTING.VIEW', 'REQUEST.VIEW', 'DASHBOARD.VIEW'],
-      FINAL_REVIEWER: ['FINAL_REVIEW.APPROVE', 'REQUEST.VIEW', 'DASHBOARD.VIEW'],
       MASTER_DATA_ADMIN: ['ADMIN.MANAGE', 'DASHBOARD.VIEW', 'AUDIT.VIEW', 'IMPORT.RUN', 'IMPORT.VIEW'],
     };
     let rpCount = 0;

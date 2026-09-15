@@ -4,22 +4,32 @@ import { useSession } from '../../contextos/SessionContext';
 import { useCompany } from '../../contextos/CompanyContext';
 import { useNotifications, timeAgo } from '../../hooks/useNotifications';
 import { getRoleLabel } from '../../utilidades/presentacion';
-import { visibleNav, NAV } from './navigation';
+import { visibleNav, NAV, GROUP_LABEL, navMatches } from './navigation';
 
 /** 11B — Miga de pan derivada de la navegación (solo presentación). */
 const Breadcrumb: React.FC = () => {
   const { pathname } = useLocation();
   const crumbs: Array<{ label: string; to?: string }> = [{ label: 'Inicio', to: '/' }];
   for (const n of NAV) {
-    if (n.to && (pathname === n.to || pathname.startsWith(n.to + '/')) && n.to !== '/') {
-      crumbs.push({ label: n.label });
-    }
-    for (const c of n.children ?? []) {
-      if (pathname === c.to || pathname.startsWith(c.to + '/')) {
-        const parent = n.to ? null : n.label;
-        if (parent) crumbs.push({ label: parent });
-        crumbs.push({ label: c.label });
+    if (n.to && n.to !== '/' && navMatches(n, pathname)) {
+      // Hijo exacto (p. ej. Crear solicitud) gana sobre el padre.
+      const child = n.children?.find(c => pathname === c.to || pathname.startsWith(c.to + '/'));
+      if (n.to === '/solicitudes' && child) {
+        crumbs.push({ label: n.label, to: n.to });
+        crumbs.push({ label: child.label });
+      } else if (child && child.to !== n.to) {
+        crumbs.push({ label: n.label });
+        crumbs.push({ label: child.label });
+      } else {
+        crumbs.push({ label: n.label });
       }
+      break;
+    }
+    const child = n.children?.find(c => pathname === c.to || pathname.startsWith(c.to + '/'));
+    if (child) {
+      crumbs.push({ label: n.label });
+      crumbs.push({ label: child.label });
+      break;
     }
   }
   if (crumbs.length <= 1) return null;
@@ -134,8 +144,6 @@ const NotifBell: React.FC = () => {
   );
 };
 
-const GROUP_LABEL: Record<string, string> = { operate: 'Operación', admin: 'Administración' };
-
 export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [collapsed, setCollapsed] = React.useState(false);
   const [mobileOpen, setMobileOpen] = React.useState(false);
@@ -154,8 +162,8 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
   }, []);
 
   const nav = visibleNav(hasPermission);
-  const operate = nav.filter(n => n.key !== 'admin');
-  const admin = nav.filter(n => n.key === 'admin');
+  const groups: Array<'operacion' | 'trabajo' | 'administracion'> = ['operacion', 'trabajo', 'administracion'];
+  const byGroup = (g: 'operacion' | 'trabajo' | 'administracion') => nav.filter(n => n.group === g);
 
   const renderEntry = (n: (typeof nav)[number]) => n.children ? (
     <div key={n.key} className="nav-group">
@@ -199,18 +207,12 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
           {nav.length === 0 && !collapsed && (
             <div className="muted small" style={{ padding: 8 }}>Sin módulos disponibles</div>
           )}
-          {operate.length > 0 && (
-            <>
-              {!collapsed && <div className="nav-section">{GROUP_LABEL.operate}</div>}
-              {operate.map(renderEntry)}
-            </>
-          )}
-          {admin.length > 0 && (
-            <>
-              {!collapsed && <div className="nav-section">{GROUP_LABEL.admin}</div>}
-              {admin.map(renderEntry)}
-            </>
-          )}
+          {groups.map(g => byGroup(g).length > 0 && (
+            <div key={g}>
+              {!collapsed && <div className="nav-section">{GROUP_LABEL[g]}</div>}
+              {byGroup(g).map(renderEntry)}
+            </div>
+          ))}
         </nav>
         <div className="sidebar-footer">
           {!collapsed && <div className="muted small sidebar-foot-note">Gestión de Datos Maestros</div>}

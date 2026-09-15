@@ -93,8 +93,8 @@ Data-Maestra/
 |--------|-----------|---------|
 | solicitudes | `apps/api/src/modulos/solicitudes/` | CRUD solicitudes + workflow + masterCode |
 | almacen | `apps/api/src/modulos/almacen/` | Clasificar artículos |
-| contabilidad | `apps/api/src/modulos/contabilidad/` | Revisión contable + RETURN a almacén |
-| revision-final | `apps/api/src/modulos/revision-final/` | Aprobación definitiva |
+| aprobacion-almacen | `apps/api/src/modulos/aprobacion-almacen/` | Aprobación del Encargado (cola ALMACEN_APROBADO) |
+| contabilidad | `apps/api/src/modulos/contabilidad/` | Revisión contable + RETURN a almacén (última aprobación humana) |
 | auditoria | `apps/api/src/modulos/auditoria/` | Eventos de auditoría |
 | catalogos | `apps/api/src/modulos/catalogos/` | Grupos, subgrupos, categorías, marcas, unidades |
 | organizacion | `apps/api/src/modulos/organizacion/` | Empresas, departamentos, usuarios, roles |
@@ -118,8 +118,8 @@ Solo solicitudes tiene `dto/` con 3 DTOs.
 |--------|-----------|----------|
 | solicitudes | `apps/web/src/modulos/solicitudes/` | SolicitudesList, SolicitudCreate, SolicitudDetailPage |
 | almacen | `apps/web/src/modulos/almacen/` | AlmacenList, AlmacenClassify |
-| contabilidad | `apps/web/src/modulos/contabilidad/` | ContabilidadList |
-| revision-final | `apps/web/src/modulos/revision-final/` | RevisionFinalPage |
+| aprobacion-almacen | `apps/web/src/modulos/aprobacion-almacen/` | AprobacionAlmacenPage |
+| contabilidad | `apps/web/src/modulos/contabilidad/` | ContabilidadList (tabs + Profit integrado) |
 | aprobaciones | `apps/web/src/modulos/aprobaciones/` | AprobacionesPage |
 | panel | `apps/web/src/modulos/panel/` | PanelPage |
 | importaciones | `apps/web/src/modulos/importaciones/` | ImportacionesPage |
@@ -132,7 +132,7 @@ Solo solicitudes tiene `dto/` con 3 DTOs.
 
 **Schema:** `apps/api/prisma/schema.prisma` (24 modelos, 461 líneas)
 **Motor:** SQLite (`apps/api/data/dev.db`)
-**Seed:** `apps/api/prisma/seed.js` (3 empresas, 6 departamentos, 6 usuarios, 7 roles, 13 permisos)
+**Seed:** `apps/api/prisma/seed.js` (3 empresas, 6 departamentos, 6 usuarios, 7 roles, 15 permisos)
 
 **Modelos principales:**
 - Company, Department, User, Role, Permission, UserRole, RolePermission
@@ -179,14 +179,18 @@ pnpm --filter @master-data/api run db:studio     # Abrir Prisma Studio
 | REQUESTER | REQUEST.CREATE, REQUEST.VIEW, DASHBOARD.VIEW |
 | DEPARTMENT_MANAGER | MANAGER.APPROVE, REQUEST.VIEW, DASHBOARD.VIEW |
 | WAREHOUSE | WAREHOUSE.CLASSIFY, WAREHOUSE.VIEW, REQUEST.VIEW, DASHBOARD.VIEW |
+| WAREHOUSE_MANAGER | WAREHOUSE_MANAGER.VIEW, WAREHOUSE_MANAGER.APPROVE, REQUEST.VIEW, DASHBOARD.VIEW |
 | ACCOUNTING | ACCOUNTING.APPROVE, ACCOUNTING.VIEW, REQUEST.VIEW, DASHBOARD.VIEW |
-| FINAL_REVIEWER | FINAL_REVIEW.APPROVE, REQUEST.VIEW, DASHBOARD.VIEW |
 | MASTER_DATA_ADMIN | ADMIN.MANAGE, DASHBOARD.VIEW, AUDIT.VIEW, IMPORT.RUN, IMPORT.VIEW |
 | AUDITOR | (existe en catálogo; sin permisos asignados) |
 
+> FASE 16A: el rol de revisión final y su permiso salieron del flujo
+> (Contabilidad es la última aprobación humana). Ver
+> `docs/FASE_REESTRUCTURACION_CONTABILIDAD_PROFIT.md`.
+
 **Modelo real (10F/10G):** `UserRole → Role → RolePermission → Permission` + `UserPermissionOverride` (DENEGADO > CONCEDIDO > HEREDADO). Sin puentes en memoria ni matrices en frontend. Administración en `/admin` (usuarios, roles, masiva) y auditoría con `AUDIT.VIEW`.
 
-**Controllers protegidos:** solicitudes, almacen, contabilidad, revision-final, auditoria, usuarios, roles, panel, profit, importaciones (todos con `JwtGuard + RbacGuard + @RequirePermission`)
+**Controllers protegidos:** solicitudes, almacen, aprobacion-almacen, contabilidad, auditoria, usuarios, roles, panel, profit, importaciones (todos con `JwtGuard + RbacGuard + @RequirePermission`)
 **Sin guard (públicos):** auth (login/usuarios-login), salud, catálogos públicos, archivos servidos
 
 ---
@@ -205,11 +209,10 @@ pnpm --filter @master-data/api run db:studio     # Abrir Prisma Studio
 | PENDIENTE_GERENTE | Esperando gerente | No |
 | PENDIENTE_ALMACEN | Esperando almacén | No |
 | ALMACEN_APROBADO | Clasificación completada | No |
-| PENDIENTE_CONTABILIDAD | Esperando contabilidad | No |
-| PENDIENTE_VALIDACION_MAESTRA | Esperando validación maestra | No |
-| APROBADO_FINAL | Aprobado | Sí |
-| PROCESANDO_PROFIT | Registrando en Profit (futuro, sin lógica aún) | No |
-| REGISTRADO_PROFIT | Registrado en Profit (futuro, sin lógica aún) | No |
+| PENDIENTE_CONTABILIDAD | Esperando contabilidad (última aprobación humana) | No |
+| CONTABILIDAD_APROBADA | Aprobada por Contabilidad; puerta a Profit | No |
+| PROCESANDO_PROFIT | Registrando en Profit (técnico) | No |
+| INSERTADO_PROFIT | Registrado en Profit (INSERT + VERIFY) | Sí |
 | ERROR_PROFIT | Error técnico Profit (futuro; no es rechazo) | No |
 | DEVUELTO | Devuelto | No |
 | RECHAZADO | Rechazado | Sí |
@@ -221,8 +224,8 @@ BORRADOR → [SUBMIT] → PENDIENTE_GERENTE
 PENDIENTE_GERENTE → [APPROVE] → PENDIENTE_ALMACEN
 PENDIENTE_ALMACEN → [CLASSIFY] → ALMACEN_APROBADO
 ALMACEN_APROBADO → [APPROVE] → PENDIENTE_CONTABILIDAD
-PENDIENTE_CONTABILIDAD → [APPROVE] → PENDIENTE_VALIDACION_MAESTRA
-PENDIENTE_VALIDACION_MAESTRA → [APPROVE] → APROBADO_FINAL
+PENDIENTE_CONTABILIDAD → [APPROVE] → CONTABILIDAD_APROBADA
+CONTABILIDAD_APROBADA → [motor Profit] → PROCESANDO_PROFIT → INSERTADO_PROFIT
 ```
 
 ### Retorno (devolución)
@@ -232,7 +235,6 @@ PENDIENTE_GERENTE → [RETURN] → BORRADOR
 PENDIENTE_ALMACEN → [RETURN] → PENDIENTE_GERENTE
 ALMACEN_APROBADO → [RETURN] → PENDIENTE_GERENTE
 PENDIENTE_CONTABILIDAD → [RETURN] → PENDIENTE_ALMACEN
-PENDIENTE_VALIDACION_MAESTRA → [RETURN] → PENDIENTE_CONTABILIDAD
 ```
 
 ### Rechazo
@@ -303,18 +305,17 @@ La solicitud puede haber pasado anteriormente por Almacén, por lo que ya puede 
 **IMPORTANTE:** El rechazo contable usa `RETURN` → `PENDIENTE_ALMACEN` (devuelve a almacén, no rechaza). El comentario es obligatorio al rechazar.
 
 **Frontend:**
-- `apps/web/src/modulos/contabilidad/ContabilidadList.tsx`
+- `apps/web/src/modulos/contabilidad/ContabilidadList.tsx` (tabs Información/Contabilidad/Registro en Profit)
 
 ---
 
-## 13. Revisión Final
+## 13. Contabilidad — última aprobación humana (16A)
 
-**Backend:**
-- `apps/api/src/modulos/revision-final/revision-final.controller.ts`
-- `apps/api/src/modulos/revision-final/revision-final.service.ts`
-
-**Frontend:**
-- `apps/web/src/modulos/revision-final/RevisionFinalPage.tsx`
+Contabilidad aprueba (`PENDIENTE_CONTABILIDAD → CONTABILIDAD_APROBADA`) y el
+mismo usuario registra en Profit desde la pestaña integrada del detalle
+(`ProfitRegistrationPanel`). No existe Validación Maestra ni Aprobación Final;
+la revisión final histórica se conserva solo en auditoría. Ver
+`docs/FASE_REESTRUCTURACION_CONTABILIDAD_PROFIT.md`.
 
 ---
 

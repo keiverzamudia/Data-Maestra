@@ -52,12 +52,12 @@ Gerente aprueba
     ↓ PENDIENTE_ALMACEN
 Almacén clasifica (classify)
     ↓ ALMACEN_APROBADO
-Almacén aprueba (approve)
+Encargado de Almacén aprueba
     ↓ PENDIENTE_CONTABILIDAD
-Contabilidad aprueba con códigos
-    ↓ PENDIENTE_VALIDACION_MAESTRA
-Revisión final aprueba
-    ↓ APROBADO_FINAL
+Contabilidad aprueba con códigos (última aprobación humana)
+    ↓ CONTABILIDAD_APROBADA
+Mismo usuario registra en Profit (pestaña integrada)
+    ↓ INSERTADO_PROFIT (INSERT + VERIFY)
 ```
 
 ### Retorno (devolución)
@@ -65,8 +65,8 @@ Revisión final aprueba
 ```
 Gerente devuelve → BORRADOR
 Almacén devuelve → PENDIENTE_GERENTE
+Encargado de Almacén devuelve → PENDIENTE_GERENTE
 Contabilidad devuelve → PENDIENTE_ALMACEN
-Revisión final devuelve → PENDIENTE_CONTABILIDAD
 ```
 
 ### Rechazo

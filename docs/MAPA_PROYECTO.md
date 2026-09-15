@@ -10,15 +10,17 @@
 |----------------------|----------|---------|
 | Solicitudes | `apps/web/src/modulos/solicitudes/` | `apps/api/src/modulos/solicitudes/` |
 | Almacén (clasificación) | `apps/web/src/modulos/almacen/` | `apps/api/src/modulos/almacen/` |
-| Contabilidad | `apps/web/src/modulos/contabilidad/` + `apps/web/src/componentes/contabilidad/InformacionContable.tsx` | `apps/api/src/modulos/contabilidad/` (`dis.utils.ts` = serialización DIS) |
+| Contabilidad (última aprobación + pestaña Profit) | `apps/web/src/modulos/contabilidad/` + `apps/web/src/componentes/contabilidad/InformacionContable.tsx` | `apps/api/src/modulos/contabilidad/` (`dis.utils.ts` = serialización DIS) |
+| Aprobación Almacén | `apps/web/src/modulos/aprobacion-almacen/` | `apps/api/src/modulos/aprobacion-almacen/` |
 | Cuentas Profit (catálogo maestro) | `apps/web/src/servicios/api/api-profit-service.ts` (búsqueda + limit/offset) | `GET /api/v1/profit/accounts` → `ProfitAdapter.getAccounts()` (`C_DIST.dbo.sccuenta`, detalle=1) |
-| Revisión final | `apps/web/src/modulos/revision-final/` | `apps/api/src/modulos/revision-final/` |
 | Aprobaciones gerente | `apps/web/src/modulos/aprobaciones/` | (usa solicitudes) |
 | Panel/dashboard | `apps/web/src/modulos/panel/` | `apps/api/src/modulos/panel/` |
 | Importaciones | `apps/web/src/modulos/importaciones/` | `apps/api/src/modulos/importaciones/` |
 | Auditoría | `apps/web/src/modulos/auditoria/` | `apps/api/src/modulos/auditoria/` |
 | Administración | `apps/web/src/modulos/administracion/` | `apps/api/src/modulos/organizacion/` |
 | Catálogos | `apps/web/src/hooks/useCatalogos.ts` (local/historial) | `apps/api/src/modulos/catalogos/` |
+| Catálogos Profit efectivos | `apps/web/src/hooks/useProfitCatalogos.ts` → `AlmacenClassify` | `GET /api/v1/catalogs/effective/*` (Profit × visibilidad) |
+| Admin catálogos Profit | `apps/web/src/modulos/administracion/CatalogosProfitAdmin.tsx` | `GET/PUT/POST /api/v1/catalog-config/*` (ADMIN.MANAGE) |
 | Catálogos Profit (clasificación) | `apps/web/src/hooks/useProfitCatalogos.ts` → `AlmacenClassify` | `GET /profit/groups|subgroups|categories|brands` + `CatalogosService.resolveClassification()` |
 | Importar catálogo | `POST /api/v1/catalogs/import` | `apps/api/src/modulos/catalogos/catalog-import.service.ts` |
 | Organización | `apps/web/src/hooks/useOrganizacion.ts` | `apps/api/src/modulos/organizacion/` |
@@ -57,7 +59,7 @@
 | requestService | `servicios/api/api-request-service.ts` | `servicios/mock/request-service.ts` |
 | warehouseService | `servicios/api/api-warehouse-service.ts` | `servicios/mock/warehouse-service.ts` |
 | accountingService | `servicios/api/api-accounting-service.ts` | `servicios/mock/accounting-service.ts` |
-| finalReviewService | `servicios/api/api-final-review-service.ts` | `servicios/mock/final-review-service.ts` |
+| warehouseApprovalService | `servicios/api/api-warehouse-approval-service.ts` | `servicios/mock/warehouse-approval-service.ts` |
 | auditService | `servicios/api/api-audit-service.ts` | `servicios/mock/audit-service.ts` |
 | apiCatalogoService | `servicios/api/api-catalogo-service.ts` | (sin mock) |
 | apiOrganizacionService | `servicios/api/api-organizacion-service.ts` | (sin mock) |

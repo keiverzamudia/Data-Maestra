@@ -4,9 +4,9 @@ import { useCompany } from '../../contextos/CompanyContext';
 import { accountingService } from '../../servicios';
 import { useCatalogos } from '../../hooks/useCatalogos';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
-import { Button, SearchInput, StatusBadge, EmptyState, Modal, Textarea, Alert, ConfirmDialog, ErrorState, Skeleton } from '../../componentes/ui';
+import { Button, SearchInput, StatusBadge, EmptyState, Modal, Textarea, Alert, ConfirmDialog, ErrorState, Skeleton, Tabs } from '../../componentes/ui';
 import { Page } from '../../componentes/ui';
-import { WorkflowStepper } from '../../componentes/workflow';
+import { WorkflowStepper, ProfitRegistrationPanel } from '../../componentes/workflow';
 import {
   RequestSummary, AccountingStandardPanel, ValidationChecklist, DecisionPanel,
   type ContabilidadEntry, type CheckEvidence, type CheckStatus,
@@ -48,6 +48,8 @@ export const AccountingList: React.FC = () => {
   const [lightboxOpen, setLightboxOpen] = React.useState(false);
   // 12G — observaciones opcionales de la decisión (se guardan como comentario).
   const [notes, setNotes] = React.useState('');
+  // 16A — workspace por pestañas: Información | Contabilidad | Registro en Profit.
+  const [tab, setTab] = React.useState(0);
 
   const loadList = React.useCallback(() => {
     setLoading(true);
@@ -102,6 +104,7 @@ export const AccountingList: React.FC = () => {
     setSelected(r);
     setError(null);
     setNotes('');
+    setTab(0);
     setDetailLoading(true);
     // Detalle con aprobaciones (trazabilidad real); si falla, se usa la fila.
     accountingService.getAccountingDetail(r.id).then(
@@ -121,6 +124,13 @@ export const AccountingList: React.FC = () => {
     ? requests.filter(r => r.requestedDescription.toLowerCase().includes(search.toLowerCase()))
     : requests;
 
+  const reloadDetail = React.useCallback((id: string, fallback: Request) => {
+    accountingService.getAccountingDetail(id).then(
+      d => setSelected(d),
+      () => setSelected(fallback),
+    );
+  }, []);
+
   const handleApprove = async () => {
     if (!selected || saving) return;
     setSaving(true);
@@ -131,11 +141,13 @@ export const AccountingList: React.FC = () => {
         entries.map(e => ({ code: e.code, description: e.description, position: e.position })),
         notes.trim() || undefined,
       );
-      setSelected(null);
+      // 16A — Contabilidad aprobada: permanecer en el workspace, recargar y
+      // habilitar la pestaña Registro en Profit. No se registra automáticamente.
       setEntries([]);
       setNotes('');
       accountingService.getPendingApprovals(companyId).then(setRequests);
-      accountingService.getPendingApprovals(companyId).then(setRequests);
+      reloadDetail(selected.id, { ...selected, status: 'CONTABILIDAD_APROBADA' });
+      setTab(2);
     } catch (err: any) {
       setError(err?.message || 'Error al aprobar la solicitud contable.');
     } finally {
@@ -223,6 +235,8 @@ export const AccountingList: React.FC = () => {
     const lastChange = lastApproval
       ? `${lastApproval.actor?.displayName ?? '—'} · ${new Date(lastApproval.createdAt).toLocaleString('es-VE')}`
       : null;
+    // 16A — el backend es la autoridad: la pestaña solo refleja el estado.
+    const profitUnlocked = ['CONTABILIDAD_APROBADA', 'PROCESANDO_PROFIT', 'INSERTADO_PROFIT', 'ERROR_PROFIT'].includes(selected.status);
 
     return (
       <Page
@@ -238,12 +252,15 @@ export const AccountingList: React.FC = () => {
               <StatusBadge status={selected.status} />
             </div>
             <div className="acct-actions">
-              <Can permission="ACCOUNTING.APPROVE">
-                <Button variant="danger" size="sm" onClick={() => setRejectModal(true)} disabled={saving}>✕ Rechazar</Button>
-                <Button size="sm" onClick={() => setConfirmApprove(true)} disabled={saving || !ready} title={!ready ? 'Complete los requisitos del checklist' : undefined}>
-                  {saving ? 'Procesando…' : '✓ Aprobar Solicitud'}
-                </Button>
-              </Can>
+              {/* 16A — decisiones solo mientras está pendiente; tras aprobar, el workspace es de registro. */}
+              {selected.status === 'PENDIENTE_CONTABILIDAD' && (
+                <Can permission="ACCOUNTING.APPROVE">
+                  <Button variant="danger" size="sm" onClick={() => setRejectModal(true)} disabled={saving}>✕ Rechazar</Button>
+                  <Button size="sm" onClick={() => setConfirmApprove(true)} disabled={saving || !ready} title={!ready ? 'Complete los requisitos del checklist' : undefined}>
+                    {saving ? 'Procesando…' : '✓ Aprobar Solicitud'}
+                  </Button>
+                </Can>
+              )}
             </div>
           </div>
           <p className="muted small" style={{ marginTop: 4 }}>{selected.requestedDescription} · Esta solicitud requiere validación del estándar de cuentas contables.</p>
@@ -254,27 +271,41 @@ export const AccountingList: React.FC = () => {
           <WorkflowStepper status={selected.status} compact />
         </section>
 
-        {/* CAPA 3+4 — workspace 65/35 */}
+        {/* 16A — workspace por pestañas: Profit se habilita tras aprobar Contabilidad. */}
+        <Tabs
+          tabs={[
+            'Información',
+            `Contabilidad${selected.status === 'PENDIENTE_CONTABILIDAD' ? '' : ' ✓'}`,
+            `Registro en Profit${profitUnlocked ? '' : ' 🔒'}`,
+          ]}
+          active={tab}
+          onChange={setTab}
+        />
+
+        {tab === 0 && (
+          <RequestSummary
+            masterCode={masterCode}
+            description={selected.requestedDescription}
+            requester={requester?.displayName || '—'}
+            department={dept?.name || usuarios.find(u => u.id === selected.requesterId)?.displayName || '—'}
+            group={`${groupName} (${groupCode})`}
+            subgroup={subName}
+            category={findName(categorias, selected.categoryId)}
+            brand={findName(marcas, selected.brandId)}
+            unit={selected.unitId}
+            partNumber={selected.partNumber}
+            approvals={selected.approvals}
+            profitCode={selected.profitCode}
+            photoUri={selected.referencePhotoUri}
+            onOpenPhoto={() => setLightboxOpen(true)}
+            lightboxOpen={lightboxOpen}
+            onClosePhoto={() => setLightboxOpen(false)}
+          />
+        )}
+
+        {tab === 1 && (
         <div className="acct-workspace">
           <div className="stack">
-            <RequestSummary
-              masterCode={masterCode}
-              description={selected.requestedDescription}
-              requester={requester?.displayName || '—'}
-              department={dept?.name || usuarios.find(u => u.id === selected.requesterId)?.displayName || '—'}
-              group={`${groupName} (${groupCode})`}
-              subgroup={subName}
-              category={findName(categorias, selected.categoryId)}
-              brand={findName(marcas, selected.brandId)}
-              unit={selected.unitId}
-              partNumber={selected.partNumber}
-              approvals={selected.approvals}
-              photoUri={selected.referencePhotoUri}
-              onOpenPhoto={() => setLightboxOpen(true)}
-              lightboxOpen={lightboxOpen}
-              onClosePhoto={() => setLightboxOpen(false)}
-            />
-
             <AccountingStandardPanel
               groupName={groupName}
               groupCode={groupCode}
@@ -290,23 +321,48 @@ export const AccountingList: React.FC = () => {
 
           <div className="stack">
             <ValidationChecklist checks={checks} ready={ready} missing={missing} loading={stdLoading} />
-            <DecisionPanel
-              ready={ready}
-              missing={missing}
-              saving={saving}
-              notes={notes}
-              onNotes={setNotes}
-              onApprove={() => setConfirmApprove(true)}
-              onReject={() => setRejectModal(true)}
-              lastChange={lastChange}
-            />
+            {selected.status === 'PENDIENTE_CONTABILIDAD' ? (
+              <DecisionPanel
+                ready={ready}
+                missing={missing}
+                saving={saving}
+                notes={notes}
+                onNotes={setNotes}
+                onApprove={() => setConfirmApprove(true)}
+                onReject={() => setRejectModal(true)}
+                lastChange={lastChange}
+              />
+            ) : (
+              <Alert tone="info">Contabilidad aprobada ✓. Continúe con el registro en la pestaña Registro en Profit.</Alert>
+            )}
           </div>
         </div>
+        )}
+
+        {tab === 2 && (
+          profitUnlocked ? (
+            <ProfitRegistrationPanel
+              request={selected}
+              onChanged={() => {
+                reloadDetail(selected.id, selected);
+                accountingService.getPendingApprovals(companyId).then(setRequests);
+              }}
+            />
+          ) : (
+            <div className="card p16" aria-label="Registro en Profit bloqueado">
+              <h3 className="subsection-title">🔒 Registro en Profit bloqueado</h3>
+              <p className="muted" style={{ marginTop: 8 }}>
+                Disponible después de la aprobación de Contabilidad.
+                Apruebe la validación contable para habilitar el registro en Profit.
+              </p>
+            </div>
+          )
+        )}
 
         <ConfirmDialog
           open={confirmApprove}
           title="Aprobar revisión contable"
-          desc="¿Aprobar esta solicitud? Pasará a Validación Maestra con los códigos contables indicados."
+          desc="¿Aprobar la validación contable? No se registrará en Profit automáticamente: el registro se realiza después, en la pestaña Registro en Profit."
           confirmLabel="Aprobar"
           busy={saving}
           onCancel={() => setConfirmApprove(false)}

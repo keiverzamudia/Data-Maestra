@@ -15,7 +15,9 @@ export interface UnitOfMeasure { id: string; code: string; name: string; }
 // ── Request / Workflow ──
 // FASE 8G: estados normalizados a español. MASTER_ACTIVE se retiró (el backend
 // nunca lo produjo); MANAGER_APPROVED/ACCOUNTING_APPROVED eran intermedios muertos.
-export type RequestStatus = 'BORRADOR' | 'PENDIENTE_GERENTE' | 'PENDIENTE_ALMACEN' | 'ALMACEN_APROBADO' | 'PENDIENTE_CONTABILIDAD' | 'PENDIENTE_VALIDACION_MAESTRA' | 'APROBADO_FINAL' | 'PROCESANDO_PROFIT' | 'REGISTRADO_PROFIT' | 'ERROR_PROFIT' | 'DEVUELTO' | 'RECHAZADO';
+// FASE 16A: Contabilidad es la última aprobación humana (sin Validación Maestra
+// ni Aprobación Final; REGISTRADO_PROFIT → INSERTADO_PROFIT).
+export type RequestStatus = 'BORRADOR' | 'PENDIENTE_GERENTE' | 'PENDIENTE_ALMACEN' | 'ALMACEN_APROBADO' | 'PENDIENTE_CONTABILIDAD' | 'CONTABILIDAD_APROBADA' | 'PROCESANDO_PROFIT' | 'INSERTADO_PROFIT' | 'ERROR_PROFIT' | 'DEVUELTO' | 'RECHAZADO';
 export type Priority = 0 | 1 | 2 | 3;
 export interface DepartmentRef { id: string; name: string; code: string; managerId?: string | null; }
 export interface ApprovalRef { id: string; stepCode: string; actorId: string; action: string; fromStatus: string; toStatus: string; comment?: string | null; createdAt: string; actor?: { id: string; username: string; displayName: string }; }
@@ -28,6 +30,8 @@ export interface Request {
   masterCode?: string;
   /** Clasificación Profit del artículo (14C-FORM). */
   articleType?: string; articleTypeManual?: boolean; taxType?: string; unitCode?: string;
+  /** Código Profit real tras registro (14L). */
+  profitCode?: string;
   notes?: string; attributes?: Record<string,string>;
   accountingCodes?: { code: string; description: string; position?: string }[];
   createdAt: string; updatedAt: string;

@@ -1,7 +1,10 @@
 import * as React from 'react';
 import { Can } from '../../componentes/auth/Can';
+import { useSession } from '../../contextos/SessionContext';
+import { useCompany } from '../../contextos/CompanyContext';
 import { useNavigate, useParams } from 'react-router-dom';
-import { warehouseService } from '../../servicios';
+import { warehouseService, auditService } from '../../servicios';
+import { useOrganizacion } from '../../hooks/useOrganizacion';
 import { useCatalogos } from '../../hooks/useCatalogos';
 import { useProfitCatalogos } from '../../hooks/useProfitCatalogos';
 import type { DryRunResult } from '../../contratos';
@@ -14,6 +17,9 @@ import type { Request } from '../../tipos';
 export const WarehouseClassify: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { hasPermission } = useSession();
+  const { companyId } = useCompany();
+  const { usuarios } = useOrganizacion(companyId);
   // Catálogo local (traducción ID→código para solicitudes existentes; la unidad
   // de venta ahora viene de Profit: pUnidades).
   const { grupos: localGrupos, subgrupos: localSubgrupos, categorias: localCategorias, marcas: localMarcas } = useCatalogos();
@@ -47,7 +53,7 @@ export const WarehouseClassify: React.FC = () => {
     grupos: pGrupos, subgrupos: pSubgrupos, categorias: pCategorias, marcas: pMarcas,
     tipos: pTipos, tasas: pTasas, unidadesProfit: pUnidades, defaultType: lineDefaultType,
     loading: loadingProfit, error: profitError,
-  } = useProfitCatalogos(groupCode || undefined);
+  } = useProfitCatalogos(groupCode || undefined, companyId || undefined);
   const [partNumber, setPartNumber] = React.useState('');
   const [application, setApplication] = React.useState('');
   const [returnModal, setReturnModal] = React.useState(false);
@@ -57,6 +63,8 @@ export const WarehouseClassify: React.FC = () => {
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [lightboxOpen, setLightboxOpen] = React.useState(false);
+  // Quién clasificó (auditoría CLASSIFIED, tolerante a fallos).
+  const [classifiedBy, setClassifiedBy] = React.useState<string | null>(null);
 
   // Prefill: traduce IDs locales guardados a códigos Profit (el catálogo local
   // cubre los códigos Profit, verificado en FASE 8F).
@@ -113,6 +121,22 @@ export const WarehouseClassify: React.FC = () => {
 
   // El dry-run caduca si cambia cualquier dato clasificado.
   React.useEffect(() => { setDryRun(null); }, [groupCode, subgroupCode, articleType, unitCode, taxType]);
+
+  // Clasificador real (auditoría); el estado de negocio siempre viene del request.
+  React.useEffect(() => {
+    if (!request) return;
+    let cancelled = false;
+    auditService.getEvents({ entityId: request.id, action: 'CLASSIFIED' }).then(
+      (res) => {
+        if (cancelled) return;
+        const actorId = res.data[0]?.actorId;
+        setClassifiedBy(actorId ? (usuarios.find(u => u.id === actorId)?.displayName ?? null) : null);
+      },
+      () => { if (!cancelled) setClassifiedBy(null); },
+    );
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request?.id]);
 
   const analyzerProposal = id ? analyzerProposals[id] : null;
   // El backend ya filtra subgrupos por grupo (co_lin); la lista es del grupo.
@@ -171,7 +195,8 @@ export const WarehouseClassify: React.FC = () => {
   const canApprove = !!groupCode && !!subgroupCode && !!articleType && !!unitCode;
 
   const handleValidate = async () => {
-    if (!id || validating) return;
+    // Defensa en profundidad: el backend también valida estado y permiso.
+    if (!id || validating || request?.status !== 'PENDIENTE_ALMACEN') return;
     setValidating(true);
     setError(null);
     try {
@@ -185,12 +210,15 @@ export const WarehouseClassify: React.FC = () => {
   };
 
   const handleSave = async () => {
-    if (!id || saving) return;
+    if (!id || saving || request?.status !== 'PENDIENTE_ALMACEN') return;
     setSaving(true);
     setError(null);
     try {
       await warehouseService.saveClassification(id, buildPayload());
       setSaved(true);
+      // El backend ya promovió a ALMACEN_APROBADO: refrescar para que la
+      // vista cambie a solo lectura sin depender de navegación ni de F5.
+      await warehouseService.getRequestForClassification(id).then(r => { if (r) setRequest(r); });
     } catch (err: any) {
       setError(err?.message || 'Error al guardar la clasificación.');
     } finally {
@@ -199,14 +227,14 @@ export const WarehouseClassify: React.FC = () => {
   };
 
   const handleReturn = async () => {
-    if (!id) return;
+    if (!id || request?.status !== 'PENDIENTE_ALMACEN') return;
     await warehouseService.returnRequest(id, returnReason);
     setReturnModal(false);
     navigate('/warehouse');
   };
 
   const handleApprove = async () => {
-    if (!id || saving) return;
+    if (!id || saving || request?.status !== 'PENDIENTE_ALMACEN') return;
     setSaving(true);
     setError(null);
     try {
@@ -222,6 +250,12 @@ export const WarehouseClassify: React.FC = () => {
 
   if (!request || loadingProfit) return <Page title="Clasificación"><Skeleton height={20} width="40%" /><Skeleton height={36} /><Skeleton height={120} /></Page>;
 
+  // Regla de estado (el estado real viene de la API en cada carga, nunca solo
+  // de estado local): PENDIENTE_ALMACEN = clasificación activa; cualquier otro
+  // estado = solo lectura. El permiso se evalúa conjuntamente con el estado.
+  const isPendingWarehouse = request.status === 'PENDIENTE_ALMACEN';
+  const canEditClassification = hasPermission('WAREHOUSE.CLASSIFY') && isPendingWarehouse;
+
   return (
     <Page
       title={`Clasificación — ${request.requestNumber}`}
@@ -230,6 +264,17 @@ export const WarehouseClassify: React.FC = () => {
     >
       <WorkflowStepper status={request.status} />
       <WorkflowStatusInfo status={request.status} />
+
+      {/* Clasificación terminada: enviada al Encargado de Almacén. */}
+      {!isPendingWarehouse && (
+        <Alert tone="info">
+          <strong>Clasificación enviada</strong>
+          <p className="muted small" style={{ marginTop: 4 }}>
+            Esta solicitud fue clasificada y está pendiente de aprobación del Encargado de Almacén.
+          </p>
+          {classifiedBy && <p className="muted small">Clasificada por: {classifiedBy}</p>}
+        </Alert>
+      )}
 
       {/* Rejection note from accounting — E-05 fix: último RETURN/REJECT */}
       {request.status === 'PENDIENTE_ALMACEN' && request.approvals && (
@@ -293,7 +338,9 @@ export const WarehouseClassify: React.FC = () => {
 
           <SectionCard
             title="Clasificación"
-            desc="Catálogos directos desde Profit. El subgrupo depende del grupo; categoría y marca son independientes."
+            desc={canEditClassification
+              ? 'Catálogos directos desde Profit. El subgrupo depende del grupo; categoría y marca son independientes.'
+              : 'Clasificación registrada (solo lectura).'}
           >
 
             {profitError && (
@@ -302,13 +349,15 @@ export const WarehouseClassify: React.FC = () => {
               </Alert>
             )}
 
-            <Alert tone="info">
-              El cambio de clasificación modifica el código propuesto.
-            </Alert>
+            {canEditClassification && (
+              <Alert tone="info">
+                El cambio de clasificación modifica el código propuesto.
+              </Alert>
+            )}
 
             <div className="form-grid">
               <Field label="Tipo de artículo (Profit)" required>
-                <Select value={articleType} onChange={e => handleTypeChange(e.target.value.trim())}>
+                <Select value={articleType} onChange={e => handleTypeChange(e.target.value.trim())} disabled={!canEditClassification}>
                   <option value="">Seleccionar tipo</option>
                   <optgroup label="Funcionales">
                     {pTipos.filter(t => t.functional).map(t => (
@@ -330,14 +379,14 @@ export const WarehouseClassify: React.FC = () => {
               </Field>
 
               <Field label="Grupo (Profit)" required>
-                <Select value={groupCode} onChange={e => handleGroupChange(e.target.value.trim())}>
+                <Select value={groupCode} onChange={e => handleGroupChange(e.target.value.trim())} disabled={!canEditClassification}>
                   <option value="">Seleccionar grupo</option>
                   {pGrupos.map(g => <option key={g.co_lin.trim()} value={g.co_lin.trim()}>{g.co_lin.trim()} — {g.lin_des.trim()}</option>)}
                 </Select>
               </Field>
 
               <Field label="Subgrupo (del grupo seleccionado)" required>
-                <Select value={subgroupCode} onChange={e => setSubgroupCode(e.target.value.trim())} disabled={!groupCode}>
+                <Select value={subgroupCode} onChange={e => setSubgroupCode(e.target.value.trim())} disabled={!groupCode || !canEditClassification}>
                   <option value="">Seleccionar subgrupo</option>
                   {filteredSubgroups.map(s => <option key={`${s.co_lin.trim()}/${s.co_subl.trim()}`} value={s.co_subl.trim()}>{s.co_subl.trim()} — {s.subl_des.trim()}</option>)}
                 </Select>
@@ -347,6 +396,7 @@ export const WarehouseClassify: React.FC = () => {
                 <span className="muted small">Categoría (Profit, independiente — 01 = NO APLICA)</span>
                 <Select
                   value={categoryCode}
+                  disabled={!canEditClassification}
                   onChange={e => {
                     const code = e.target.value.trim();
                     const found = pCategorias.find(c => c.co_cat.trim() === code);
@@ -364,6 +414,7 @@ export const WarehouseClassify: React.FC = () => {
                 <span className="muted small">Marca (Profit colores, independiente)</span>
                 <Select
                   value={brandCode}
+                  disabled={!canEditClassification}
                   onChange={e => {
                     const code = e.target.value.trim();
                     const found = pMarcas.find(m => m.co_col.trim() === code);
@@ -381,7 +432,7 @@ export const WarehouseClassify: React.FC = () => {
               </label>
 
               <Field label="Unidad de venta (Profit)" required>
-                <Select value={unitCode} onChange={e => setUnitCode(e.target.value.trim())}>
+                <Select value={unitCode} onChange={e => setUnitCode(e.target.value.trim())} disabled={!canEditClassification}>
                   <option value="">Seleccionar unidad</option>
                   {pUnidades.map(u => <option key={u.co_uni.trim()} value={u.co_uni.trim()}>{u.co_uni.trim()} — {u.des_uni.trim()}</option>)}
                 </Select>
@@ -390,6 +441,7 @@ export const WarehouseClassify: React.FC = () => {
               <Field label="Impuesto (tipo_imp Profit)">
                 <Select
                   value={effectiveTax}
+                  disabled={!canEditClassification}
                   onChange={e => { setTaxType(e.target.value.trim()); setTaxTouched(true); }}
                 >
                   <option value="">Derivar por regla</option>
@@ -405,25 +457,27 @@ export const WarehouseClassify: React.FC = () => {
 
               <label>
                 <span className="muted small">Part Number</span>
-                <input className="input" value={partNumber} onChange={e => setPartNumber(e.target.value)} placeholder="Part Number" />
+                <input className="input" value={partNumber} onChange={e => setPartNumber(e.target.value)} placeholder="Part Number" disabled={!canEditClassification} />
               </label>
             </div>
 
             <label className="field-block">
               <span className="muted small">Aplicación</span>
-              <input className="input" value={application} onChange={e => setApplication(e.target.value)} placeholder="Aplicación del artículo" />
+              <input className="input" value={application} onChange={e => setApplication(e.target.value)} placeholder="Aplicación del artículo" disabled={!canEditClassification} />
             </label>
           </SectionCard>
 
-          <div className="action-bar">
-            <Can permission="WAREHOUSE.CLASSIFY">
-              <Button variant="ghost" onClick={() => setReturnModal(true)} disabled={saving}>Devolver</Button>
-              <Button variant="secondary" onClick={handleSave} disabled={saving || saved}>{saving ? 'Guardando...' : saved ? 'Guardado' : 'Guardar Borrador'}</Button>
-              <Button variant="secondary" onClick={handleValidate} disabled={validating || saving}>{validating ? 'Validando...' : 'Validar artículo'}</Button>
-              <Button onClick={() => setConfirmApprove(true)} disabled={saving || !canApprove}>{saving ? 'Procesando...' : 'Aprobar Clasificación'}</Button>
-            </Can>
-          </div>
-          {!canApprove && (
+          {canEditClassification && (
+            <div className="action-bar">
+              <Can permission="WAREHOUSE.CLASSIFY">
+                <Button variant="ghost" onClick={() => setReturnModal(true)} disabled={saving}>Devolver</Button>
+                <Button variant="secondary" onClick={handleSave} disabled={saving}>{saving ? 'Guardando...' : saved ? 'Guardar Borrador ✓' : 'Guardar Borrador'}</Button>
+                <Button variant="secondary" onClick={handleValidate} disabled={validating || saving}>{validating ? 'Validando...' : 'Validar artículo'}</Button>
+                <Button onClick={() => setConfirmApprove(true)} disabled={saving || !canApprove}>{saving ? 'Procesando...' : 'Aprobar Clasificación'}</Button>
+              </Can>
+            </div>
+          )}
+          {canEditClassification && !canApprove && (
             <p className="muted small block-mt-sm">
               Para aprobar se requieren grupo, subgrupo, tipo de artículo y unidad Profit.
             </p>
@@ -435,7 +489,11 @@ export const WarehouseClassify: React.FC = () => {
             desc="Verificación previa a la futura escritura. No escribe en Profit."
           >
             {!dryRun ? (
-              <p className="muted small">Pulse «Validar artículo» para ejecutar la validación completa.</p>
+              <p className="muted small">
+                {canEditClassification
+                  ? 'Pulse «Validar artículo» para ejecutar la validación completa.'
+                  : 'Validación informativa: la clasificación ya fue enviada al Encargado de Almacén.'}
+              </p>
             ) : (
               <div className="stack-sm">
                 <p className={`dryrun-verdict ${dryRun.ready ? 'dryrun-ready' : 'dryrun-notready'}`}>
@@ -463,7 +521,7 @@ export const WarehouseClassify: React.FC = () => {
           <ConfirmDialog
             open={confirmApprove}
             title="Aprobar clasificación"
-            desc="¿Aprobar esta clasificación? La solicitud pasará a Contabilidad para su revisión."
+            desc="¿Aprobar esta clasificación? La solicitud pasará a aprobación del Encargado de Almacén."
             confirmLabel="Aprobar y enviar"
             busy={saving}
             onCancel={() => setConfirmApprove(false)}
@@ -507,7 +565,7 @@ export const WarehouseClassify: React.FC = () => {
 
       {saved && (
         <div className="toast toast-success" role="status">
-          ✓ Borrador guardado
+          ✓ Borrador guardado correctamente. La solicitud continúa pendiente en Almacén.
         </div>
       )}
 

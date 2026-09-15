@@ -18,9 +18,10 @@ export class ProfitController {
 
   @Get('write-status')
   @RequirePermission('DASHBOARD.VIEW')
-  @ApiOperation({ summary: 'Write engine status (READ-ONLY: never enables writes)' })
+  @ApiOperation({ summary: 'Write engine status with real connection test (READ-ONLY)' })
   getWriteStatus() {
-    return this.creationService?.writeStatus() ?? { enabled: false, configured: false };
+    if (!this.creationService) return { enabled: false, configured: false, auth: 'sql', connected: false };
+    return this.creationService.writeStatus();
   }
 
   @Get('groups')

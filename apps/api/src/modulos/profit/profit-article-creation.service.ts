@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   MAX_CODE_ALLOCATION_ATTEMPTS,
   MAX_SEQUENCE_PER_PAIR,
@@ -22,7 +23,7 @@ export interface AllocationAttempt {
   attempt: number;
   candidate: string;
   existedBefore: boolean;
-  outcome: 'INSERTED' | 'COLLISION' | 'ERROR';
+  outcome: 'INSERTED' | 'COLLISION' | 'ERROR' | 'ALREADY_REGISTERED';
   errorCode?: string | number;
 }
 
@@ -32,6 +33,8 @@ export interface CreationResult {
   attempts: AllocationAttempt[];
   reconcile: ReconcileStatus;
   differences: string[];
+  /** true cuando el artículo ya existía con nuestros datos (sin INSERT). */
+  alreadyRegistered?: boolean;
   /** ERROR_CODE_ALLOCATION_EXHAUSTED u otro código final. */
   errorCode?: string;
   errorDetail?: string;
@@ -52,23 +55,47 @@ export interface CreationPlan {
  */
 @Injectable()
 export class ProfitArticleCreationService {
+  private readonly logger = new Logger(ProfitArticleCreationService.name);
+
   constructor(
     private readonly writeAdapter: ProfitWriteAdapterService,
     private readonly readAdapter: ProfitAdapterService,
+    // Opcional al final por compatibilidad posicional en tests. Tipado como
+    // ConfigService (inyectable global) y NO como interfaz inline: un tipo
+    // objeto emite metadata `Object` y rompe el DI de Nest al arrancar.
+    private readonly configService?: ConfigService,
   ) {}
+
+  /**
+   * Código del usuario de integración Profit (p. ej. DM). Backend-only:
+   * ClassifyRequestDto no tiene este campo y buildProfitInput jamás lo lee
+   * de la solicitud. Vacío o mal formado = preflight fallido, sin escritura.
+   */
+  integrationUserCode(): string {
+    const raw = this.configService?.get('PROFIT_INTEGRATION_USER_CODE') ?? '';
+    const code = String(raw).trim();
+    if (!/^[A-Za-z0-9]{1,6}$/.test(code)) {
+      // Solo presencia en el log (el código funcional no es secreto, pero el
+      // mensaje debe permitir diagnosticar un 400 sin exponer configuración).
+      this.logger.warn('PROFIT_INTEGRATION_USER_CODE ausente o inválido: preflight de integración bloqueado');
+      throw new BadRequestException('Usuario de integración de Profit no configurado o inexistente.');
+    }
+    return code;
+  }
 
   /** Plan sin escritura: payload + candidato + disponibilidad (§22).
    *  Solo usa el adapter de LECTURA: funciona con el flag en false. */
   async plan(input: ProfitArticleInput): Promise<CreationPlan> {
     const prefix = profitCodePrefix(input.groupCode, input.subgroupCode);
     if (!prefix) throw new BadRequestException('Grupo y subgrupo son requeridos para generar co_art');
+    const withUser = { ...input, integrationUser: this.integrationUserCode() };
     const maxSeq = await this.readAdapter.maxSequenceFor(prefix);
     const nextSequence = maxSeq + 1;
     if (nextSequence > MAX_SEQUENCE_PER_PAIR) {
       throw new BadRequestException('ERROR_CODE_SPACE_EXHAUSTED: sin correlativo disponible para esta línea/sublinea');
     }
     const candidate = profitCandidate(prefix, nextSequence);
-    const payload = buildProfitArticlePayload(candidate, input);
+    const payload = buildProfitArticlePayload(candidate, withUser);
     const available = !(await this.readAdapter.articleExists(candidate));
     const warnings: string[] = [];
     if (!available) warnings.push(`Candidato ocupado: ${candidate} (el motor avanzará al siguiente)`);
@@ -82,6 +109,8 @@ export class ProfitArticleCreationService {
   async allocateAndInsert(input: ProfitArticleInput): Promise<CreationResult> {
     const prefix = profitCodePrefix(input.groupCode, input.subgroupCode);
     if (!prefix) throw new BadRequestException('Grupo y subgrupo son requeridos para generar co_art');
+    // Preflight de integración: sin usuario configurado no hay escritura.
+    const withUser = { ...input, integrationUser: this.integrationUserCode() };
 
     const startSeq = (await this.writeAdapter.maxSequenceFor(prefix)) + 1;
     const attempts: AllocationAttempt[] = [];
@@ -92,13 +121,20 @@ export class ProfitArticleCreationService {
         return this.exhausted(attempts, prefix);
       }
       const candidate = profitCandidate(prefix, seq);
+      const payload = buildProfitArticlePayload(candidate, withUser);
       const existedBefore = await this.writeAdapter.articleExists(candidate);
       if (existedBefore) {
+        // Idempotencia (14K.5): si es NUESTRO artículo ya registrado, éxito
+        // sin duplicar; si es ajeno, se avanza como colisión evitada.
+        const v = await this.verifyAndReconcile(candidate, payload);
+        if (v.status === 'CREATED_AND_VERIFIED') {
+          attempts.push({ attempt, candidate, existedBefore: true, outcome: 'ALREADY_REGISTERED' });
+          return { ok: true, coArt: candidate, attempts, reconcile: v.status, differences: v.differences, alreadyRegistered: true };
+        }
         attempts.push({ attempt, candidate, existedBefore: true, outcome: 'COLLISION' });
         seq++;
         continue;
       }
-      const payload = buildProfitArticlePayload(candidate, input);
       try {
         await this.writeAdapter.insertArticle(payload);
         attempts.push({ attempt, candidate, existedBefore: false, outcome: 'INSERTED' });
@@ -148,14 +184,16 @@ export class ProfitArticleCreationService {
     };
   }
 
-  /** Relectura y comparación EXPECTED vs ACTUAL (§17-§18). */
+  /** Relectura y comparación EXPECTED vs ACTUAL (§17-§18).
+   *  Lee por el adapter READ (misma base/destino): verificar no exige flag
+   *  (14K.0); el flag gobierna únicamente el INSERT. */
   async verifyAndReconcile(
     coArt: string,
     expected: ProfitArticlePayload,
   ): Promise<{ status: ReconcileStatus; differences: string[] }> {
     let actual: ProfitArticlePayload | null;
     try {
-      actual = await this.writeAdapter.readArticle(coArt);
+      actual = (await this.readAdapter.getArticleForVerify(coArt)) as ProfitArticlePayload | null;
     } catch {
       return { status: 'RECONCILIATION_ERROR', differences: ['relectura no disponible'] };
     }
@@ -163,6 +201,7 @@ export class ProfitArticleCreationService {
     const fields: Array<keyof ProfitArticlePayload> = [
       'co_art', 'art_des', 'tipo', 'co_lin', 'co_subl', 'uni_venta', 'suni_venta',
       'tipo_imp', 'co_cat', 'co_color', 'procedenci', 'co_prov', 'tipo_cos',
+      'co_us_in',
     ];
     const differences: string[] = [];
     for (const f of fields) {
@@ -195,16 +234,28 @@ export class ProfitArticleCreationService {
     this.writeAdapter.describeTarget();
   }
 
-  /** Estado de escritura para la UI (solo lectura, nunca habilita nada). */
-  writeStatus(): { enabled: boolean; configured: boolean } {
+  /** Estado del motor para la UI (solo lectura, nunca habilita nada).
+   *  CONFIGURADO = destino+modo presentes; CONECTADO = conexión real abierta
+   *  con SELECT de identidad (§8: jamás afirmar conexión por configuración). */
+  async writeStatus(): Promise<{
+    enabled: boolean; configured: boolean; server?: string; database?: string;
+    auth: 'windows' | 'sql'; connected: boolean; identity?: string; code?: string;
+  }> {
     const enabled = this.writeAdapter.isWriteEnabled();
-    let configured = false;
+    const auth = this.writeAdapter.authMode();
+    let server: string | undefined;
+    let database: string | undefined;
     try {
-      this.writeAdapter.describeTarget();
-      configured = true;
+      const t = this.writeAdapter.describeTarget();
+      server = t.server;
+      database = t.database;
     } catch {
-      configured = false;
+      return { enabled, configured: false, auth, connected: false, code: 'NOT_CONFIGURED' };
     }
-    return { enabled, configured };
+    const test = await this.writeAdapter.testConnection();
+    return {
+      enabled, configured: true, server, database, auth,
+      connected: test.connected, identity: test.identity, code: test.code,
+    };
   }
 }

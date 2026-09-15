@@ -19,6 +19,11 @@ const ROLES: Record<string, RolePresentation> = {
     label: 'Almacén',
     description: 'Clasifica y valida la información del artículo antes de enviarlo a Contabilidad.',
   },
+  // 15A — revisa y aprueba lo preparado por Almacén; no clasifica.
+  WAREHOUSE_MANAGER: {
+    label: 'Encargado de Almacén',
+    description: 'Revisa y aprueba las solicitudes clasificadas por Almacén antes de enviarlas a Contabilidad.',
+  },
   ACCOUNTING: {
     label: 'Contabilidad',
     description: 'Valida la información contable y prepara la solicitud para continuar hacia Profit.',
@@ -26,10 +31,6 @@ const ROLES: Record<string, RolePresentation> = {
   DEPARTMENT_MANAGER: {
     label: 'Jefe de Departamento',
     description: 'Revisa y aprueba las solicitudes correspondientes a su departamento.',
-  },
-  FINAL_REVIEWER: {
-    label: 'Validador Maestro',
-    description: 'Realiza la validación maestra de la solicitud antes de la aprobación final.',
   },
   REQUESTER: {
     label: 'Solicitante',
@@ -56,9 +57,10 @@ const PERMISSIONS: Record<string, string> = {
   'REQUEST.VIEW': 'Consultar solicitudes',
   'WAREHOUSE.CLASSIFY': 'Clasificar artículos',
   'WAREHOUSE.VIEW': 'Consultar solicitudes de Almacén',
+  'WAREHOUSE_MANAGER.APPROVE': 'Aprobar clasificaciones de Almacén',
+  'WAREHOUSE_MANAGER.VIEW': 'Consultar aprobaciones de Almacén',
   'ACCOUNTING.APPROVE': 'Aprobar validación contable',
   'ACCOUNTING.VIEW': 'Consultar solicitudes de Contabilidad',
-  'FINAL_REVIEW.APPROVE': 'Realizar validación maestra',
   'MANAGER.APPROVE': 'Aprobar solicitudes del departamento',
   'DASHBOARD.VIEW': 'Consultar panel principal',
   'ADMIN.MANAGE': 'Administrar configuración',
@@ -70,6 +72,27 @@ const PERMISSIONS: Record<string, string> = {
 
 export function getPermissionLabel(code: string): string {
   return PERMISSIONS[code] ?? code;
+}
+
+/** Etapa/área responsable derivada del estado real (14G §30, sin inventar). */
+const ETAPA_POR_ESTADO: Record<string, string> = {
+  BORRADOR: 'Solicitante',
+  PENDIENTE_GERENTE: 'Gerente',
+  PENDIENTE_ALMACEN: 'Almacén',
+  // 15A — clasificado por Almacén, pendiente del Encargado.
+  ALMACEN_APROBADO: 'Aprobación Almacén',
+  PENDIENTE_CONTABILIDAD: 'Contabilidad',
+  // 16A — Contabilidad es la última aprobación humana; Profit es técnico.
+  CONTABILIDAD_APROBADA: 'Contabilidad',
+  PROCESANDO_PROFIT: 'Profit',
+  INSERTADO_PROFIT: 'Profit',
+  ERROR_PROFIT: 'Profit',
+  DEVUELTO: 'Devuelta',
+  RECHAZADO: 'Rechazada',
+};
+
+export function etapaActual(status: string): string {
+  return ETAPA_POR_ESTADO[status] ?? status;
 }
 
 const AUDIT_ACTIONS: Record<string, string> = {

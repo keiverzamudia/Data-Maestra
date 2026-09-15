@@ -112,10 +112,10 @@ describe('SolicitudesService.validateClassification (§24)', () => {
       brand: { findFirst: vi.fn().mockResolvedValue({ id: 'b1' }) },
       masterItem: { findFirst: vi.fn().mockResolvedValue(overrides.dup ?? null) },
     };
-    const catalogos = new CatalogosService(prisma);
     const hasUnit = Object.prototype.hasOwnProperty.call(overrides, 'profitUnit');
     const profit: any = { getUnit: vi.fn().mockResolvedValue(hasUnit ? overrides.profitUnit : { co_uni: 'UND' }) };
-    const service = new SolicitudesService(prisma, catalogos, {} as any, {} as any, {} as any, profit);
+    const catalogos = new CatalogosService(prisma, profit);
+    const service = new SolicitudesService(prisma, catalogos, {} as any, {} as any, {} as any);
     return { service, prisma, profit };
   }
 

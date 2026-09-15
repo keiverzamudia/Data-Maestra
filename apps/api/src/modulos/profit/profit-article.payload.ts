@@ -1,7 +1,9 @@
 /**
  * Payload definitivo de creación de artículo en Profit (FASE 14D §4 / 14E §5).
- * Exactamente estos 14 campos. Sin `any`. Sin campos generados por Profit
- * (rowguid, fecha_reg, stocks), sin co_imp, sin master_code.
+ * 15 campos: los 14 originales + co_us_in (usuario de integración, fijado
+ * internamente desde configuración; jamás desde frontend/DTO).
+ * Sin `any`. Sin campos generados por Profit (rowguid, fecha_reg, stocks),
+ * sin co_imp, sin master_code.
  */
 
 /** Clasificación de Data-Maestra lista para convertirse en payload Profit. */
@@ -18,6 +20,12 @@ export interface ProfitArticleInput {
   providerCode?: string;
   costType?: string;
   disCen?: string;
+  /**
+   * Código del usuario de integración Profit (p. ej. DM). Lo establece el
+   * motor desde PROFIT_INTEGRATION_USER_CODE; NUNCA proviene del frontend
+   * (ClassifyRequestDto no tiene este campo) ni de la solicitud.
+   */
+  integrationUser?: string;
 }
 
 /** Fila a insertar en dbo.art. Todos char/varchar con trim aplicado. */
@@ -36,6 +44,8 @@ export interface ProfitArticlePayload {
   co_prov: string;
   tipo_cos: string;
   dis_cen: string;
+  /** Usuario de integración Profit (char(6), fijado por el motor). */
+  co_us_in: string;
 }
 
 /** Límites del contrato 14D §5/§8. */
@@ -66,6 +76,7 @@ export function buildProfitArticlePayload(coArt: string, input: ProfitArticleInp
     co_prov: clean(input.providerCode) || 'GEN',
     tipo_cos: clean(input.costType) || (tipo === 'S' ? 'ULOM' : 'ULCO'),
     dis_cen: clean(input.disCen),
+    co_us_in: clean(input.integrationUser),
   };
 }
 
@@ -86,4 +97,56 @@ export function profitSequenceOf(coArt: string, prefix: string): number | null {
   const tail = co.slice(prefix.length);
   if (!/^\d{1,4}$/.test(tail)) return null;
   return parseInt(tail, 10);
+}
+
+/** Kinds de parámetro soportados (14K.5: NUNCA text: ODBC lo rechaza). */
+export type ProfitParamKind = 'char' | 'varchar';
+
+export interface ProfitParam {
+  name: string;
+  kind: ProfitParamKind;
+  size: number;
+  value: string;
+}
+
+export interface ProfitInsertStatement {
+  sql: string;
+  params: ProfitParam[];
+}
+
+/**
+ * Sentencia INSERT explícita y controlada (14K.5): 15 columnas fijas
+ * (14 originales + co_us_in al final), sin TEXT (dis_cen es VARCHAR(8000);
+ * la columna TEXT lo convierte). Pura y testeable; el adapter solo mapea
+ * kinds al driver.
+ */
+export function buildInsertStatement(p: ProfitArticlePayload): ProfitInsertStatement {
+  const cols = [
+    'co_art', 'art_des', 'tipo', 'co_lin', 'co_subl', 'uni_venta', 'suni_venta',
+    'tipo_imp', 'co_cat', 'co_color', 'procedenci', 'co_prov', 'tipo_cos', 'dis_cen',
+    'co_us_in',
+  ];
+  const P = (name: string, kind: ProfitParamKind, size: number, value: string): ProfitParam =>
+    ({ name, kind, size, value });
+  const params: ProfitParam[] = [
+    P('co_art', 'char', 30, p.co_art),
+    P('art_des', 'varchar', 120, p.art_des),
+    P('tipo', 'char', 1, p.tipo),
+    P('co_lin', 'char', 6, p.co_lin),
+    P('co_subl', 'char', 6, p.co_subl),
+    P('uni_venta', 'char', 6, p.uni_venta),
+    P('suni_venta', 'char', 6, p.suni_venta),
+    P('tipo_imp', 'char', 1, p.tipo_imp),
+    P('co_cat', 'char', 6, p.co_cat),
+    P('co_color', 'char', 6, p.co_color),
+    P('procedenci', 'char', 6, p.procedenci),
+    P('co_prov', 'char', 10, p.co_prov),
+    P('tipo_cos', 'char', 4, p.tipo_cos),
+    P('dis_cen', 'varchar', 8000, p.dis_cen),
+    P('co_us_in', 'char', 6, p.co_us_in),
+  ];
+  return {
+    sql: `INSERT INTO dbo.art (${cols.join(', ')}) VALUES (${cols.map((c) => '@' + c).join(', ')})`,
+    params,
+  };
 }

@@ -10,6 +10,10 @@ export const mockRequestService: RequestService = {
     let d = [...requests];
     if (p.companyId) d = d.filter(r => r.companyId === p.companyId);
     if (p.status) d = d.filter(r => r.status === p.status);
+    if ((p as { statuses?: string[] }).statuses?.length) {
+      const set = new Set((p as { statuses?: string[] }).statuses);
+      d = d.filter(r => set.has(r.status));
+    }
     if (p.search) {
       const s = p.search.toLowerCase();
       d = d.filter(r => r.requestedDescription.toLowerCase().includes(s) || String(r.requestNumber).includes(s));
@@ -21,7 +25,7 @@ export const mockRequestService: RequestService = {
   },
   async resumen() {
     await delay();
-    const done = (s: string) => ['APROBADO_FINAL', 'REGISTRADO_PROFIT'].includes(s);
+    const done = (s: string) => ['CONTABILIDAD_APROBADA', 'INSERTADO_PROFIT'].includes(s);
     const rej = (s: string) => s === 'RECHAZADO';
     return {
       activas: requests.length,

@@ -6,19 +6,22 @@ import { WorkflowStepper, WorkflowStatusInfo, workflowInfo } from './WorkflowSte
 describe('WorkflowStepper 11B', () => {
   afterEach(() => cleanup());
 
-  it('marca actual, completados y futuros', () => {
+  it('marca actual, completados y futuros (16A: 7 pasos)', () => {
     render(<WorkflowStepper status="PENDIENTE_ALMACEN" />);
-    expect(screen.getByLabelText('Pendiente de Almacén: actual')).toBeTruthy();
-    expect(screen.getByLabelText('Solicitud creada: completado')).toBeTruthy();
-    expect(screen.getByLabelText('Aprobación Final: pendiente')).toBeTruthy();
+    expect(screen.getByLabelText('Almacén: actual')).toBeTruthy();
+    expect(screen.getByLabelText('Solicitud: completado')).toBeTruthy();
+    expect(screen.getByLabelText('Registrado Profit: pendiente')).toBeTruthy();
+    expect(screen.queryByText('Validación Maestra')).toBeNull();
+    expect(screen.queryByText('Aprobación Final')).toBeNull();
   });
 
   it('usa etiquetas humanas, no enums', () => {
     render(<WorkflowStepper status="BORRADOR" />);
-    expect(screen.getByText('Solicitud creada')).toBeTruthy();
+    expect(screen.getByText('Solicitud')).toBeTruthy();
     expect(screen.queryByText('BORRADOR')).toBeNull();
-    expect(workflowInfo('PENDIENTE_GERENTE').title).toBe('Pendiente de aprobación');
-    expect(workflowInfo('REGISTRADO_PROFIT').title).toBe('Registrado en Profit');
+    expect(workflowInfo('PENDIENTE_GERENTE').title).toBe('Pendiente de Gerente');
+    expect(workflowInfo('INSERTADO_PROFIT').title).toBe('Registrado en Profit');
+    expect(workflowInfo('CONTABILIDAD_APROBADA').title).toBe('Contabilidad aprobada');
   });
 
   it('ERROR_PROFIT con marca de error técnico', () => {
@@ -43,6 +46,6 @@ describe('WorkflowStepper 11B', () => {
   it('WorkflowStatusInfo deriva título y contexto del estado', () => {
     render(<WorkflowStatusInfo status="PENDIENTE_CONTABILIDAD" />);
     expect(screen.getByText('Pendiente de Contabilidad')).toBeTruthy();
-    expect(screen.getByText(/requiere aprobación del área de Contabilidad/)).toBeTruthy();
+    expect(screen.getByText(/última aprobación humana/)).toBeTruthy();
   });
 });

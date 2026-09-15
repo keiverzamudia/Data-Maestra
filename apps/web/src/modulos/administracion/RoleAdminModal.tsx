@@ -182,7 +182,7 @@ export const RoleAdminModal: React.FC<Props> = ({ roleCode, onClose, onChanged }
 
 const PERM_DOMAIN: Record<string, string> = {
   REQUEST: 'Solicitudes', WAREHOUSE: 'Almacén', ACCOUNTING: 'Contabilidad',
-  FINAL_REVIEW: 'Revisión final', MANAGER: 'Gerencia', ADMIN: 'Administración',
+  WAREHOUSE_MANAGER: 'Aprobación Almacén', MANAGER: 'Gerencia', ADMIN: 'Administración',
   AUDIT: 'Auditoría', IMPORT: 'Importaciones', DASHBOARD: 'Panel',
 };
 

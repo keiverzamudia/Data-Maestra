@@ -38,14 +38,16 @@ describe('AprobacionesPage 11C', () => {
   it('bandeja con conteo y detalle con workflow', async () => {
     render(<MemoryRouter><ApprovalsPage /></MemoryRouter>);
     expect(await screen.findByText(/1 solicitud por aprobar/)).toBeTruthy();
-    fireEvent.click(screen.getByText('Ver'));
+    fireEvent.click(screen.getByText('Aprobar'));
     expect(await screen.findByText('Aprobación Gerencial — 31')).toBeTruthy();
+    expect(approveMock).not.toHaveBeenCalled();
   });
 
   it('aprobar con confirmación explícita', async () => {
     approveMock.mockResolvedValue({});
     render(<MemoryRouter><ApprovalsPage /></MemoryRouter>);
-    fireEvent.click(await screen.findByText('Ver'));
+    fireEvent.click(await screen.findByText('Aprobar'));
+    expect(approveMock).not.toHaveBeenCalled();
     fireEvent.click(await screen.findByText('Aprobar solicitud'));
     expect(await screen.findByText(/Pasará a Almacén/)).toBeTruthy();
     const confirms = screen.getAllByText('Aprobar');

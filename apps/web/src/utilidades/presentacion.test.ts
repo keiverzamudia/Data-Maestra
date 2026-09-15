@@ -13,14 +13,18 @@ describe('presentacion 12H — catálogo en español', () => {
     expect(getRoleLabel('WAREHOUSE')).toBe('Almacén');
     expect(getRoleLabel('ACCOUNTING')).toBe('Contabilidad');
     expect(getRoleLabel('DEPARTMENT_MANAGER')).toBe('Jefe de Departamento');
-    expect(getRoleLabel('FINAL_REVIEWER')).toBe('Validador Maestro');
     expect(getRoleLabel('REQUESTER')).toBe('Solicitante');
+    // 15A — Encargado de Almacén.
+    expect(getRoleLabel('WAREHOUSE_MANAGER')).toBe('Encargado de Almacén');
+    expect(getRoleDescription('WAREHOUSE_MANAGER')).toMatch(/Contabilidad/);
     expect(getRoleDescription('ACCOUNTING')).toMatch(/Profit/);
     expect(getRoleDescription('REQUESTER')).toMatch(/seguimiento/);
   });
 
   it('desconocidos usan fallback sin romper', () => {
     expect(getRoleLabel('AUDITOR', 'Auditor')).toBe('Auditor');
+    // 16A — rol de revisión final fuera del catálogo operativo.
+    expect(getRoleLabel('FINAL_REVIEWER')).toBe('FINAL_REVIEWER');
     expect(getRoleLabel('XXX')).toBe('XXX');
     expect(getRoleDescription('XXX')).toBeNull();
   });
@@ -31,9 +35,11 @@ describe('presentacion 12H — catálogo en español', () => {
       ['REQUEST.VIEW', 'Consultar solicitudes'],
       ['WAREHOUSE.CLASSIFY', 'Clasificar artículos'],
       ['WAREHOUSE.VIEW', 'Consultar solicitudes de Almacén'],
+      // 15A — permisos del Encargado de Almacén.
+      ['WAREHOUSE_MANAGER.APPROVE', 'Aprobar clasificaciones de Almacén'],
+      ['WAREHOUSE_MANAGER.VIEW', 'Consultar aprobaciones de Almacén'],
       ['ACCOUNTING.APPROVE', 'Aprobar validación contable'],
       ['ACCOUNTING.VIEW', 'Consultar solicitudes de Contabilidad'],
-      ['FINAL_REVIEW.APPROVE', 'Realizar validación maestra'],
       ['MANAGER.APPROVE', 'Aprobar solicitudes del departamento'],
       ['DASHBOARD.VIEW', 'Consultar panel principal'],
       ['ADMIN.MANAGE', 'Administrar configuración'],

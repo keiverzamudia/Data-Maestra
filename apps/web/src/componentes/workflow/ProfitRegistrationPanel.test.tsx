@@ -1,15 +1,19 @@
 // @vitest-environment jsdom
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { ProfitRegistrationPanel } from './ProfitRegistrationPanel';
 import type { Request } from '../../tipos';
 
 vi.mock('../../servicios/api/api-profit-registration-service', () => ({
   apiProfitRegistrationService: {
+    writeStatus: vi.fn(),
     plan: vi.fn(),
     create: vi.fn(),
     verify: vi.fn(),
+    attempts: vi.fn(),
+    retry: vi.fn(),
   },
   RECONCILE_LABELS: {
     CREATED_AND_VERIFIED: { text: 'Creado y verificado', tone: 'green' },
@@ -18,17 +22,38 @@ vi.mock('../../servicios/api/api-profit-registration-service', () => ({
     RECONCILIATION_ERROR: { text: 'Error de reconciliación', tone: 'red' },
   },
   profitErrorLabel: (c?: string) => c ?? 'Error desconocido',
+  profitErrorAction: (c?: string) => (c ? `Acción para ${c}` : null),
+  profitOpState: (a: any) => {
+    if (a.writeBlocked) return 'DISABLED';
+    if (a.busy === 'plan' || a.busy === 'retry') return 'VALIDATING';
+    if (a.busy === 'create') return 'WRITING';
+    if (a.busy === 'verify') return 'VERIFYING';
+    if (a.result) {
+      if (a.result.ok && a.result.reconcile === 'CREATED_AND_VERIFIED') return 'SUCCESS';
+      if (!a.result.ok && a.result.errorCode === 'ERROR_PROFIT_AMBIGUOUS') return 'UNKNOWN';
+      if (!a.result.ok) return 'FAILED';
+    }
+    if (a.requestStatus === 'ERROR_PROFIT') return 'RETRY_REQUIRED';
+    if (a.plan && a.plan.available) return 'READY_TO_WRITE';
+    return 'READY';
+  },
 }));
 
 vi.mock('../../contextos/SessionContext', () => ({
-  useSession: () => ({ hasPermission: (p: string) => p === 'PROFIT.WRITE', user: { displayName: 'Op' } }),
+  useSession: vi.fn(),
 }));
 
-import { apiProfitRegistrationService } from '../../servicios/api/api-profit-registration-service';
+vi.mock('../../hooks/useCatalogos', () => ({
+  useCatalogos: () => ({ grupos: [], subgrupos: [], categorias: [], marcas: [], unidades: [] }),
+}));
+
+import { useSession } from '../../contextos/SessionContext';
+
+import { apiProfitRegistrationService, profitOpState } from '../../servicios/api/api-profit-registration-service';
 
 const REQ = {
   id: 'r1', requestNumber: 55, companyId: 'c1', departmentId: 'd1', requesterId: 'u1',
-  requestedDescription: 'TORNILLO', purpose: 'x', status: 'APROBADO_FINAL', priority: 0,
+  requestedDescription: 'TORNILLO', purpose: 'x', status: 'CONTABILIDAD_APROBADA', priority: 0,
   createdAt: '', updatedAt: '',
 } as unknown as Request;
 
@@ -44,6 +69,9 @@ const PLAN = {
 
 describe('ProfitRegistrationPanel', () => {
   beforeEach(() => {
+    (useSession as any).mockReturnValue({ hasPermission: (p: string) => p === 'PROFIT.WRITE', user: { displayName: 'Op' }, roleCodes: ['WAREHOUSE'] });
+    (apiProfitRegistrationService.writeStatus as any).mockResolvedValue({ enabled: true, configured: true });
+    (apiProfitRegistrationService.attempts as any).mockResolvedValue({ requestId: 'r1', attempts: [], verifications: [] });
     (apiProfitRegistrationService.plan as any).mockResolvedValue(PLAN);
     (apiProfitRegistrationService.create as any).mockResolvedValue({
       requestId: 'r1', ok: true, coArt: 'ACTEQT0001',
@@ -58,20 +86,22 @@ describe('ProfitRegistrationPanel', () => {
   });
 
   it('oculto en estados no finales', () => {
-    const { container } = render(<ProfitRegistrationPanel request={{ ...REQ, status: 'BORRADOR' } as Request} />);
+    const { container } = render(<MemoryRouter><ProfitRegistrationPanel request={{ ...REQ, status: 'BORRADOR' } as Request} /></MemoryRouter>);
     expect(container.textContent).toBe('');
   });
 
   it('dry-run muestra candidato y permite registrar con confirmación', async () => {
     const onChanged = vi.fn();
-    render(<ProfitRegistrationPanel request={REQ} onChanged={onChanged} />);
-    fireEvent.click(screen.getByRole('button', { name: /dry-run/i }));
-    await waitFor(() => expect(screen.getByText('ACTEQT0001')).toBeDefined());
+    render(<MemoryRouter><ProfitRegistrationPanel request={REQ} onChanged={onChanged} /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Preparar registro' }));
+    await waitFor(() => expect(screen.getAllByText('ACTEQT0001').length).toBeGreaterThan(0));
     expect(screen.getByText('DISPONIBLE')).toBeDefined();
 
     fireEvent.click(screen.getByRole('button', { name: 'Registrar en Profit' }));
-    await screen.findByText('Registrar artículo en Profit');
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmar registro' }));
+    const dialog = await screen.findByRole('alertdialog');
+    expect(dialog.textContent).toContain('sin UPDATE ni DELETE');
+    fireEvent.change(within(dialog).getByPlaceholderText('REGISTRAR EN PROFIT'), { target: { value: 'REGISTRAR EN PROFIT' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar registro' }));
     await waitFor(() => expect(apiProfitRegistrationService.create).toHaveBeenCalledWith('r1'));
     await screen.findByText('Creado y verificado');
     expect(onChanged).toHaveBeenCalled();
@@ -81,10 +111,174 @@ describe('ProfitRegistrationPanel', () => {
     (apiProfitRegistrationService.verify as any).mockResolvedValue({
       requestId: 'r1', coArt: 'ACTEQT0001', reconcile: 'NOT_FOUND', differences: [],
     });
-    render(<ProfitRegistrationPanel request={REQ} />);
+    render(<MemoryRouter><ProfitRegistrationPanel request={REQ} /></MemoryRouter>);
     fireEvent.change(screen.getByPlaceholderText('co_art a verificar...'), { target: { value: 'ACTEQT0001' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Verificar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Verificar en Profit' }));
     await waitFor(() => expect(apiProfitRegistrationService.verify).toHaveBeenCalledWith('r1', 'ACTEQT0001'));
     await screen.findByText('No encontrado');
+  });
+
+  it('con escritura deshabilitada muestra aviso y bloquea el botón', async () => {
+    (apiProfitRegistrationService.writeStatus as any).mockResolvedValue({ enabled: false, configured: false, auth: 'sql', connected: false });
+    render(<MemoryRouter><ProfitRegistrationPanel request={REQ} /></MemoryRouter>);
+    await screen.findByText(/Escritura no disponible/);
+    fireEvent.click(screen.getByRole('button', { name: 'Preparar registro' }));
+    await waitFor(() => expect(screen.getAllByText('ACTEQT0001').length).toBeGreaterThan(0));
+    const btn = screen.getByRole('button', { name: 'Registrar en Profit' });
+    expect((btn as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('READY muestra checklist sin verde y éxito real con correlation', async () => {
+    (apiProfitRegistrationService.writeStatus as any).mockResolvedValue({
+      enabled: true, configured: true, auth: 'windows', connected: true,
+      server: 'SRVBDPROFITBK', database: 'AD_TRANS', identity: 'CORPOAGROCA\\x',
+    });
+    (apiProfitRegistrationService.create as any).mockResolvedValue({
+      requestId: 'r1', correlationId: 'DM-PROFIT-20260913-000055', ok: true, coArt: 'ACTEQT0001',
+      attempts: [{ attempt: 1, candidate: 'ACTEQT0001', existedBefore: false, outcome: 'INSERTED' }],
+      reconcile: 'CREATED_AND_VERIFIED', differences: [],
+    });
+    render(<MemoryRouter><ProfitRegistrationPanel request={REQ} /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Preparar registro' }));
+    await waitFor(() => expect(screen.getByText('✓ LISTO PARA REGISTRAR EN PROFIT')).toBeDefined());
+    expect(screen.getByText('Dry-run READY')).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar en Profit' }));
+    const dialog = await screen.findByRole('alertdialog');
+    fireEvent.change(within(dialog).getByPlaceholderText('REGISTRAR EN PROFIT'), { target: { value: 'REGISTRAR EN PROFIT' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar registro' }));
+    await screen.findByText('✓ ARTÍCULO REGISTRADO EN PROFIT');
+    expect(screen.getByText('DM-PROFIT-20260913-000055')).toBeDefined();
+  });
+
+  it('error muestra motivo y acción recomendada', async () => {
+    (apiProfitRegistrationService.create as any).mockResolvedValue({
+      requestId: 'r1', ok: false, coArt: 'ACTEQT0001', attempts: [],
+      reconcile: 'RECONCILIATION_ERROR', differences: [],
+      errorCode: 'ERROR_PROFIT_FK_VIOLATION', errorDetail: 'FK_art_unidades',
+    });
+    render(<MemoryRouter><ProfitRegistrationPanel request={REQ} /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Preparar registro' }));
+    await waitFor(() => expect(screen.getAllByText('ACTEQT0001').length).toBeGreaterThan(0));
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar en Profit' }));
+    const dialog = await screen.findByRole('alertdialog');
+    fireEvent.change(within(dialog).getByPlaceholderText('REGISTRAR EN PROFIT'), { target: { value: 'REGISTRAR EN PROFIT' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar registro' }));
+    await screen.findByText('✕ NO SE PUDO REGISTRAR EN PROFIT');
+    expect(screen.getByText(/Acción recomendada/)).toBeDefined();
+  });
+
+  it('incierto muestra resultado pendiente sin re-registro', async () => {
+    (apiProfitRegistrationService.create as any).mockResolvedValue({
+      requestId: 'r1', ok: false, coArt: 'ACTEQT0001', attempts: [],
+      reconcile: 'NOT_FOUND', differences: [], errorCode: 'ERROR_PROFIT_AMBIGUOUS',
+    });
+    render(<MemoryRouter><ProfitRegistrationPanel request={REQ} /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Preparar registro' }));
+    await waitFor(() => expect(screen.getAllByText('ACTEQT0001').length).toBeGreaterThan(0));
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar en Profit' }));
+    const dialog = await screen.findByRole('alertdialog');
+    fireEvent.change(within(dialog).getByPlaceholderText('REGISTRAR EN PROFIT'), { target: { value: 'REGISTRAR EN PROFIT' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar registro' }));
+    await screen.findByText('⚠ RESULTADO PENDIENTE DE VERIFICACIÓN');
+  });
+
+  it('confirmación exige texto exacto', async () => {
+    render(<MemoryRouter><ProfitRegistrationPanel request={REQ} /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Preparar registro' }));
+    await waitFor(() => expect(screen.getAllByText('ACTEQT0001').length).toBeGreaterThan(0));
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar en Profit' }));
+    const dialog = await screen.findByRole('alertdialog');
+    expect((within(dialog).getByRole('button', { name: 'Confirmar registro' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(within(dialog).getByPlaceholderText('REGISTRAR EN PROFIT'), { target: { value: 'REGISTRAR' } });
+    expect((within(dialog).getByRole('button', { name: 'Confirmar registro' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(within(dialog).getByPlaceholderText('REGISTRAR EN PROFIT'), { target: { value: 'REGISTRAR EN PROFIT' } });
+    expect((within(dialog).getByRole('button', { name: 'Confirmar registro' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('historial muestra intentos previos sin reescribir', async () => {
+    (apiProfitRegistrationService.attempts as any).mockResolvedValue({
+      requestId: 'r1',
+      attempts: [{
+        attempt: 1, correlationId: 'DM-PROFIT-20260913-000055', createdAt: '2026-09-13T10:00:00.000Z',
+        actorId: 'u1', masterCode: 'M', coArt: 'ACTEQT0001', result: 'FAILED',
+        reconcile: 'RECONCILIATION_ERROR', errorCode: 'E1', durationMs: 5, collisions: [],
+      }],
+      verifications: [],
+    });
+    render(<MemoryRouter><ProfitRegistrationPanel request={REQ} /></MemoryRouter>);
+    await screen.findByText('Intento #1 — FALLIDO');
+    expect(screen.getByText('DM-PROFIT-20260913-000055')).toBeDefined();
+  });
+
+  it('retry en ERROR_PROFIT revalida sin escribir', async () => {
+    (apiProfitRegistrationService.retry as any).mockResolvedValue({
+      requestId: 'r1', correlationId: 'C2', ready: true, candidate: 'ACTEQT0002',
+      available: true, payload: {}, warnings: [],
+    });
+    const onChanged = vi.fn();
+    render(<MemoryRouter><ProfitRegistrationPanel request={{ ...REQ, status: 'ERROR_PROFIT' } as Request} onChanged={onChanged} /></MemoryRouter>);
+    fireEvent.click(await screen.findByRole('button', { name: 'Reintentar registro en Profit' }));
+    await waitFor(() => expect(apiProfitRegistrationService.retry).toHaveBeenCalledWith('r1'));
+    await screen.findByText(/Recuperación lista/);
+    expect(onChanged).toHaveBeenCalled();
+  });
+});
+
+describe('profitOpState', () => {
+  const base = { plan: null, result: null, requestStatus: 'CONTABILIDAD_APROBADA' } as const;
+  it('mapea estados operativos', () => {
+    expect(profitOpState({ ...base, writeBlocked: true, busy: null })).toBe('DISABLED');
+    expect(profitOpState({ ...base, writeBlocked: false, busy: 'plan' })).toBe('VALIDATING');
+    expect(profitOpState({ ...base, writeBlocked: false, busy: 'create' })).toBe('WRITING');
+    expect(profitOpState({ ...base, writeBlocked: false, busy: 'verify' })).toBe('VERIFYING');
+    expect(profitOpState({ ...base, writeBlocked: false, busy: null })).toBe('READY');
+    expect(profitOpState({
+      ...base, writeBlocked: false, busy: null,
+      plan: { candidate: 'X', available: true } as any,
+    })).toBe('READY_TO_WRITE');
+    expect(profitOpState({
+      ...base, writeBlocked: false, busy: null,
+      result: { ok: true, reconcile: 'CREATED_AND_VERIFIED' } as any,
+    })).toBe('SUCCESS');
+    expect(profitOpState({
+      ...base, writeBlocked: false, busy: null,
+      result: { ok: false, reconcile: 'NOT_FOUND', errorCode: 'ERROR_PROFIT_AMBIGUOUS' } as any,
+    })).toBe('UNKNOWN');
+    expect(profitOpState({
+      ...base, writeBlocked: false, busy: null,
+      result: { ok: false, reconcile: 'NOT_FOUND', errorCode: 'E' } as any,
+    })).toBe('FAILED');
+    expect(profitOpState({ ...base, writeBlocked: false, busy: null, requestStatus: 'ERROR_PROFIT' })).toBe('RETRY_REQUIRED');
+  });
+});
+
+describe('ProfitRegistrationPanel estados 14L', () => {
+  beforeEach(() => {
+    (useSession as any).mockReturnValue({ hasPermission: (p: string) => p === 'PROFIT.WRITE', user: { displayName: 'Op' }, roleCodes: ['WAREHOUSE'] });
+    (apiProfitRegistrationService.writeStatus as any).mockResolvedValue({ enabled: false, configured: true, auth: 'windows', connected: true, server: 'S', database: 'D' });
+    (apiProfitRegistrationService.attempts as any).mockResolvedValue({ requestId: 'r1', attempts: [], verifications: [] });
+  });
+  afterEach(() => cleanup());
+
+  it('REGISTRO PREPARADO con flag OFF y permiso vigente', async () => {
+    render(<MemoryRouter><ProfitRegistrationPanel request={REQ} /></MemoryRouter>);
+    await screen.findByText(/REGISTRO PREPARADO/);
+    expect(screen.getByText(/temporalmente deshabilitada/)).toBeDefined();
+    expect(screen.getByText(/Permiso PROFIT.WRITE: CONCEDIDO/)).toBeDefined();
+  });
+
+  it('SIN PERMISO muestra usuario, roles y origen', async () => {
+    (useSession as any).mockReturnValue({ hasPermission: () => false, user: { displayName: 'Sin Perm' }, roleCodes: ['REQUESTER'] });
+    render(<MemoryRouter><ProfitRegistrationPanel request={REQ} /></MemoryRouter>);
+    await screen.findByText(/SIN PERMISO DE ESCRITURA/);
+    await screen.findByText(/Contabilidad aprobada/);
+    const has = (t: string) => screen.getAllByText((_, el) => (el?.textContent ?? '').includes(t));
+    expect(has('REQUESTER').length).toBeGreaterThan(0);
+    expect(has('DENEGADO (efectivo)').length).toBeGreaterThan(0);
+  });
+
+  it('oculto antes de la aprobación contable', () => {
+    const { container } = render(<MemoryRouter><ProfitRegistrationPanel request={{ ...REQ, status: 'PENDIENTE_CONTABILIDAD' } as Request} /></MemoryRouter>);
+    expect(container.textContent).toBe('');
   });
 });

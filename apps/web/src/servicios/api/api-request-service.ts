@@ -7,6 +7,9 @@ export const apiRequestService: RequestService = {
     const sp = new URLSearchParams();
     if (params?.companyId) sp.set('companyId', params.companyId);
     if (params?.status) sp.set('status', params.status);
+    if (params?.statuses?.length) sp.set('statuses', params.statuses.join(','));
+    if (params?.mine) sp.set('mine', 'true');
+    if (params?.sort) sp.set('sort', params.sort);
     if (params?.search) sp.set('search', params.search);
     if (params?.page) sp.set('page', String(params.page));
     if (params?.scope) sp.set('scope', params.scope);

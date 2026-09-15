@@ -5,6 +5,7 @@ import type { RequestStatus } from '../../tipos';
  * 11B — Stepper visual reutilizable del workflow. Solo representa estados
  * existentes del backend; no cambia el workflow. Etiquetas humanas, responsive
  * (horizontal con scroll en desktop, compacto en móvil) y accesible.
+ * 16A — Contabilidad es la última aprobación humana; Profit es operación técnica.
  */
 
 interface StepDef {
@@ -13,27 +14,24 @@ interface StepDef {
 }
 
 const MAIN_FLOW: StepDef[] = [
-  { code: 'BORRADOR', label: 'Solicitud creada' },
-  { code: 'PENDIENTE_GERENTE', label: 'Pendiente de aprobación' },
-  { code: 'PENDIENTE_ALMACEN', label: 'Pendiente de Almacén' },
-  { code: 'ALMACEN_APROBADO', label: 'Almacén aprobado' },
-  { code: 'PENDIENTE_CONTABILIDAD', label: 'Pendiente de Contabilidad' },
-  { code: 'PENDIENTE_VALIDACION_MAESTRA', label: 'Validación Maestra' },
-  { code: 'APROBADO_FINAL', label: 'Aprobación Final' },
-  { code: 'PROCESANDO_PROFIT', label: 'Registrando en Profit' },
-  { code: 'REGISTRADO_PROFIT', label: 'Registrado en Profit' },
+  { code: 'BORRADOR', label: 'Solicitud' },
+  { code: 'PENDIENTE_GERENTE', label: 'Gerente' },
+  { code: 'PENDIENTE_ALMACEN', label: 'Almacén' },
+  // 15A — etapa real del Encargado de Almacén (revisa lo clasificado).
+  { code: 'ALMACEN_APROBADO', label: 'Aprobación Almacén' },
+  { code: 'PENDIENTE_CONTABILIDAD', label: 'Contabilidad' },
+  { code: 'CONTABILIDAD_APROBADA', label: 'Registro Profit' },
+  { code: 'INSERTADO_PROFIT', label: 'Registrado Profit' },
 ];
 
 const STATUS_INFO: Record<string, { title: string; desc: string }> = {
   BORRADOR: { title: 'Solicitud creada', desc: 'La solicitud está en borrador y aún no fue enviada.' },
-  PENDIENTE_GERENTE: { title: 'Pendiente de aprobación', desc: 'Esta solicitud requiere aprobación de la gerencia del área.' },
+  PENDIENTE_GERENTE: { title: 'Pendiente de Gerente', desc: 'Esta solicitud requiere aprobación de la gerencia del área.' },
   PENDIENTE_ALMACEN: { title: 'Pendiente de Almacén', desc: 'Esta solicitud requiere clasificación por el área de Almacén.' },
-  ALMACEN_APROBADO: { title: 'Almacén aprobado', desc: 'La clasificación fue aprobada y continúa hacia Contabilidad.' },
-  PENDIENTE_CONTABILIDAD: { title: 'Pendiente de Contabilidad', desc: 'Esta solicitud requiere aprobación del área de Contabilidad.' },
-  PENDIENTE_VALIDACION_MAESTRA: { title: 'Validación Maestra', desc: 'La solicitud está siendo validada antes de la aprobación final.' },
-  APROBADO_FINAL: { title: 'Aprobación Final', desc: 'La solicitud fue aprobada y está lista para registrarse en Profit.' },
+  ALMACEN_APROBADO: { title: 'Aprobación Almacén', desc: 'Almacén completó la clasificación. Está pendiente de aprobación del Encargado de Almacén antes de Contabilidad.' },
+  PENDIENTE_CONTABILIDAD: { title: 'Pendiente de Contabilidad', desc: 'Esta solicitud requiere la aprobación contable (última aprobación humana).' },
+  CONTABILIDAD_APROBADA: { title: 'Contabilidad aprobada', desc: 'Contabilidad validó los datos. Continúa con el registro en Profit.' },
   PROCESANDO_PROFIT: { title: 'Registrando en Profit', desc: 'La solicitud fue aprobada y está siendo procesada técnicamente.' },
-  REGISTRADO_PROFIT: { title: 'Registrado en Profit', desc: 'La solicitud fue registrada correctamente en Profit.' },
   INSERTADO_PROFIT: { title: 'Registrado en Profit', desc: 'La solicitud fue registrada correctamente en Profit.' },
   ERROR_PROFIT: { title: 'Error de registro en Profit', desc: 'Ocurrió un error técnico al registrar en Profit. No es un rechazo.' },
   DEVUELTO: { title: 'Devuelta', desc: 'La solicitud fue devuelta para corrección.' },
@@ -41,11 +39,14 @@ const STATUS_INFO: Record<string, { title: string; desc: string }> = {
 };
 
 function stepIndex(status: RequestStatus): number {
-  const special: Record<string, number> = { DEVUELTO: -1, RECHAZADO: -1, ERROR_PROFIT: -2 };
+  const special: Record<string, number> = {
+    DEVUELTO: -1, RECHAZADO: -1, ERROR_PROFIT: -2,
+    // 16A — operación técnica posterior a la aprobación: mismo paso que Registro Profit.
+    PROCESANDO_PROFIT: 5,
+  };
   if (special[status] !== undefined) return special[status];
   const direct = MAIN_FLOW.findIndex(s => s.code === status);
   if (direct >= 0) return direct;
-  if (status === 'ALMACEN_APROBADO') return 3;
   return 0;
 }
 

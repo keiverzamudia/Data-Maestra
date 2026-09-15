@@ -30,12 +30,11 @@ Fecha: 01 de septiembre de 2026
 | `BORRADOR` | Borrador, editable por solicitante | Inicio |
 | `PENDIENTE_GERENTE` | Esperando aprobación gerencial | Gerente |
 | `PENDIENTE_ALMACEN` | Esperando clasificación de almacén | Almacén |
-| `ALMACEN_APROBADO` | Clasificación completada | Almacén → Contabilidad |
-| `PENDIENTE_CONTABILIDAD` | Esperando revisión contable | Contabilidad |
-| `PENDIENTE_VALIDACION_MAESTRA` | Esperando validación maestra | Revisión Final |
-| `APROBADO_FINAL` | Aprobado definitivamente | Final |
-| `PROCESANDO_PROFIT` | Registrando en Profit (futuro) | Post-aprobación |
-| `REGISTRADO_PROFIT` | Registrado en Profit (futuro) | Post-aprobación |
+| `ALMACEN_APROBADO` | Clasificación completada, pendiente del Encargado | Aprobación Almacén |
+| `PENDIENTE_CONTABILIDAD` | Esperando revisión contable (última aprobación humana) | Contabilidad |
+| `CONTABILIDAD_APROBADA` | Aprobada por Contabilidad; puerta a Profit | Contabilidad → Profit |
+| `PROCESANDO_PROFIT` | Registrando en Profit (técnico) | Post-aprobación |
+| `INSERTADO_PROFIT` | Registrado en Profit (INSERT + VERIFY) | Post-aprobación |
 | `ERROR_PROFIT` | Error técnico de Profit, no es rechazo (futuro) | Post-aprobación |
 | `DEVUELTO` | Devuelto a etapa anterior | Cualquier etapa |
 | `RECHAZADO` | Rechazado definitivamente | Cualquier etapa |

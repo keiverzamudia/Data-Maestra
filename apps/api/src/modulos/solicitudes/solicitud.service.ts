@@ -1,10 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ServiceUnavailableException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../comun/prisma/prisma.service';
 import { CreateRequestDto } from './dto/create-request.dto';
 import { ClassifyRequestDto } from './dto/classify-request.dto';
 import { ApprovalDto } from './dto/approval.dto';
 import { CatalogosService } from '../catalogos/catalogos.service';
-import { ProfitAdapterService } from '../profit/profit-adapter.service';
 import { ProfitArticleCreationService, type CreationPlan, type CreationResult } from '../profit/profit-article-creation.service';
 import type { ProfitArticleInput } from '../profit/profit-article.payload';
 import { buildProfitArticlePayload } from '../profit/profit-article.payload';
@@ -17,7 +16,7 @@ import { NotificacionesService } from '../notificaciones/notificaciones.service'
 import { SseService } from '../notificaciones/sse.service';
 import { AutenticacionService } from '../autenticacion/autenticacion.service';
 import { flattenRequestData } from '../../comun/utilidades/flatten-request-data';
-import { getNextWorkflowState, isTerminalWorkflowState } from './workflow-states';
+import { getNextWorkflowState, isTerminalWorkflowState, WORKFLOW_STATES } from './workflow-states';
 
 /**
  * 12F — Mensajes accionables por etapa (QUÉ + DÓNDE + QUÉ HACER).
@@ -43,18 +42,20 @@ export function stepNotificationMessage(
       toRequester: true,
     };
   }
-  if (stepCode === 'APROBADO_FINAL') {
+  // 16A — Contabilidad es la última aprobación humana: se avisa al solicitante.
+  if (stepCode === 'CONTABILIDAD_APROBADA') {
     return {
-      title: `Tu solicitud ${requestNumber} fue aprobada.`,
-      body: `La solicitud ${requestNumber} completó la aprobación final y está lista para su registro en Profit.`,
+      title: `Tu solicitud ${requestNumber} fue aprobada por Contabilidad.`,
+      body: `La solicitud ${requestNumber} completó la aprobación contable y está lista para su registro en Profit.`,
       toRequester: true,
     };
   }
   const queue: Record<string, string> = {
     PENDIENTE_GERENTE: 'aprobación de gerente',
     PENDIENTE_ALMACEN: 'clasificación',
+    // 15A — cola del Encargado de Almacén (reutiliza ALMACEN_APROBADO).
+    ALMACEN_APROBADO: 'aprobación del encargado de almacén',
     PENDIENTE_CONTABILIDAD: 'aprobación contable',
-    PENDIENTE_VALIDACION_MAESTRA: 'validación maestra',
   };
   const what = queue[stepCode] ?? 'atención';
   return {
@@ -73,7 +74,7 @@ export class SolicitudesService {
     private readonly sse: SseService,
     private readonly authService: AutenticacionService,
     // Opcional al final para compatibilidad posicional en tests (Nest resuelve por tipo).
-    private readonly profitAdapter?: ProfitAdapterService,
+    // La validación Profit vive en CatalogosService (fuente única con visibilidad).
     private readonly profitCreation?: ProfitArticleCreationService,
   ) {}
 
@@ -151,16 +152,16 @@ export class SolicitudesService {
   // Reglas con permisos efectivos reales (DENEGADO > CONCEDIDO > HEREDADO).
   // =====================================================================
 
-  static readonly COMPLETADA = ['APROBADO_FINAL', 'REGISTRADO_PROFIT'];
+  static readonly COMPLETADA = ['CONTABILIDAD_APROBADA', 'INSERTADO_PROFIT'];
   static readonly RECHAZADA = ['RECHAZADO'];
   static readonly PAGE_SIZES = [25, 50, 100];
 
   /** Paso → permiso de acción que lo atiende (misma regla que notificaciones 11G/12F). */
   private static readonly QUEUE_PERMISSION: Record<string, string> = {
     PENDIENTE_ALMACEN: 'WAREHOUSE.CLASSIFY',
-    ALMACEN_APROBADO: 'WAREHOUSE.CLASSIFY',
+    // 15A — ALMACEN_APROBADO es la cola del Encargado de Almacén, no de Almacén.
+    ALMACEN_APROBADO: 'WAREHOUSE_MANAGER.APPROVE',
     PENDIENTE_CONTABILIDAD: 'ACCOUNTING.APPROVE',
-    PENDIENTE_VALIDACION_MAESTRA: 'FINAL_REVIEW.APPROVE',
   };
 
   private async getViewer(userId: string) {
@@ -251,6 +252,7 @@ export class SolicitudesService {
   private filtersWhere(filters: {
     search?: string;
     status?: string;
+    statuses?: string[];
     bucket?: string;
     requesterId?: string;
     departmentId?: string;
@@ -262,7 +264,12 @@ export class SolicitudesService {
     if (filters.companyId) where.companyId = filters.companyId;
     if (filters.departmentId) where.departmentId = filters.departmentId;
     if (filters.requesterId) where.requesterId = filters.requesterId;
-    if (filters.status) where.status = filters.status;
+    // 14G: filtro multi-estado para bandejas (whitelist; prevalece sobre status singular).
+    const valid = (filters.statuses ?? []).filter((s): s is string =>
+      (WORKFLOW_STATES as readonly string[]).includes(s),
+    );
+    if (valid.length > 0) where.status = { in: valid };
+    else if (filters.status) where.status = filters.status;
     if (filters.bucket === 'completadas') {
       where.status = { in: SolicitudesService.COMPLETADA };
     } else if (filters.bucket === 'rechazadas') {
@@ -276,6 +283,10 @@ export class SolicitudesService {
         { requestNumber: { contains: q } },
         { requestedDescription: { contains: q } },
         { purpose: { contains: q } },
+        // 14L: búsqueda también por códigos aprobados y part number.
+        { requestData: { masterCode: { contains: q } } },
+        { requestData: { partNumber: { contains: q } } },
+        { requestData: { profitCode: { contains: q } } },
       ];
     }
     if (filters.dateFrom || filters.dateTo) {
@@ -322,8 +333,11 @@ export class SolicitudesService {
       scope?: string;
       search?: string;
       status?: string;
+      statuses?: string[];
       bucket?: string;
       requesterId?: string;
+      mine?: boolean;
+      sort?: string;
       departmentId?: string;
       companyId?: string;
       dateFrom?: string;
@@ -335,13 +349,20 @@ export class SolicitudesService {
     const viewer = await this.getViewer(userId);
     const scope = opts.scope === 'historial' ? 'historial' : 'activas';
     const base = await this.buildScopeWhere(viewer, scope);
-    const extra = this.filtersWhere(opts);
+    // 14L: mine=true fuerza requesterId al usuario de la sesión (ignora spoof).
+    const extra = this.filtersWhere(opts.mine ? { ...opts, requesterId: userId } : opts);
     const hasExtra = Object.keys(extra).length > 0;
     // AND explícito: los filtros jamás amplían el alcance del scope.
     const filtered = hasExtra ? { AND: [base, extra] } : base;
     const limit = SolicitudesService.PAGE_SIZES.includes(opts.limit ?? 0) ? opts.limit! : 25;
     const rawPage = Number(opts.page);
     const page = Number.isFinite(rawPage) ? Math.max(Math.floor(rawPage), 1) : 1;
+    // 14L: orden whitelist (default: más recientes).
+    const orderBy = opts.sort === 'antiguas'
+      ? { createdAt: 'asc' as const }
+      : opts.sort === 'actualizadas'
+        ? { updatedAt: 'desc' as const }
+        : { createdAt: 'desc' as const };
     const include = {
       company: { select: { id: true, name: true, code: true } },
       department: { select: { id: true, name: true, code: true, managerId: true } },
@@ -357,7 +378,7 @@ export class SolicitudesService {
       this.prisma.request.findMany({
         where: filtered,
         include,
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         skip: (page - 1) * limit,
         take: limit,
       }),
@@ -712,6 +733,14 @@ export class SolicitudesService {
     });
   }
 
+  /**
+   * Guardar Borrador de clasificación (fase borrador): persiste el progreso
+   * parcial SIN cambiar el estado (PENDIENTE_ALMACEN → PENDIENTE_ALMACEN), SIN
+   * notificar y SIN tocar workflow. Finalizar es `approve()` (Almacén verifica
+   * completitud y avanza a ALMACEN_APROBADO). Los campos no aportados se
+   * conservan (patch parcial); el masterCode solo se genera cuando hay grupo
+   * y subgrupo efectivos.
+   */
   async classify(id: string, dto: ClassifyRequestDto, userId: string, companyId: string) {
     const request = await this.prisma.request.findUnique({ where: { id } });
 
@@ -719,8 +748,8 @@ export class SolicitudesService {
       throw new NotFoundException(`Request ${id} not found`);
     }
 
-    if (request.status !== 'PENDIENTE_ALMACEN' && request.status !== 'ALMACEN_APROBADO') {
-      throw new BadRequestException(`Request ${id} is not in a classifiable status`);
+    if (request.status !== 'PENDIENTE_ALMACEN') {
+      throw new BadRequestException(`Request ${id} solo admite borrador en PENDIENTE_ALMACEN (estado: ${request.status})`);
     }
 
     // FASE 14C-FORM §5/§13: dominio de tipo e impuesto (membership; la
@@ -732,7 +761,7 @@ export class SolicitudesService {
       throw new BadRequestException(`taxType inválido: ${dto.taxType} (tabulado 1-9; no usar co_imp)`);
     }
     if (dto.unitCode !== undefined) {
-      await this.assertProfitUnit(dto.unitCode);
+      await this.assertProfitUnit(dto.unitCode, companyId);
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -754,106 +783,48 @@ export class SolicitudesService {
           categoryName: dto.categoryName,
           brandCode: dto.brandCode,
           brandName: dto.brandName,
-        });
+        }, { companyId });
         groupId = resolved.groupId;
         subgroupId = resolved.subgroupId;
         if (dto.categoryCode) categoryId = resolved.categoryId;
         if (dto.brandCode) brandId = resolved.brandId;
         provisioned = resolved.provisioned;
       }
-      if (!groupId || !subgroupId) {
-        throw new BadRequestException(`Request ${id} requiere grupo y subgrupo (IDs o códigos Profit)`);
-      }
-
       const existing = await tx.requestData.findUnique({ where: { requestId: id } });
 
-      let requestData;
-      if (existing) {
-        requestData = await tx.requestData.update({
-          where: { requestId: id },
-          data: {
-            groupId,
-            subgroupId,
-            categoryId,
-            brandId,
-            unitId: dto.unitId,
-            partNumber: dto.partNumber,
-            application: dto.application,
-            articleType: dto.articleType,
-            articleTypeManual: dto.articleTypeManual ?? false,
-            taxType: dto.taxType,
-            unitCode: dto.unitCode?.trim() || undefined,
-            brandCode: dto.brandCode?.trim() || undefined,
-          },
-        });
-      } else {
-        requestData = await tx.requestData.create({
-          data: {
-            requestId: id,
-            groupId,
-            subgroupId,
-            categoryId,
-            brandId,
-            unitId: dto.unitId,
-            partNumber: dto.partNumber,
-            application: dto.application,
-            articleType: dto.articleType,
-            articleTypeManual: dto.articleTypeManual ?? false,
-            taxType: dto.taxType,
-            unitCode: dto.unitCode?.trim() || undefined,
-            brandCode: dto.brandCode?.trim() || undefined,
-          },
-        });
+      // Borrador parcial: grupo/subgrupo efectivos = lo aportado o lo ya
+      // guardado. Sin ambos aún no hay masterCode (no se exige para progresar).
+      const effGroupId = groupId ?? (existing as { groupId?: string | null } | null)?.groupId ?? null;
+      const effSubgroupId = subgroupId ?? (existing as { subgroupId?: string | null } | null)?.subgroupId ?? null;
+      let masterCode: string | null = (existing as { masterCode?: string | null } | null)?.masterCode ?? null;
+      if (effGroupId && effSubgroupId) {
+        masterCode = await this.generateMasterCode(effGroupId, effSubgroupId, tx);
       }
 
-      const masterCode = await this.generateMasterCode(groupId, subgroupId, tx);
+      // Patch parcial: solo campos aportados (undefined nunca pisa valores
+      // guardados; Prisma los omite). masterCode solo si pudo generarse.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const patch: Record<string, any> = {};
+      if (groupId !== undefined) patch.groupId = groupId;
+      if (subgroupId !== undefined) patch.subgroupId = subgroupId;
+      if (categoryId !== undefined) patch.categoryId = categoryId;
+      if (brandId !== undefined) patch.brandId = brandId;
+      if (dto.unitId !== undefined) patch.unitId = dto.unitId;
+      if (dto.partNumber !== undefined) patch.partNumber = dto.partNumber;
+      if (dto.application !== undefined) patch.application = dto.application;
+      if (dto.articleType !== undefined) patch.articleType = dto.articleType;
+      if (dto.articleTypeManual !== undefined) patch.articleTypeManual = dto.articleTypeManual;
+      if (dto.taxType !== undefined) patch.taxType = dto.taxType;
+      if (dto.unitCode !== undefined) patch.unitCode = dto.unitCode.trim() || undefined;
+      if (dto.brandCode !== undefined) patch.brandCode = dto.brandCode.trim() || undefined;
+      if (masterCode) patch.masterCode = masterCode;
 
-      requestData = await tx.requestData.update({
-        where: { requestId: id },
-        data: { masterCode },
-      });
+      const requestData = existing
+        ? await tx.requestData.update({ where: { requestId: id }, data: patch })
+        : await tx.requestData.create({ data: { requestId: id, ...patch } });
 
-      if (request.status === 'PENDIENTE_ALMACEN') {
-        await tx.request.update({
-          where: { id },
-          data: { status: 'ALMACEN_APROBADO' },
-        });
-
-        // E-03: unificar status y workflowInstance.currentStepCode (mock-safe)
-        try {
-          const wfDeleg: any = tx.workflowInstance as any;
-          const instance = wfDeleg.findFirst
-            ? await wfDeleg.findFirst({ where: { requestId: id } })
-            : wfDeleg.findUnique
-              ? await wfDeleg.findUnique({ where: { requestId: id } })
-              : null;
-          if (instance && instance.currentStepCode === 'PENDIENTE_ALMACEN') {
-            await tx.workflowTask.updateMany({
-              where: { instanceId: instance.id, stepCode: 'PENDIENTE_ALMACEN', status: 'PENDING' },
-              data: { status: 'COMPLETED', completedAt: new Date() },
-            });
-            const existingWarehouseTask = await tx.workflowTask.findUnique({
-              where: { instanceId_stepCode: { instanceId: instance.id, stepCode: 'ALMACEN_APROBADO' } },
-            });
-            if (existingWarehouseTask) {
-              await tx.workflowTask.update({
-                where: { id: existingWarehouseTask.id },
-                data: { status: 'PENDING', completedAt: null },
-              });
-            } else {
-              await tx.workflowTask.create({
-                data: { instanceId: instance.id, stepCode: 'ALMACEN_APROBADO', status: 'PENDING' },
-              });
-            }
-            await tx.workflowInstance.update({
-              where: { id: instance.id },
-              data: { currentStepCode: 'ALMACEN_APROBADO' },
-            });
-          }
-        } catch {
-          // ignore workflow sync in unit tests with minimal mocks
-        }
-      }
+      // Borrador: sin cambio de estado, sin workflow, sin notificaciones.
+      // Finalizar es approve() (verifica completitud y avanza a ALMACEN_APROBADO).
 
       await tx.auditEvent.create({
         data: {
@@ -865,8 +836,8 @@ export class SolicitudesService {
           entityId: requestData.id,
           action: 'CLASSIFIED',
           afterData: JSON.stringify({
-            groupId,
-            subgroupId,
+            groupId: effGroupId,
+            subgroupId: effSubgroupId,
             categoryId,
             brandId,
             groupCode: dto.groupCode,
@@ -879,6 +850,7 @@ export class SolicitudesService {
             unitCode: dto.unitCode?.trim() || undefined,
             provisioned,
             masterCode,
+            draft: true,
           }),
         },
       });
@@ -888,19 +860,14 @@ export class SolicitudesService {
   }
 
   /**
-   * Valida que un código de unidad exista en Profit (fail-closed: el trigger
-   * TrigI_art rechazaría una unidad inexistente; DM debe validar ANTES).
+   * Valida que un código de unidad exista en Profit y esté visible en
+   * Data-Maestra (fail-closed: el trigger TrigI_art rechazaría una unidad
+   * inexistente; DM debe validar ANTES con la misma fuente del selector).
    */
-  private async assertProfitUnit(unitCode: string): Promise<void> {
+  private async assertProfitUnit(unitCode: string, companyId?: string): Promise<void> {
     const code = (unitCode ?? '').trim();
     if (!code) throw new BadRequestException('unitCode (unidad Profit) es requerido');
-    if (!this.profitAdapter) {
-      throw new ServiceUnavailableException('Validación Profit no disponible (adapter sin configurar)');
-    }
-    const unit = await this.profitAdapter.getUnit(code);
-    if (!unit) {
-      throw new BadRequestException(`Unidad Profit inexistente: ${code} (uni_venta debe existir en dbo.unidades)`);
-    }
+    await this.catalogosService.checkUnit(code, companyId);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -948,7 +915,7 @@ export class SolicitudesService {
             categoryName: dto.categoryName,
             brandCode: dto.brandCode,
             brandName: dto.brandName,
-          });
+          }, { companyId: (request as { companyId?: string }).companyId });
           wouldProvision = checked.wouldProvision;
           push('grupo', 'Grupo Profit', 'COMPLETO', dto.groupCode.trim());
           push('subgrupo', 'Subgrupo del grupo', 'COMPLETO', `${dto.groupCode.trim()}/${dto.subgroupCode.trim()}`);
@@ -966,38 +933,63 @@ export class SolicitudesService {
       push('subgrupo', 'Subgrupo del grupo', 'FALTA', 'Sin seleccionar');
     }
 
-    // 4. Tipo + 6. coherencia impuesto.
+    // 4. Tipo + visibilidad (misma fuente del selector).
     if (dto.articleType === undefined) {
       push('tipo', 'Tipo de artículo', 'FALTA', 'Requerido para futura creación Profit');
     } else if (!isArticleTypeCode(dto.articleType)) {
       push('tipo', 'Tipo de artículo', 'ERROR', `Fuera del dominio CK_art_TIPO: ${dto.articleType}`);
     } else {
-      push('tipo', 'Tipo de artículo', 'COMPLETO', dto.articleType);
+      try {
+        await this.catalogosService.checkArticleType(dto.articleType, (request as { companyId?: string }).companyId);
+        push('tipo', 'Tipo de artículo', 'COMPLETO', dto.articleType);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/No fue posible consultar/.test(msg)) {
+          warnings.push(`Visibilidad de tipo no verificable: ${msg}`);
+          push('tipo', 'Tipo de artículo', 'COMPLETO', dto.articleType);
+        } else {
+          push('tipo', 'Tipo de artículo', 'ERROR', msg);
+        }
+      }
     }
     if (dto.taxType === undefined) {
       push('impuesto', 'Impuesto (tipo_imp)', 'COMPLETO', 'Se derivará por regla tipo→tasa');
     } else if (!isTaxTypeCode(dto.taxType)) {
       push('impuesto', 'Impuesto (tipo_imp)', 'ERROR', `Fuera de tabulado 1-9: ${dto.taxType}`);
     } else {
-      push('impuesto', 'Impuesto (tipo_imp)', 'COMPLETO', `Tasa ${dto.taxType}`);
+      try {
+        await this.catalogosService.checkTaxType(dto.taxType, (request as { companyId?: string }).companyId);
+        push('impuesto', 'Impuesto (tipo_imp)', 'COMPLETO', `Tasa ${dto.taxType}`);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/No fue posible consultar/.test(msg)) {
+          warnings.push(`Visibilidad de impuesto no verificable: ${msg}`);
+          push('impuesto', 'Impuesto (tipo_imp)', 'COMPLETO', `Tasa ${dto.taxType}`);
+        } else {
+          push('impuesto', 'Impuesto (tipo_imp)', 'ERROR', msg);
+        }
+      }
       if (dto.articleType !== undefined && isArticleTypeCode(dto.articleType)) {
         const coh = checkTaxCoherence(dto.articleType, dto.taxType);
         if (coh.warning) warnings.push(coh.warning);
       }
     }
 
-    // 5. Unidad Profit (verificación viva, best-effort en dry-run).
+    // 5. Unidad Profit (misma fuente del selector: existencia + visibilidad).
     if (!dto.unitCode?.trim()) {
       push('unidad', 'Unidad Profit', 'FALTA', 'Requerida: el trigger TrigI_art exige suni_venta en dbo.unidades');
-    } else if (!this.profitAdapter) {
-      push('unidad', 'Unidad Profit', 'ERROR', 'Profit no disponible para validar la unidad');
     } else {
       try {
-        const unit = await this.profitAdapter.getUnit(dto.unitCode.trim());
-        if (unit) push('unidad', 'Unidad Profit', 'COMPLETO', dto.unitCode.trim());
-        else push('unidad', 'Unidad Profit', 'ERROR', `Inexistente en dbo.unidades: ${dto.unitCode.trim()}`);
-      } catch {
-        push('unidad', 'Unidad Profit', 'ERROR', 'Profit no disponible para validar la unidad');
+        await this.catalogosService.checkUnit(dto.unitCode.trim(), (request as { companyId?: string }).companyId);
+        push('unidad', 'Unidad Profit', 'COMPLETO', dto.unitCode.trim());
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/No fue posible consultar/.test(msg)) {
+          warnings.push(`Visibilidad de unidad no verificable: ${msg}`);
+          push('unidad', 'Unidad Profit', 'COMPLETO', dto.unitCode.trim());
+        } else {
+          push('unidad', 'Unidad Profit', 'ERROR', msg);
+        }
       }
     }
 
@@ -1062,6 +1054,16 @@ export class SolicitudesService {
     return this.profitCreation;
   }
 
+  /** Código de integración para auditoría (nunca falla: '' si no resolvible). */
+  private safeIntegrationUser(): string {
+    try {
+      const fn = (this.profitEngine() as any)?.integrationUserCode;
+      return typeof fn === 'function' ? fn.call(this.profitEngine()) : '';
+    } catch {
+      return '';
+    }
+  }
+
   /** Plan sin escritura: payload + candidato + disponibilidad (§22). */
   async planProfitCreation(id: string, userId: string, companyId: string): Promise<CreationPlan & { requestId: string }> {
     const { request, input, warnings } = await this.buildProfitInput(id);
@@ -1082,19 +1084,97 @@ export class SolicitudesService {
   }
 
   /**
-   * Creación controlada en Profit (14E). Gates: APROBADO_FINAL + PROFIT.WRITE
-   * (controller) + flag (adapter) + payload válido. Transiciones directas
-   * APROBADO_FINAL → PROCESANDO_PROFIT → REGISTRADO_PROFIT | ERROR_PROFIT
-   * (la secuencia ya las define; no hay APPROVE posterior).
+   * correlationId de integración (14F §20): DM-PROFIT-AAAAMMDD-NNNNNN.
+   * Sufijo = dígitos finales del requestNumber (único por solicitud).
+   * 14K.3: Number('REQ-0055') es NaN → se extraen los dígitos finales.
    */
-  async createInProfit(id: string, userId: string, companyId: string): Promise<CreationResult & { requestId: string }> {
+  private profitCorrelationId(requestNumber: unknown): string {
+    const d = new Date();
+    const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+    const m = String(requestNumber ?? '').match(/(\d+)\s*$/);
+    const n = (m?.[1] ?? '0').padStart(6, '0').slice(-6);
+    return `DM-PROFIT-${ymd}-${n}`;
+  }
+
+  private async profitAudit(
+    requestId: string,
+    correlationId: string,
+    userId: string,
+    companyId: string,
+    action: string,
+    after: Record<string, unknown>,
+  ): Promise<void> {
+    await this.prisma.auditEvent.create({
+      data: {
+        correlationId,
+        requestId,
+        actorId: userId,
+        actorCompanyId: companyId,
+        entityType: 'Request',
+        entityId: requestId,
+        action,
+        afterData: JSON.stringify(after),
+      },
+    });
+  }
+
+  /**
+   * Bloqueo en memoria contra doble ejecución del mismo request (14K.5).
+   * Segunda barrera tras la transición atómica; el backend es la autoridad
+   * (nunca solo el disabled del botón). Por instancia; la transición
+   * condicional cubre el caso multi-instancia.
+   */
+  private readonly profitLocks = new Map<string, number>();
+
+  /**
+   * Creación controlada en Profit (14E/14F, 16A). Gates: CONTABILIDAD_APROBADA
+   * + PROFIT.WRITE (controller) + flag (adapter) + payload válido.
+   * Transiciones directas CONTABILIDAD_APROBADA → PROCESANDO_PROFIT →
+   * INSERTADO_PROFIT | ERROR_PROFIT (técnicas, sin APPROVE posterior).
+   * Idempotencia (§25): INSERTADO_PROFIT no es CONTABILIDAD_APROBADA → 400, sin INSERT.
+   */
+  async createInProfit(id: string, userId: string, companyId: string): Promise<CreationResult & { requestId: string; correlationId: string }> {
     const { request, input } = await this.buildProfitInput(id);
-    if ((request as any).status !== 'APROBADO_FINAL') {
-      throw new BadRequestException(`Request ${id} no está en APROBADO_FINAL (estado: ${(request as any).status})`);
+    if ((request as any).status !== 'CONTABILIDAD_APROBADA') {
+      throw new BadRequestException(`Request ${id} no está en CONTABILIDAD_APROBADA (estado: ${(request as any).status})`);
     }
     // Fail-fast ANTES de cambiar estado: flag + destino explícito.
     this.profitEngine().assertAvailable();
-    await this.prisma.request.update({ where: { id }, data: { status: 'PROCESANDO_PROFIT' } });
+    if (this.profitLocks.has(id)) {
+      throw new ConflictException(`Request ${id} ya tiene una operación Profit en curso (PROFIT_WRITE_IN_PROGRESS)`);
+    }
+    this.profitLocks.set(id, Date.now());
+    try {
+      return await this.runProfitCreation(id, userId, companyId, request, input);
+    } finally {
+      this.profitLocks.delete(id);
+    }
+  }
+
+  private async runProfitCreation(
+    id: string,
+    userId: string,
+    companyId: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    request: any,
+    input: ProfitArticleInput,
+  ): Promise<CreationResult & { requestId: string; correlationId: string }> {
+    const correlationId = this.profitCorrelationId(request.requestNumber);
+    const base = {
+      requestId: id,
+      masterCode: request.requestData?.masterCode ?? null,
+      actor: userId,
+      correlationId,
+    };
+    // Transición ATÓMICA: solo un ganador entre llamadas concurrentes.
+    const claimed = await this.prisma.request.updateMany({
+      where: { id, status: 'CONTABILIDAD_APROBADA' },
+      data: { status: 'PROCESANDO_PROFIT' },
+    });
+    if (claimed.count === 0) {
+      throw new ConflictException(`Request ${id} ya no está disponible para registro (PROFIT_WRITE_IN_PROGRESS)`);
+    }
+    await this.profitAudit(id, correlationId, userId, companyId, 'PROFIT_WRITE_STARTED', { ...base });
 
     const t0 = Date.now();
     let result: CreationResult;
@@ -1115,31 +1195,41 @@ export class SolicitudesService {
 
     await this.prisma.request.update({
       where: { id },
-      data: { status: result.ok ? 'REGISTRADO_PROFIT' : 'ERROR_PROFIT' },
+      data: { status: result.ok ? 'INSERTADO_PROFIT' : 'ERROR_PROFIT' },
     });
-    // Auditoría §20: sin secretos, con correlación y duración.
-    await this.prisma.auditEvent.create({
-      data: {
-        correlationId: request.id,
-        requestId: id,
-        actorId: userId,
-        actorCompanyId: companyId,
-        entityType: 'Request',
-        entityId: id,
-        action: 'PROFIT_CREATE_RESULT',
-        afterData: JSON.stringify({
-          requestId: id,
-          masterCode: (request as any).requestData?.masterCode ?? null,
-          co_art: result.coArt || null,
-          resultado: result.ok ? 'OK' : 'FAIL',
-          reconcile: result.reconcile,
-          attempts: result.attempts.map((a) => ({ attempt: a.attempt, candidate: a.candidate, outcome: a.outcome })),
-          errorCode: result.errorCode ?? null,
-          durationMs,
-        }),
-      },
+    // 14L: el código Profit queda en la solicitud (visible en bandejas).
+    if (result.ok && result.coArt) {
+      await this.prisma.requestData.update({
+        where: { requestId: id },
+        data: { profitCode: result.coArt },
+      });
+    }
+    // Auditoría §24: STARTED ya emitido; resultado + colisiones por separado.
+    const outcome = result.ok
+      ? 'PROFIT_WRITE_SUCCEEDED'
+      : result.errorCode === 'ERROR_PROFIT_AMBIGUOUS'
+        ? 'PROFIT_WRITE_RESULT_UNKNOWN'
+        : 'PROFIT_WRITE_FAILED';
+    await this.profitAudit(id, correlationId, userId, companyId, outcome, {
+      ...base,
+      co_art: result.coArt || null,
+      integrationUser: this.safeIntegrationUser() || null,
+      alreadyRegistered: result.alreadyRegistered ?? false,
+      reconcile: result.reconcile,
+      differences: result.differences,
+      attempts: result.attempts.map((a) => ({ attempt: a.attempt, candidate: a.candidate, outcome: a.outcome })),
+      errorCode: result.errorCode ?? null,
+      durationMs,
     });
-    return { requestId: id, ...result };
+    const collisions = result.attempts.filter((a) => a.outcome === 'COLLISION').map((a) => a.candidate);
+    if (collisions.length > 0) {
+      await this.profitAudit(id, correlationId, userId, companyId, 'CODE_COLLISION_RESOLVED', {
+        ...base,
+        chain: collisions,
+        final: result.coArt || null,
+      });
+    }
+    return { requestId: id, correlationId, ...result };
   }
 
   /**
@@ -1166,6 +1256,105 @@ export class SolicitudesService {
       },
     });
     return { requestId: id, coArt: code, reconcile: v.status, differences: v.differences };
+  }
+
+  /**
+   * Recuperación segura de ERROR_PROFIT (14K.5, 16A). NO escribe: registra la
+   * intención, re-ejecuta el dry-run completo y, solo si READY, re-encola a
+   * CONTABILIDAD_APROBADA con NUEVO correlationId (el historial por intento queda
+   * separado). La escritura posterior exige nueva confirmación humana.
+   */
+  async requestProfitRetry(id: string, userId: string, companyId: string) {
+    const { request, input, warnings } = await this.buildProfitInput(id);
+    if (request.status !== 'ERROR_PROFIT') {
+      throw new BadRequestException(`Request ${id} no está en ERROR_PROFIT (estado: ${request.status})`);
+    }
+    const correlationId = this.profitCorrelationId(request.requestNumber);
+    const base = {
+      requestId: id,
+      masterCode: request.requestData?.masterCode ?? null,
+      actor: userId,
+      correlationId,
+    };
+    let plan: CreationPlan;
+    try {
+      plan = await this.profitEngine().plan(input);
+    } catch (err: any) {
+      await this.profitAudit(id, correlationId, userId, companyId, 'PROFIT_RETRY_BLOCKED', {
+        ...base, reason: String(err?.message ?? err).slice(0, 300),
+      });
+      throw new BadRequestException(`Reintento bloqueado: ${err?.message ?? err}`);
+    }
+    await this.prisma.request.update({ where: { id }, data: { status: 'CONTABILIDAD_APROBADA' } });
+    await this.profitAudit(id, correlationId, userId, companyId, 'PROFIT_RETRY_REQUESTED', {
+      ...base,
+      candidate: plan.candidate,
+      available: plan.available,
+      warnings: [...warnings, ...plan.warnings],
+    });
+    return {
+      requestId: id,
+      correlationId,
+      ready: true,
+      candidate: plan.candidate,
+      available: plan.available,
+      payload: plan.payload,
+      warnings: [...warnings, ...plan.warnings],
+    };
+  }
+
+  /**
+   * Historial inmutable de intentos (14K.5): agrupa eventos PROFIT_* por
+   * correlationId (uno por invocación de createInProfit). Solo lectura.
+   */
+  async profitAttempts(id: string, userId?: string) {
+    if (userId) await this.assertCanView(userId, id);
+    const request = await this.prisma.request.findUnique({ where: { id } });
+    if (!request) throw new NotFoundException(`Request ${id} not found`);
+    const events = await this.prisma.auditEvent.findMany({
+      where: { requestId: id, action: { startsWith: 'PROFIT_' } },
+      orderBy: { createdAt: 'asc' },
+    });
+    const byCorr = new Map<string, any[]>();
+    for (const e of events) {
+      const list = byCorr.get(e.correlationId) ?? [];
+      list.push(e);
+      byCorr.set(e.correlationId, list);
+    }
+    const parse = (e: any) => {
+      try { return JSON.parse(e.afterData ?? '{}'); } catch { return {}; }
+    };
+    let n = 0;
+    const attempts = [...byCorr.entries()]
+      .filter(([, evs]) => evs.some((e) => e.action === 'PROFIT_WRITE_STARTED'))
+      .map(([correlationId, evs]) => {
+        n++;
+        const get = (a: string) => evs.find((e) => e.action === a);
+        const started = get('PROFIT_WRITE_STARTED');
+        const outcomeEv = evs.find((e) => ['PROFIT_WRITE_SUCCEEDED', 'PROFIT_WRITE_FAILED', 'PROFIT_WRITE_RESULT_UNKNOWN'].includes(e.action));
+        const collision = get('CODE_COLLISION_RESOLVED');
+        const sAfter = started ? parse(started) : {};
+        const oAfter = outcomeEv ? parse(outcomeEv) : {};
+        return {
+          attempt: n,
+          correlationId,
+          createdAt: started?.createdAt ?? evs[0]?.createdAt,
+          actorId: started?.actorId ?? null,
+          masterCode: sAfter.masterCode ?? null,
+          coArt: oAfter.co_art ?? sAfter.co_art ?? null,
+          result: !outcomeEv ? 'UNKNOWN'
+            : outcomeEv.action === 'PROFIT_WRITE_SUCCEEDED' ? 'SUCCESS'
+            : outcomeEv.action === 'PROFIT_WRITE_RESULT_UNKNOWN' ? 'UNKNOWN' : 'FAILED',
+          reconcile: oAfter.reconcile ?? null,
+          errorCode: oAfter.errorCode ?? null,
+          durationMs: oAfter.durationMs ?? null,
+          collisions: collision ? parse(collision).chain ?? [] : [],
+        };
+      });
+    const verifications = events
+      .filter((e) => e.action === 'PROFIT_VERIFY')
+      .map((e) => ({ createdAt: e.createdAt, actorId: e.actorId, ...(parse(e) as object) }));
+    return { requestId: id, attempts, verifications };
   }
 
   async getHistory(id: string, userId?: string) {

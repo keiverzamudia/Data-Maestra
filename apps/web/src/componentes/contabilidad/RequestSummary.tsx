@@ -16,6 +16,8 @@ interface Props {
   unit?: string;
   partNumber?: string;
   approvals?: ApprovalRef[];
+  /** Código Profit real tras INSERT + VERIFY (16A, trazabilidad). */
+  profitCode?: string | null;
   photoUri?: string;
   onOpenPhoto: () => void;
   lightboxOpen: boolean;
@@ -52,7 +54,7 @@ export const RequestSummary: React.FC<Props> = (p) => {
             </button>
           </div>
         </div>
-        <StageTrace approvals={p.approvals} />
+        <StageTrace approvals={p.approvals} profitCode={p.profitCode} />
       </div>
       <div className="thumb-row" style={{ marginTop: 12 }}>
         {p.photoUri && (

@@ -16,7 +16,7 @@ export interface SessionUser {
 
 // ── Request Service ──
 export interface RequestService {
-  list(params?: { companyId?: string; status?: string; search?: string; page?: number; scope?: string; bucket?: string; requesterId?: string; departmentId?: string; dateFrom?: string; dateTo?: string; limit?: number }): Promise<{ data: Request[]; total: number; filteredTotal?: number; page?: number; limit?: number }>;
+  list(params?: { companyId?: string; status?: string; statuses?: string[]; mine?: boolean; sort?: string; search?: string; page?: number; scope?: string; bucket?: string; requesterId?: string; departmentId?: string; dateFrom?: string; dateTo?: string; limit?: number }): Promise<{ data: Request[]; total: number; filteredTotal?: number; page?: number; limit?: number }>;
   resumen(): Promise<{ activas: number; historial: number; completadas: number; rechazadas: number; enProceso: number }>;
   getById(id: string): Promise<Request | undefined>;
   create(data: Partial<Request>): Promise<Request>;
@@ -79,6 +79,15 @@ export interface ClassificationData {
   unitCode?: string;
 }
 
+// ── Warehouse Approval Service (15A: Encargado de Almacén) ──
+export interface WarehouseApprovalService {
+  getPendingApprovals(companyId?: string): Promise<Request[]>;
+  getApprovalDetail(id: string): Promise<Request | undefined>;
+  approveApproval(id: string): Promise<void>;
+  returnApproval(id: string, comment: string): Promise<void>;
+  rejectApproval(id: string, comment: string): Promise<void>;
+}
+
 // ── Accounting Service ──
 export interface AccountingService {
   getPendingApprovals(companyId?: string): Promise<Request[]>;
@@ -92,14 +101,6 @@ export interface AccountingCode {
   description: string;
   /** Posición contable c1..c10 (Fase 8E). Opcional por compatibilidad. */
   position?: string;
-}
-
-// ── Final Review Service ──
-export interface FinalReviewService {
-  getPendingReviews(companyId?: string): Promise<Request[]>;
-  getReviewDetail(id: string): Promise<Request>;
-  approveReview(id: string): Promise<void>;
-  rejectReview(id: string, comment: string): Promise<void>;
 }
 
 // ── Import Service ──

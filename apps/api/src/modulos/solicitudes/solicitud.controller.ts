@@ -62,10 +62,13 @@ export class SolicitudesController {
   @ApiOperation({ summary: 'List requests (role-scoped, paginated)' })
   @ApiQuery({ name: 'companyId', required: false })
   @ApiQuery({ name: 'status', required: false })
+  @ApiQuery({ name: 'statuses', required: false, description: 'Lista separada por comas (whitelist de estados; prevalece sobre status)' })
   @ApiQuery({ name: 'search', required: false })
   @ApiQuery({ name: 'scope', required: false, description: 'activas | historial' })
   @ApiQuery({ name: 'bucket', required: false, description: 'proceso | completadas | rechazadas' })
   @ApiQuery({ name: 'requesterId', required: false })
+  @ApiQuery({ name: 'mine', required: false, description: 'true = solo propias (fuerza requesterId a la sesión)' })
+  @ApiQuery({ name: 'sort', required: false, description: 'recientes | antiguas | actualizadas' })
   @ApiQuery({ name: 'departmentId', required: false })
   @ApiQuery({ name: 'dateFrom', required: false })
   @ApiQuery({ name: 'dateTo', required: false })
@@ -75,10 +78,13 @@ export class SolicitudesController {
     @CurrentUser() user: RequestUser,
     @Query('companyId') companyId?: string,
     @Query('status') status?: string,
+    @Query('statuses') statuses?: string,
     @Query('search') search?: string,
     @Query('scope') scope?: string,
     @Query('bucket') bucket?: string,
     @Query('requesterId') requesterId?: string,
+    @Query('mine') mine?: string,
+    @Query('sort') sort?: string,
     @Query('departmentId') departmentId?: string,
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
@@ -88,10 +94,13 @@ export class SolicitudesController {
     return this.requestsService.findScoped(user.id, {
       companyId,
       status,
+      statuses: statuses?.split(',').map(s => s.trim()).filter(Boolean),
       search,
       scope,
       bucket,
       requesterId,
+      mine: mine === 'true',
+      sort,
       departmentId,
       dateFrom,
       dateTo,
@@ -185,7 +194,7 @@ export class SolicitudesController {
   @Post(':id/profit-create')
   @HttpCode(HttpStatus.OK)
   @RequirePermission('PROFIT.WRITE')
-  @ApiOperation({ summary: 'Crear artículo en Profit (gates: APROBADO_FINAL + PROFIT.WRITE + flag + payload)' })
+  @ApiOperation({ summary: 'Crear artículo en Profit (gates: CONTABILIDAD_APROBADA + PROFIT.WRITE + flag + payload)' })
   async profitCreate(@CurrentUser() user: RequestUser, @Param('id') id: string) {
     const companyId = await this.authService.resolveCompanyContext(user.id);
     return this.requestsService.createInProfit(id, user.id, companyId);
@@ -198,5 +207,21 @@ export class SolicitudesController {
   async profitVerify(@CurrentUser() user: RequestUser, @Param('id') id: string, @Body() body: { coArt?: string }) {
     const companyId = await this.authService.resolveCompanyContext(user.id);
     return this.requestsService.verifyProfitCreation(id, body?.coArt ?? '', user.id, companyId);
+  }
+
+  @Get(':id/profit-attempts')
+  @RequirePermission('REQUEST.VIEW')
+  @ApiOperation({ summary: 'Historial inmutable de intentos Profit (solo lectura)' })
+  async profitAttempts(@CurrentUser() user: RequestUser, @Param('id') id: string) {
+    return this.requestsService.profitAttempts(id, user.id);
+  }
+
+  @Post(':id/profit-retry')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('PROFIT.WRITE')
+  @ApiOperation({ summary: 'Recuperar ERROR_PROFIT: revalida y re-encola a CONTABILIDAD_APROBADA (no escribe)' })
+  async profitRetry(@CurrentUser() user: RequestUser, @Param('id') id: string) {
+    const companyId = await this.authService.resolveCompanyContext(user.id);
+    return this.requestsService.requestProfitRetry(id, user.id, companyId);
   }
 }

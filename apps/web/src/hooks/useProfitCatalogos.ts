@@ -9,6 +9,7 @@ import {
   type ProfitTaxType,
   type ProfitUnit,
 } from '../servicios/api/api-profit-service';
+import { apiCatalogEffectiveService } from '../servicios/api/api-catalog-effective-service';
 
 interface ProfitCatalogosState {
   grupos: ProfitGroup[];
@@ -27,11 +28,13 @@ interface ProfitCatalogosState {
 }
 
 /**
- * Catálogos de clasificación directos desde Profit (FASE 8F + 14C-FORM).
+ * Catálogos de clasificación (FASE 8F + 14C-FORM + CAT).
+ * Fuente única: catálogo efectivo Data-Maestra (Profit × visibilidad),
+ * con la misma forma que los endpoints Profit directos.
  * El subgrupo se filtra por grupo seleccionado (código compuesto
  * co_lin + co_subl en Profit); categoría y marca son independientes.
  */
-export function useProfitCatalogos(selectedGroupCode?: string) {
+export function useProfitCatalogos(selectedGroupCode?: string, companyId?: string) {
   const [state, setState] = React.useState<Omit<ProfitCatalogosState, 'reload'>>({
     grupos: [],
     subgrupos: [],
@@ -52,13 +55,18 @@ export function useProfitCatalogos(selectedGroupCode?: string) {
     async function load() {
       try {
         const [grupos, subgrupos, categorias, marcas, tipos, tasas, unidadesProfit, defaultTypeRes] = await Promise.all([
-          apiProfitCatalogService.getGroups(),
-          apiProfitCatalogService.getSubgroups(selectedGroupCode),
-          apiProfitCatalogService.getCategories(),
-          apiProfitCatalogService.getBrands(),
-          apiProfitCatalogService.getArticleTypes(),
-          apiProfitCatalogService.getTaxTypes(),
-          apiProfitCatalogService.getUnits(),
+          apiCatalogEffectiveService.groups(companyId).then(e => e.items.map(i => ({ co_lin: i.code, lin_des: i.description }))),
+          apiCatalogEffectiveService.subgroups(companyId, selectedGroupCode).then(e => e.items.map(i => ({ co_lin: i.parentCode, co_subl: i.code, subl_des: i.description }))),
+          apiCatalogEffectiveService.categories(companyId).then(e => e.items.map(i => ({ co_cat: i.code, cat_des: i.description }))),
+          apiCatalogEffectiveService.brands(companyId).then(e => e.items.map(i => ({ co_col: i.code, des_col: i.description }))),
+          apiCatalogEffectiveService.articleTypes(companyId).then(e => e.items.map(i => ({
+            code: i.code,
+            label: i.description,
+            functional: (i.extra?.functional as boolean) ?? true,
+            usageCount: (i.extra?.usageCount as number) ?? 0,
+          }))),
+          apiCatalogEffectiveService.taxTypes(companyId).then(e => e.items.map(i => ({ tipo: i.code, descripcio: i.description }))),
+          apiCatalogEffectiveService.units(companyId).then(e => e.items.map(i => ({ co_uni: i.code, des_uni: i.description }))),
           // Sugerencia de default por línea; si falla, el resto sigue válido.
           selectedGroupCode
             ? apiProfitCatalogService.getLineDefaultType(selectedGroupCode).catch(() => ({ defaultType: null as string | null }))
@@ -76,7 +84,7 @@ export function useProfitCatalogos(selectedGroupCode?: string) {
 
     load();
     return () => { cancelled = true; };
-  }, [selectedGroupCode, nonce]);
+  }, [selectedGroupCode, companyId, nonce]);
 
   return { ...state, reload: () => setNonce(n => n + 1) };
 }

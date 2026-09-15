@@ -46,6 +46,8 @@ function getVisibleModules(permissions: string[]): string[] {
   if (permissions.includes('DASHBOARD.VIEW')) modules.push('dashboard');
   if (permissions.includes('REQUEST.CREATE') || permissions.includes('REQUEST.VIEW')) modules.push('requester');
   if (permissions.includes('WAREHOUSE.CLASSIFY') || permissions.includes('WAREHOUSE.VIEW')) modules.push('warehouse');
+  // 15A — módulo propio del Encargado de Almacén.
+  if (permissions.includes('WAREHOUSE_MANAGER.APPROVE') || permissions.includes('WAREHOUSE_MANAGER.VIEW')) modules.push('warehouse-approval');
   if (permissions.includes('ACCOUNTING.APPROVE') || permissions.includes('ACCOUNTING.VIEW')) modules.push('accounting');
   if (permissions.includes('IMPORT.RUN') || permissions.includes('IMPORT.VIEW')) modules.push('imports');
   if (permissions.includes('AUDIT.VIEW')) modules.push('audit');

@@ -1,0 +1,1 @@
+export { AprobacionAlmacenPage } from './AprobacionAlmacenPage';

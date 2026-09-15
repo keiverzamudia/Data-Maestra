@@ -481,9 +481,10 @@ describe('SolicitudesService', () => {
         workflowInstance: { id: 'wf-1' },
       });
 
-      const updatedRequest = { id: 'req-1', status: 'PENDIENTE_CONTABILIDAD' };
+      // 15A — Almacén completa la clasificación (→ ALMACEN_APROBADO, cola del Encargado).
+      const updatedRequest = { id: 'req-1', status: 'ALMACEN_APROBADO' };
 
-      const mockTaskFindUnique = vi.fn().mockResolvedValue({ id: 'task-accounting', instanceId: 'wf-1', stepCode: 'PENDIENTE_CONTABILIDAD', status: 'COMPLETED' });
+      const mockTaskFindUnique = vi.fn().mockResolvedValue({ id: 'task-warehouse-approval', instanceId: 'wf-1', stepCode: 'ALMACEN_APROBADO', status: 'COMPLETED' });
       const mockTaskUpdate = vi.fn().mockResolvedValue({});
 
       prisma.$transaction.mockImplementation(async (fn: any) => {
@@ -510,19 +511,19 @@ describe('SolicitudesService', () => {
         'company-1',
       );
 
-      expect(result.status).toBe('PENDIENTE_CONTABILIDAD');
+      expect(result.status).toBe('ALMACEN_APROBADO');
 
       expect(mockTaskFindUnique).toHaveBeenCalledWith({
         where: {
           instanceId_stepCode: {
             instanceId: 'wf-1',
-            stepCode: 'PENDIENTE_CONTABILIDAD',
+            stepCode: 'ALMACEN_APROBADO',
           },
         },
       });
 
       expect(mockTaskUpdate).toHaveBeenCalledWith({
-        where: { id: 'task-accounting' },
+        where: { id: 'task-warehouse-approval' },
         data: { status: 'PENDING', completedAt: null },
       });
     });
@@ -651,38 +652,20 @@ describe('SolicitudesService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('allows classification when status is ALMACEN_APROBADO', async () => {
+    it('throws BadRequestException when status is ALMACEN_APROBADO (borrador solo en PENDIENTE_ALMACEN)', async () => {
       prisma.request.findUnique.mockResolvedValue({
         id: 'req-1',
         status: 'ALMACEN_APROBADO',
       });
 
-      const mockRequestData = { id: 'rd-1', requestId: 'req-1', masterCode: 'RVHCAR000001' };
-
-      prisma.$transaction.mockImplementation(async (fn: any) => {
-        const tx = {
-          requestData: {
-            findUnique: vi.fn().mockResolvedValue(null),
-            create: vi.fn().mockResolvedValue(mockRequestData),
-            update: vi.fn().mockResolvedValue(mockRequestData),
-          },
-          catalogGroup: { findUnique: vi.fn().mockResolvedValue({ code: 'RVH' }) },
-          catalogSubgroup: { findUnique: vi.fn().mockResolvedValue({ code: 'CAR' }) },
-          masterItem: { findFirst: vi.fn().mockResolvedValue(null) },
-          request: { update: vi.fn().mockResolvedValue({}) },
-          auditEvent: { create: vi.fn().mockResolvedValue({}) },
-        };
-        return fn(tx);
-      });
-
-      const result = await service.classify(
-        'req-1',
-        { groupId: 'grp-1', subgroupId: 'sub-1' },
-        'user-1',
-        'company-1',
-      );
-
-      expect(result.requestData).toBeDefined();
+      await expect(
+        service.classify(
+          'req-1',
+          { groupId: 'grp-1', subgroupId: 'sub-1' },
+          'user-1',
+          'company-1',
+        ),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });

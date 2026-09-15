@@ -8,8 +8,10 @@ import { PrismaService } from '../../comun/prisma/prisma.service';
  */
 const STEP_QUEUE_PERMISSION: Record<string, string> = {
   PENDIENTE_ALMACEN: 'WAREHOUSE.CLASSIFY',
+  // 15A — la clasificación completada avisa al Encargado de Almacén.
+  ALMACEN_APROBADO: 'WAREHOUSE_MANAGER.APPROVE',
   PENDIENTE_CONTABILIDAD: 'ACCOUNTING.APPROVE',
-  PENDIENTE_VALIDACION_MAESTRA: 'FINAL_REVIEW.APPROVE',
+  // 16A — CONTABILIDAD_APROBADA no tiene cola humana (puerta técnica a Profit).
 };
 
 export interface CreatedNotification {

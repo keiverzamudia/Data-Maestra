@@ -4,21 +4,40 @@
  * seed.js). Solo INSERTA las parejas faltantes; nunca borra ni modifica.
  * AUDITOR queda sin permisos (mismo comportamiento efectivo que el puente 10E).
  * Sin overrides individuales (10G).
+ * 15A — crea el rol WAREHOUSE_MANAGER si falta (id r8) y sus permisos.
  */
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+
+const ROLES = [
+  // id solo para creación; si el rol ya existe por código, se reutiliza.
+  { id: 'r8', code: 'WAREHOUSE_MANAGER', name: 'Encargado de Almacén' },
+];
 
 const ROLE_PERMISSIONS = {
   REQUESTER: ['REQUEST.CREATE', 'REQUEST.VIEW', 'DASHBOARD.VIEW'],
   DEPARTMENT_MANAGER: ['MANAGER.APPROVE', 'REQUEST.VIEW', 'DASHBOARD.VIEW'],
   WAREHOUSE: ['WAREHOUSE.CLASSIFY', 'WAREHOUSE.VIEW', 'REQUEST.VIEW', 'DASHBOARD.VIEW'],
+  WAREHOUSE_MANAGER: ['WAREHOUSE_MANAGER.VIEW', 'WAREHOUSE_MANAGER.APPROVE', 'REQUEST.VIEW', 'DASHBOARD.VIEW'],
   ACCOUNTING: ['ACCOUNTING.APPROVE', 'ACCOUNTING.VIEW', 'REQUEST.VIEW', 'DASHBOARD.VIEW'],
-  FINAL_REVIEWER: ['FINAL_REVIEW.APPROVE', 'REQUEST.VIEW', 'DASHBOARD.VIEW'],
+  // 16A — el rol/permiso de revisión final salió del flujo
+  // (los retira migrate-reestructuracion-16a.js).
   MASTER_DATA_ADMIN: ['ADMIN.MANAGE', 'DASHBOARD.VIEW', 'AUDIT.VIEW', 'IMPORT.RUN', 'IMPORT.VIEW'],
 };
 
 async function main() {
   const report = { created: [], existing: 0, errores: [] };
+  for (const r of ROLES) {
+    const existing = await prisma.role.findUnique({ where: { code: r.code } });
+    if (!existing) {
+      try {
+        await prisma.role.create({ data: r });
+        report.created.push(`rol ${r.code}`);
+      } catch (e) {
+        report.errores.push({ roleCode: r.code, motivo: 'no se pudo crear: ' + e.message });
+      }
+    }
+  }
   for (const [roleCode, perms] of Object.entries(ROLE_PERMISSIONS)) {
     const role = await prisma.role.findUnique({ where: { code: roleCode } });
     if (!role) {
@@ -27,7 +46,7 @@ async function main() {
     }
     for (const code of perms) {
       // La BD viva puede carecer de permisos del catálogo seed (solo INSERT,
-      // nunca borra: el catálogo de 13 permisos es el contrato de controllers).
+      // nunca borra: el catálogo vigente es el contrato de controllers).
       let perm = await prisma.permission.findUnique({ where: { code } });
       if (!perm) {
         perm = await prisma.permission.create({ data: { code } });

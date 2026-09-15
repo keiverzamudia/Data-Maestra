@@ -61,7 +61,7 @@ function createPrismaMock() {
   };
 }
 
-describe('E2E Workflow — BORRADOR to APROBADO_FINAL', () => {
+describe('E2E Workflow — BORRADOR to CONTABILIDAD_APROBADA (16A: última aprobación humana)', () => {
   let service: SolicitudesService;
   let prisma: ReturnType<typeof createPrismaMock>;
 
@@ -81,9 +81,9 @@ describe('E2E Workflow — BORRADOR to APROBADO_FINAL', () => {
     await service.approve(request.id, { action: 'APPROVE' }, 'user-2', 'c1');
     await service.classify(request.id, { groupId: 'g1', subgroupId: 'sg1' }, 'user-3', 'c1');
     await service.approve(request.id, { action: 'APPROVE', comment: 'WH OK' }, 'user-3', 'c1');
-    await service.approve(request.id, { action: 'APPROVE', comment: 'ACC OK' }, 'user-4', 'c1');
-    const final = await service.approve(request.id, { action: 'APPROVE', comment: 'Final OK' }, 'user-5', 'c1');
-    expect(final.status).toBe('APROBADO_FINAL');
+    await service.approve(request.id, { action: 'APPROVE', comment: 'Encargado OK' }, 'user-enc', 'c1');
+    const final = await service.approve(request.id, { action: 'APPROVE', comment: 'ACC OK' }, 'user-4', 'c1');
+    expect(final.status).toBe('CONTABILIDAD_APROBADA');
   });
 
   it('rejects at manager stage', async () => {

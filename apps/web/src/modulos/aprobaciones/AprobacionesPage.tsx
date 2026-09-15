@@ -71,11 +71,8 @@ export const ApprovalsPage: React.FC = () => {
     { key: 'est', header: 'Estado', label: 'Estado', render: r => <StatusBadge status={r.status} /> },
     { key: 'acc', header: 'Acción', label: 'Acción', render: r => (
       <span className="row-actions">
-        <Button size="sm" variant="secondary" onClick={() => setSelected(r)}>Ver</Button>
         <Can permission="MANAGER.APPROVE">
-          <Button size="sm" onClick={() => handleApprove(r.id)} disabled={approving}>
-            {approving ? 'Aprobando...' : 'Aprobar'}
-          </Button>
+          <Button size="sm" onClick={() => setSelected(r)}>Aprobar</Button>
         </Can>
       </span>
     ) },
