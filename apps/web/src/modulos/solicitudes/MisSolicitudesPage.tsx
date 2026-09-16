@@ -91,8 +91,8 @@ export const MisSolicitudesPage: React.FC = () => {
   ];
 
   return (
-    <Page title="Mis solicitudes" desc="Solicitudes creadas por mí." actions={<HelpButton helpKey="solicitudes" />}>
-      <div className="stat-grid" aria-label="Resumen">
+    <Page title="Mis solicitudes" desc="Consulta el estado y seguimiento de las solicitudes que has creado." actions={<HelpButton helpKey="solicitudes" />}>
+      <div className="stat-grid" aria-label="Resumen personal">
         <StatCard label="Total" value={totals.total} />
         <StatCard label="En proceso" value={totals.proceso} tone="info" />
         <StatCard label="Completadas" value={totals.completadas} tone="ok" />

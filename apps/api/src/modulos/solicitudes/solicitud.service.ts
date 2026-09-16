@@ -5,6 +5,7 @@ import { ClassifyRequestDto } from './dto/classify-request.dto';
 import { ApprovalDto } from './dto/approval.dto';
 import { CatalogosService } from '../catalogos/catalogos.service';
 import { ProfitArticleCreationService, type CreationPlan, type CreationResult } from '../profit/profit-article-creation.service';
+import { CorporateHomologationService } from '../profit/corporate-homologation.service';
 import type { ProfitArticleInput } from '../profit/profit-article.payload';
 import { buildProfitArticlePayload } from '../profit/profit-article.payload';
 import { serializarDis } from '../contabilidad/dis.utils';
@@ -77,6 +78,8 @@ export class SolicitudesService {
     // Opcional al final para compatibilidad posicional en tests (Nest resuelve por tipo).
     // La validación Profit vive en CatalogosService (fuente única con visibilidad).
     private readonly profitCreation?: ProfitArticleCreationService,
+    // FASE 17 — motor corporativo multiempresa (opcional, mismo patrón).
+    private readonly corporate?: CorporateHomologationService,
   ) {}
 
   async create(dto: CreateRequestDto, userId: string, companyId: string, departmentId: string) {
@@ -258,12 +261,14 @@ export class SolicitudesService {
     requesterId?: string;
     departmentId?: string;
     companyId?: string;
+    priority?: number;
     dateFrom?: string;
     dateTo?: string;
   }): Record<string, unknown> {
     const where: Record<string, unknown> = {};
     if (filters.companyId) where.companyId = filters.companyId;
     if (filters.departmentId) where.departmentId = filters.departmentId;
+    if (Number.isInteger(filters.priority)) where.priority = filters.priority;
     if (filters.requesterId) where.requesterId = filters.requesterId;
     // 14G: filtro multi-estado para bandejas (whitelist; prevalece sobre status singular).
     const valid = (filters.statuses ?? []).filter((s): s is string =>
@@ -349,7 +354,10 @@ export class SolicitudesService {
   ) {
     const viewer = await this.getViewer(userId);
     const scope = opts.scope === 'historial' ? 'historial' : 'activas';
-    const base = await this.buildScopeWhere(viewer, scope);
+    // FASE 18 §13: mine=true es "solicitudes creadas por mí" en TODOS los
+    // estados (incl. completadas, registradas en Profit o con error). El
+    // propietario nunca pierde sus solicitudes por cambio de estado.
+    const base = opts.mine ? {} : await this.buildScopeWhere(viewer, scope);
     // 14L: mine=true fuerza requesterId al usuario de la sesión (ignora spoof).
     const extra = this.filtersWhere(opts.mine ? { ...opts, requesterId: userId } : opts);
     const hasExtra = Object.keys(extra).length > 0;
@@ -413,6 +421,71 @@ export class SolicitudesService {
   }
 
   /** 13A — Contadores server-side sobre lo visible (nunca de la página). */
+  /**
+   * FASE 19 §26-§27 — Consulta global gerencial ("Todas las solicitudes").
+   * Backend como autoridad: el alcance se limita a las empresas del visor
+   * (admin ve todo); los filtros jamás amplían. Paginación siempre en BD.
+   * Requiere SOLICITUDES.VIEW_ALL en controller (RBAC, nunca solo UI).
+   */
+  async findGlobal(
+    userId: string,
+    opts: {
+      search?: string;
+      status?: string;
+      statuses?: string[];
+      bucket?: string;
+      requesterId?: string;
+      departmentId?: string;
+      companyId?: string;
+      priority?: number;
+      sort?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      page?: number;
+      limit?: number;
+    },
+  ) {
+    const viewer = await this.getViewer(userId);
+    const base: Record<string, unknown> = viewer.isAdmin
+      ? {}
+      : { companyId: { in: viewer.companies } };
+    const extra = this.filtersWhere(opts);
+    const hasExtra = Object.keys(extra).length > 0;
+    const filtered = hasExtra ? { AND: [base, extra] } : base;
+    const limit = SolicitudesService.PAGE_SIZES.includes(opts.limit ?? 0) ? opts.limit! : 25;
+    const rawPage = Number(opts.page);
+    const page = Number.isFinite(rawPage) ? Math.max(Math.floor(rawPage), 1) : 1;
+    const orderBy = opts.sort === 'antiguas'
+      ? { createdAt: 'asc' as const }
+      : opts.sort === 'actualizadas'
+        ? { updatedAt: 'desc' as const }
+        : { createdAt: 'desc' as const };
+    const [items, total, filteredTotal] = await Promise.all([
+      this.prisma.request.findMany({
+        where: filtered,
+        include: {
+          company: { select: { id: true, name: true, code: true } },
+          department: { select: { id: true, name: true, code: true, managerId: true } },
+          requester: { select: { id: true, username: true, displayName: true } },
+          requestData: true,
+          workflowInstance: { select: { id: true, currentStepCode: true } },
+        },
+        orderBy,
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.request.count({ where: base }),
+      this.prisma.request.count({ where: filtered }),
+    ]);
+    return {
+      items: items.map(r => flattenRequestData(r)),
+      total,
+      filteredTotal,
+      page,
+      limit,
+    };
+  }
+
   async resumen(userId: string) {
     const viewer = await this.getViewer(userId);
     const activas = await this.buildScopeWhere(viewer, 'activas');
@@ -1147,11 +1220,29 @@ export class SolicitudesService {
    * Transiciones directas CONTABILIDAD_APROBADA → PROCESANDO_PROFIT →
    * INSERTADO_PROFIT | ERROR_PROFIT (técnicas, sin APPROVE posterior).
    * Idempotencia (§25): INSERTADO_PROFIT no es CONTABILIDAD_APROBADA → 400, sin INSERT.
+   * FASE 17: con targetCompanies (destinos distintos del estándar) usa la
+   * vía corporativa (mismo código/correlativo/payload en todas, transacción
+   * global, cero escrituras parciales). Sin destinos = flujo simple histórico.
    */
-  async createInProfit(id: string, userId: string, companyId: string): Promise<CreationResult & { requestId: string; correlationId: string }> {
+  async createInProfit(id: string, userId: string, companyId: string, targetCompanies?: string[]): Promise<CreationResult & { requestId: string; correlationId: string; companies?: string[] }> {
     const { request, input } = await this.buildProfitInput(id);
     if ((request as any).status !== 'CONTABILIDAD_APROBADA') {
       throw new BadRequestException(`Request ${id} no está en CONTABILIDAD_APROBADA (estado: ${(request as any).status})`);
+    }
+    const destinos = Array.from(new Set((targetCompanies ?? []).map((c) => String(c ?? '').trim().toUpperCase()).filter(Boolean)));
+    if (destinos.length > 0) {
+      if (!this.corporate) throw new ServiceUnavailableException('Motor corporativo Profit no disponible');
+      // Fail-fast ANTES de cambiar estado: flag + destino explícito.
+      this.profitEngine().assertAvailable();
+      if (this.profitLocks.has(id)) {
+        throw new ConflictException(`Request ${id} ya tiene una operación Profit en curso (PROFIT_WRITE_IN_PROGRESS)`);
+      }
+      this.profitLocks.set(id, Date.now());
+      try {
+        return await this.runCorporateProfitCreation(id, userId, companyId, request, input, destinos);
+      } finally {
+        this.profitLocks.delete(id);
+      }
     }
     // Fail-fast ANTES de cambiar estado: flag + destino explícito.
     this.profitEngine().assertAvailable();
@@ -1244,6 +1335,87 @@ export class SolicitudesService {
         final: result.coArt || null,
       });
     }
+    return { requestId: id, correlationId, ...result };
+  }
+
+  /**
+   * FASE 17 — Creación corporativa multiempresa (extensión técnica del paso
+   * de registro en Profit, §32). Misma máquina de estados que el flujo
+   * simple; el motor corporativo garantiza mismo código/correlativo/payload
+   * y cero escrituras parciales. No crea estados nuevos (§32-§33).
+   */
+  private async runCorporateProfitCreation(
+    id: string,
+    userId: string,
+    companyId: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    request: any,
+    input: ProfitArticleInput,
+    destinos: string[],
+  ): Promise<CreationResult & { requestId: string; correlationId: string; companies: string[] }> {
+    const correlationId = this.profitCorrelationId(request.requestNumber);
+    const base = {
+      requestId: id,
+      masterCode: request.requestData?.masterCode ?? null,
+      actor: userId,
+      correlationId,
+      companies: destinos,
+    };
+    const claimed = await this.prisma.request.updateMany({
+      where: { id, status: 'CONTABILIDAD_APROBADA' },
+      data: { status: 'PROCESANDO_PROFIT' },
+    });
+    if (claimed.count === 0) {
+      throw new ConflictException(`Request ${id} ya no está disponible para registro (PROFIT_WRITE_IN_PROGRESS)`);
+    }
+    await this.profitAudit(id, correlationId, userId, companyId, 'PROFIT_WRITE_STARTED', { ...base });
+
+    const t0 = Date.now();
+    let corp: Awaited<ReturnType<CorporateHomologationService['registerArticle']>>;
+    try {
+      corp = await this.corporate!.registerArticle(destinos, input, { userId, companyId, requestId: id, correlationId });
+    } catch (err: any) {
+      corp = {
+        ok: false, companies: destinos, coArt: '', inserts: 0, updates: 0, perCompany: [],
+        perCompanyVerify: destinos.map((company) => ({ company, verified: false, differences: [] as string[] })),
+        errorCode: 'ERROR_PROFIT_ENGINE', errorDetail: String(err?.message ?? err).slice(0, 500), rolledBack: true,
+      };
+    }
+    const durationMs = Date.now() - t0;
+    const differences = (corp.perCompanyVerify ?? []).flatMap((v) => v.differences.map((d) => `${v.company}:${d}`));
+    const result: CreationResult & { companies: string[] } = {
+      ok: corp.ok,
+      coArt: corp.coArt,
+      attempts: [],
+      reconcile: corp.ok ? 'CREATED_AND_VERIFIED' : 'RECONCILIATION_ERROR',
+      differences,
+      errorCode: corp.ok ? undefined : (corp.errorCode ?? 'ERROR_PROFIT_ENGINE'),
+      errorDetail: corp.ok ? undefined : (corp.errorDetail ?? undefined),
+      companies: corp.companies,
+    };
+
+    await this.prisma.request.update({
+      where: { id },
+      data: { status: result.ok ? 'INSERTADO_PROFIT' : 'ERROR_PROFIT' },
+    });
+    if (result.ok && result.coArt) {
+      await this.prisma.requestData.update({
+        where: { requestId: id },
+        data: { profitCode: result.coArt },
+      });
+    }
+    await this.profitAudit(id, correlationId, userId, companyId, result.ok ? 'PROFIT_WRITE_SUCCEEDED' : 'PROFIT_WRITE_FAILED', {
+      ...base,
+      co_art: result.coArt || null,
+      integrationUser: this.safeIntegrationUser() || null,
+      reconcile: result.reconcile,
+      differences: result.differences,
+      perCompanyVerify: corp.perCompanyVerify,
+      catalogApplied: { inserts: corp.inserts, updates: corp.updates },
+      rolledBack: corp.rolledBack ?? false,
+      errorCode: result.errorCode ?? null,
+      durationMs,
+    });
     return { requestId: id, correlationId, ...result };
   }
 

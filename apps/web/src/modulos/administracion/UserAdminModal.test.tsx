@@ -38,7 +38,7 @@ describe('UserAdminModal 11D', () => {
       <UserAdminModal userId="u1" empresas={[]} departamentos={[]} roles={[]} onClose={() => {}} onChanged={() => {}} />,
     );
     expect(await screen.findByText('Administrar — Juan Pérez')).toBeTruthy();
-    expect(screen.getByText('5. Seguridad')).toBeTruthy();
+    expect(screen.getByText('Seguridad')).toBeTruthy();
     fireEvent.click(screen.getByText('Desactivar usuario'));
     expect(await screen.findByText(/¿Desactivar a Juan Pérez\?/)).toBeTruthy();
     fireEvent.click(screen.getByText('Desactivar'));

@@ -17,6 +17,7 @@ import {
   type ProfitAttemptRecord,
   type ProfitRetryResult,
 } from '../../servicios/api/api-profit-registration-service';
+import { apiCorporateService, type CorporateCompany } from '../../servicios/api/api-corporate-service';
 import type { Request } from '../../tipos';
 
 // 16A — visible en la puerta a Profit y estados finales (backend es la autoridad).
@@ -45,6 +46,10 @@ export const ProfitRegistrationPanel: React.FC<{ request: Request; onChanged?: (
   const [error, setError] = React.useState<string | null>(null);
   const [attempts, setAttempts] = React.useState<ProfitAttemptRecord[]>([]);
   const [retryNote, setRetryNote] = React.useState<string | null>(null);
+  // FASE 17 — destinos adicionales: el estándar siempre se incluye; si no se
+  // elige ninguno, el registro es simple (comportamiento histórico).
+  const [corpCompanies, setCorpCompanies] = React.useState<CorporateCompany[]>([]);
+  const [corpSelected, setCorpSelected] = React.useState<Set<string>>(new Set());
 
   if (!VISIBLE_STATES.includes(request.status)) return null;
   const canWrite = hasPermission('PROFIT.WRITE');
@@ -69,7 +74,18 @@ export const ProfitRegistrationPanel: React.FC<{ request: Request; onChanged?: (
     setError(null);
     setRetryNote(null);
     setConfirmText('');
+    setCorpSelected(new Set());
   }, [request.id, request.status]);
+
+  // Empresas destino disponibles cuando el registro está listo (solo lectura).
+  React.useEffect(() => {
+    if (!plan || !isFinal || result) return;
+    let cancelled = false;
+    apiCorporateService.companies()
+      .then((list) => { if (!cancelled) setCorpCompanies(list.filter((c) => !c.isStandard)); })
+      .catch(() => { if (!cancelled) setCorpCompanies([]); });
+    return () => { cancelled = true; };
+  }, [plan, isFinal, result]);
 
   const loadAttempts = React.useCallback(async () => {
     try {
@@ -100,7 +116,9 @@ export const ProfitRegistrationPanel: React.FC<{ request: Request; onChanged?: (
     setBusy('create');
     setError(null);
     try {
-      const r = await apiProfitRegistrationService.create(request.id);
+      const r = corpSelected.size > 0
+        ? await apiProfitRegistrationService.create(request.id, [...corpSelected])
+        : await apiProfitRegistrationService.create(request.id);
       setResult(r);
       await loadAttempts();
       onChanged?.();
@@ -226,9 +244,13 @@ export const ProfitRegistrationPanel: React.FC<{ request: Request; onChanged?: (
         <div className="stack-sm block-mt">
           <p><strong>Listo para enviar a Profit</strong></p>
           <p className="muted small">Valide la información antes de registrar.</p>
-          <div className="action-bar" style={{ justifyContent: 'flex-start', marginTop: 0 }}>
-            <Button variant="secondary" onClick={runPrepare} disabled={busy !== null}>{busy === 'plan' ? 'Validando...' : 'Preparar registro'}</Button>
-          </div>
+          {canWrite ? (
+            <div className="action-bar" style={{ justifyContent: 'flex-start', marginTop: 0 }}>
+              <Button variant="secondary" onClick={runPrepare} disabled={busy !== null}>{busy === 'plan' ? 'Validando...' : 'Preparar registro'}</Button>
+            </div>
+          ) : (
+            <p className="muted small">La preparación y el registro en Profit requieren autorización. Usted puede seguir el estado de la solicitud.</p>
+          )}
         </div>
       )}
 
@@ -255,16 +277,46 @@ export const ProfitRegistrationPanel: React.FC<{ request: Request; onChanged?: (
           <p><strong>✓ LISTO PARA REGISTRAR EN PROFIT</strong></p>
           <p className="muted small">Este artículo de Data-Maestra está listo para convertirse en este código de Profit.</p>
           {plan.warnings.map((w, i) => <Alert key={i} tone="info">{w}</Alert>)}
-          <div className="action-bar">
-            <Button variant="secondary" onClick={runPlan} disabled={busy !== null}>Revalidar</Button>
-            <Button
-              onClick={() => setConfirmOpen(true)}
-              disabled={busy !== null || !canWrite || !plan.available || !!writeBlocked}
-              title={writeBlocked ? 'Registro no disponible' : undefined}
-            >
-              {busy === 'create' ? 'Enviando...' : 'Registrar en Profit'}
-            </Button>
-          </div>
+          {canWrite && corpCompanies.length > 0 && (
+            <fieldset>
+              <legend className="muted small">Empresas adicionales (el estándar siempre se incluye)</legend>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                {corpCompanies.map((c) => (
+                  <label key={c.code} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={corpSelected.has(c.code)}
+                      onChange={() => setCorpSelected((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(c.code)) next.delete(c.code);
+                        else next.add(c.code);
+                        return next;
+                      })}
+                      aria-label={`Registrar también en ${c.code}`}
+                    />
+                    <span><strong className="mono">{c.code}</strong></span>
+                  </label>
+                ))}
+              </div>
+              {corpSelected.size > 0 && (
+                <p className="muted small">Se registrará el mismo código en {corpSelected.size + 1} empresa(s) en una sola operación. Si alguna falla, no se escribe en ninguna.</p>
+              )}
+            </fieldset>
+          )}
+          {canWrite ? (
+            <div className="action-bar">
+              <Button variant="secondary" onClick={runPlan} disabled={busy !== null}>Revalidar</Button>
+              <Button
+                onClick={() => setConfirmOpen(true)}
+                disabled={busy !== null || !plan.available || !!writeBlocked}
+                title={writeBlocked ? 'Registro no disponible' : undefined}
+              >
+                {busy === 'create' ? 'Enviando...' : 'Registrar en Profit'}
+              </Button>
+            </div>
+          ) : (
+            <p className="muted small">El registro en Profit requiere autorización. Usted puede seguir el estado de la solicitud.</p>
+          )}
           {writeBlocked && (
             <p className="muted small">Botón deshabilitado mientras el registro esté deshabilitado.</p>
           )}
@@ -285,6 +337,9 @@ export const ProfitRegistrationPanel: React.FC<{ request: Request; onChanged?: (
             <strong>✓ Registrado en Profit</strong><br />
             Código Profit: <Code>{result.coArt}</Code><br />
             Verificación: ✓ Confirmado en Profit
+            {result.companies && result.companies.length > 1 && (
+              <><br />Empresas: {result.companies.join(', ')}</>
+            )}
           </Alert>
           <div className="perm-toolbar">
             <span>Resultado:</span>
@@ -395,7 +450,7 @@ export const ProfitRegistrationPanel: React.FC<{ request: Request; onChanged?: (
       <ConfirmDialog
         open={confirmOpen}
         title="Registrar artículo en Profit"
-        desc={plan ? `Está a punto de registrar este artículo en Profit. Solicitud: ${request.requestNumber}. Código Profit: ${plan.candidate}. Esta operación creará el artículo en Profit. Para confirmar, escriba REGISTRAR EN PROFIT.` : undefined}
+        desc={plan ? `Está a punto de registrar este artículo en Profit. Solicitud: ${request.requestNumber}. Código Profit: ${plan.candidate}.${corpSelected.size > 0 ? ` Mismo código en ${corpSelected.size + 1} empresas, en una sola operación (si alguna falla, no se escribe en ninguna).` : ''} Esta operación creará el artículo en Profit. Para confirmar, escriba REGISTRAR EN PROFIT.` : undefined}
         confirmLabel="Confirmar registro"
         busy={busy === 'create'}
         confirmDisabled={confirmText.trim() !== 'REGISTRAR EN PROFIT'}

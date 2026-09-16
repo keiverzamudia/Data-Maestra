@@ -4,6 +4,7 @@ export interface AdminRole {
   code: string;
   name: string;
   description: string | null;
+  defaultView: string | null;
   userCount: number;
   permissionCount: number;
   permissions: string[];
@@ -13,6 +14,8 @@ export interface RoleDetail {
   code: string;
   name: string;
   description: string | null;
+  defaultView: string | null;
+  availableViews: Array<{ key: string; label: string; route: string; permission: string }>;
   permissions: Array<{ code: string; description: string | null }>;
   catalog: Array<{ code: string; description: string | null }>;
   users: Array<{
@@ -40,5 +43,15 @@ export const apiRolesService = {
 
   async quitar(code: string, permissionCode: string): Promise<{ ok: boolean; removed: boolean }> {
     return api.delete<{ ok: boolean; removed: boolean }>(`/api/v1/roles/${encodeURIComponent(code)}/permisos`, { permissionCode });
+  },
+
+  /** Vista principal del rol (ADMIN.MANAGE). null = fallback Mis solicitudes. */
+  async vista(code: string, defaultView: string | null): Promise<{ ok: boolean; defaultView: string | null }> {
+    return api.put<{ ok: boolean; defaultView: string | null }>(`/api/v1/roles/${encodeURIComponent(code)}/vista`, { defaultView });
+  },
+
+  /** Vista principal resuelta del usuario autenticado (fallback incluido). */
+  async miVista(): Promise<{ key: string; label: string; route: string; permission: string }> {
+    return api.get(`/api/v1/roles/mi-vista`);
   },
 };

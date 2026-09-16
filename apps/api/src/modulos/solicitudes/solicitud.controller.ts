@@ -116,6 +116,56 @@ export class SolicitudesController {
     return this.requestsService.resumen(user.id);
   }
 
+  @Get('todas')
+  @RequirePermission('SOLICITUDES.VIEW_ALL')
+  @ApiOperation({ summary: 'Todas las solicitudes del ámbito autorizado (gerencial, paginado en BD)' })
+  @ApiQuery({ name: 'companyId', required: false })
+  @ApiQuery({ name: 'status', required: false })
+  @ApiQuery({ name: 'statuses', required: false })
+  @ApiQuery({ name: 'search', required: false })
+  @ApiQuery({ name: 'bucket', required: false })
+  @ApiQuery({ name: 'requesterId', required: false })
+  @ApiQuery({ name: 'sort', required: false })
+  @ApiQuery({ name: 'departmentId', required: false })
+  @ApiQuery({ name: 'priority', required: false })
+  @ApiQuery({ name: 'dateFrom', required: false })
+  @ApiQuery({ name: 'dateTo', required: false })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  findTodas(
+    @CurrentUser() user: RequestUser,
+    @Query('companyId') companyId?: string,
+    @Query('status') status?: string,
+    @Query('statuses') statuses?: string,
+    @Query('search') search?: string,
+    @Query('bucket') bucket?: string,
+    @Query('requesterId') requesterId?: string,
+    @Query('sort') sort?: string,
+    @Query('departmentId') departmentId?: string,
+    @Query('priority') priority?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const p = priority !== undefined && priority !== '' ? parseInt(priority, 10) : undefined;
+    return this.requestsService.findGlobal(user.id, {
+      companyId,
+      status,
+      statuses: statuses?.split(',').map(s => s.trim()).filter(Boolean),
+      search,
+      bucket,
+      requesterId,
+      sort,
+      departmentId,
+      priority: p !== undefined && Number.isInteger(p) ? p : undefined,
+      dateFrom,
+      dateTo,
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
+  }
+
   @Get(':id')
   @RequirePermission('REQUEST.VIEW')
   @ApiOperation({ summary: 'Get request by ID (scoped)' })
@@ -184,8 +234,8 @@ export class SolicitudesController {
 
   @Post(':id/profit-plan')
   @HttpCode(HttpStatus.OK)
-  @RequirePermission('DASHBOARD.VIEW')
-  @ApiOperation({ summary: 'Plan Profit sin escritura: payload + candidato + disponibilidad (14E §22)' })
+  @RequirePermission('PROFIT.WRITE')
+  @ApiOperation({ summary: 'Plan Profit sin escritura: payload + candidato + disponibilidad (FASE 18: preparar es operación Profit, exige PROFIT.WRITE)' })
   async profitPlan(@CurrentUser() user: RequestUser, @Param('id') id: string) {
     const companyId = await this.authService.resolveCompanyContext(user.id);
     return this.requestsService.planProfitCreation(id, user.id, companyId);
@@ -194,10 +244,10 @@ export class SolicitudesController {
   @Post(':id/profit-create')
   @HttpCode(HttpStatus.OK)
   @RequirePermission('PROFIT.WRITE')
-  @ApiOperation({ summary: 'Crear artículo en Profit (gates: CONTABILIDAD_APROBADA + PROFIT.WRITE + flag + payload)' })
-  async profitCreate(@CurrentUser() user: RequestUser, @Param('id') id: string) {
+  @ApiOperation({ summary: 'Crear artículo en Profit (gates: CONTABILIDAD_APROBADA + PROFIT.WRITE + flag + payload). Con empresas: vía corporativa multiempresa (Fase 17).' })
+  async profitCreate(@CurrentUser() user: RequestUser, @Param('id') id: string, @Body() body?: { empresas?: string[] }) {
     const companyId = await this.authService.resolveCompanyContext(user.id);
-    return this.requestsService.createInProfit(id, user.id, companyId);
+    return this.requestsService.createInProfit(id, user.id, companyId, body?.empresas);
   }
 
   @Post(':id/profit-verify')

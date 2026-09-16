@@ -1,7 +1,16 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../comun/prisma/prisma.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
+import { AutenticacionService } from '../autenticacion/autenticacion.service';
+import {
+  ROLE_VIEWS,
+  ROLE_VIEW_KEYS,
+  isRoleViewKey,
+  resolveDefaultView,
+  type RoleViewDef,
+  type RoleViewKey,
+} from './role-default-view';
 
 /**
  * 10I — Administración de roles y sus permisos (solo ADMIN.MANAGE en controller).
@@ -13,6 +22,7 @@ export class RolesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditoria: AuditoriaService,
+    private readonly authService?: AutenticacionService,
   ) {}
 
   private async requireRole(code: string) {
@@ -36,6 +46,7 @@ export class RolesService {
         code: true,
         name: true,
         description: true,
+        defaultView: true,
         rolePermissions: {
           select: { permission: { select: { code: true } } },
           orderBy: { permission: { code: 'asc' } },
@@ -47,6 +58,7 @@ export class RolesService {
       code: r.code,
       name: r.name,
       description: r.description,
+      defaultView: (r as { defaultView?: string | null }).defaultView ?? null,
       userCount: new Set(r.userRoles.map(u => u.userId)).size,
       permissionCount: r.rolePermissions.length,
       permissions: r.rolePermissions.map(rp => rp.permission.code),
@@ -62,6 +74,7 @@ export class RolesService {
         code: true,
         name: true,
         description: true,
+        defaultView: true,
         rolePermissions: {
           select: { permission: { select: { code: true, description: true } } },
           orderBy: { permission: { code: 'asc' } },
@@ -86,6 +99,8 @@ export class RolesService {
       code: role.code,
       name: role.name,
       description: role.description,
+      defaultView: (role as { defaultView?: string | null }).defaultView ?? null,
+      availableViews: ROLE_VIEW_KEYS.map(k => ROLE_VIEWS[k]),
       permissions: role.rolePermissions.map(rp => rp.permission),
       catalog,
       users: role.userRoles.map(m => ({
@@ -149,6 +164,57 @@ export class RolesService {
       beforeData: JSON.stringify({ roleCode: role.code, permissionCode: permission.code }),
     });
     return { ok: true, removed: true };
+  }
+
+  /**
+   * FASE 18 §10/§24 — Vista principal del rol (solo ADMIN.MANAGE en
+   * controller). Whitelist de vistas reales; null limpia (fallback).
+   * La vista no concede permisos: solo orienta la navegación inicial.
+   */
+  async setDefaultView(roleCode: string, view: string | null, actorId: string, actorCompanyId?: string) {
+    const role = await this.requireRole(roleCode);
+    if (view !== null && !isRoleViewKey(view)) {
+      throw new BadRequestException(`Vista inválida: "${view}".`);
+    }
+    await this.prisma.role.update({ where: { id: role.id }, data: { defaultView: view } as never });
+    await this.auditoria.logEvent({
+      correlationId: randomUUID(),
+      actorId,
+      actorCompanyId,
+      entityType: 'Role',
+      entityId: role.id,
+      action: 'ROLE_DEFAULT_VIEW_CHANGED',
+      afterData: JSON.stringify({ roleCode: role.code, defaultView: view }),
+    });
+    return { ok: true, roleCode: role.code, defaultView: view };
+  }
+
+  /**
+   * Vista principal resuelta para el usuario autenticado (§9/§11-§12).
+   * Sin vista con permiso → fallback Mis solicitudes. Nunca otorga permisos.
+   */
+  async myDefaultView(userId: string): Promise<RoleViewDef> {
+    const memberships = await this.prisma.userRole.findMany({
+      where: { userId, active: true },
+      select: { role: { select: { code: true, defaultView: true } } },
+    });
+    const roleViews = memberships.map(m => ({
+      roleCode: m.role.code,
+      defaultView: isRoleViewKey((m.role as { defaultView?: unknown }).defaultView)
+        ? ((m.role as { defaultView?: RoleViewKey }).defaultView as RoleViewKey)
+        : null,
+    }));
+    let permissions: string[] = [];
+    if (this.authService) {
+      try {
+        const eff = await this.authService.getEffectivePermissions(userId);
+        permissions = eff.permissions ?? [];
+      } catch {
+        permissions = [];
+      }
+    }
+    const has = (p: string): boolean => permissions.includes(p);
+    return resolveDefaultView(roleViews, has);
   }
 
   /**

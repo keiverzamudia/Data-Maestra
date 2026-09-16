@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Body, Param, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { RolesService } from './roles.service';
 import { RbacGuard } from '../autenticacion/rbac.guard';
@@ -6,6 +6,7 @@ import { JwtGuard } from '../autenticacion/jwt.guard';
 import { CurrentUser, RequestUser } from '../autenticacion/current-user.decorator';
 import { RequirePermission } from '../autenticacion/require-permission.decorator';
 import { RolePermissionDto } from './dto/role-permission.dto';
+import { RoleDefaultViewDto } from './dto/role-default-view.dto';
 
 @ApiTags('Roles')
 @Controller('roles')
@@ -18,6 +19,12 @@ export class RolesController {
   @ApiOperation({ summary: 'List roles with user/permission counts' })
   async listar() {
     return this.rolesService.listRoles();
+  }
+
+  @Get('mi-vista')
+  @ApiOperation({ summary: 'Vista principal resuelta del usuario autenticado (fallback: Mis solicitudes)' })
+  async miVista(@CurrentUser() user: RequestUser) {
+    return this.rolesService.myDefaultView(user.id);
   }
 
   @Get(':code')
@@ -40,5 +47,13 @@ export class RolesController {
   @ApiOperation({ summary: 'Remove permission from role (safe, protects last admin)' })
   async quitar(@Param('code') code: string, @Body() dto: RolePermissionDto, @CurrentUser() user: RequestUser) {
     return this.rolesService.removePermission(code, dto.permissionCode, user.id);
+  }
+
+  @Put(':code/vista')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('ADMIN.MANAGE')
+  @ApiOperation({ summary: 'Set role default view (whitelist, persisted; view grants no permissions)' })
+  async vista(@Param('code') code: string, @Body() dto: RoleDefaultViewDto, @CurrentUser() user: RequestUser) {
+    return this.rolesService.setDefaultView(code, dto.defaultView ?? null, user.id);
   }
 }

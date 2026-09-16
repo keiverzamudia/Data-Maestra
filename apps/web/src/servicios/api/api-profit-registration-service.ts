@@ -50,6 +50,8 @@ export interface ProfitCreationResult {
   differences: string[];
   errorCode?: string;
   errorDetail?: string;
+  /** FASE 17 — empresas cubiertas por el registro (incluye el estándar). */
+  companies?: string[];
 }
 
 export interface ProfitVerifyResult {
@@ -109,8 +111,8 @@ export const apiProfitRegistrationService = {
     return api.post<ProfitPlan>(`/api/v1/requests/${id}/profit-plan`, {});
   },
 
-  async create(id: string): Promise<ProfitCreationResult> {
-    return api.post<ProfitCreationResult>(`/api/v1/requests/${id}/profit-create`, {});
+  async create(id: string, empresas?: string[]): Promise<ProfitCreationResult> {
+    return api.post<ProfitCreationResult>(`/api/v1/requests/${id}/profit-create`, empresas && empresas.length > 0 ? { empresas } : {});
   },
 
   async verify(id: string, coArt: string): Promise<ProfitVerifyResult> {

@@ -24,7 +24,7 @@ describe('navegación 14G', () => {
       labels.push(n.label);
       for (const c of n.children ?? []) labels.push(c.label);
     }
-    for (const l of ['Dashboard', 'Mis solicitudes', 'Crear solicitud', 'Aprobaciones', 'Almacén',
+    for (const l of ['Dashboard Gerencial', 'Mis solicitudes', 'Crear solicitud', 'Aprobaciones', 'Almacén',
       'Aprobación Almacén', 'Contabilidad', 'Catálogos Profit']) {
       expect(labels).toContain(l);
     }

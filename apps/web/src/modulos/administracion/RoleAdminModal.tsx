@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Button, Alert, ConfirmDialog, Skeleton, ErrorState, Badge, SearchInput, Code } from '../../componentes/ui';
+import { Button, Alert, ConfirmDialog, Skeleton, ErrorState, Badge, SearchInput, Code, Select } from '../../componentes/ui';
 import { apiRolesService, type RoleDetail } from '../../servicios/api/api-roles-service';
 import { getRoleLabel, getRoleDescription, getPermissionLabel } from '../../utilidades/presentacion';
 
@@ -42,8 +42,7 @@ export const RoleAdminModal: React.FC<Props> = ({ roleCode, onClose, onChanged }
 
   React.useEffect(() => { void load(); }, [load]);
 
-  const toggle = async (code: string, assigned: boolean) => {
-    if (saving) return;
+  const toggle = async (code: string, assigned: boolean) => {    if (saving) return;
     setSaving(code);
     setMsg(null);
     try {
@@ -54,6 +53,23 @@ export const RoleAdminModal: React.FC<Props> = ({ roleCode, onClose, onChanged }
         await apiRolesService.conceder(roleCode, code);
         setMsg('Permiso asignado correctamente');
       }
+      await load();
+      onChanged();
+    } catch (err: any) {
+      setMsg(null);
+      setError(err?.message || 'No se pudo guardar. Reintenta.');
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const saveView = async (view: string | null) => {
+    if (saving) return;
+    setSaving('vista');
+    setMsg(null);
+    try {
+      await apiRolesService.vista(roleCode, view);
+      setMsg(view ? 'Vista principal guardada.' : 'Vista principal restablecida a Mis solicitudes.');
       await load();
       onChanged();
     } catch (err: any) {
@@ -96,6 +112,22 @@ export const RoleAdminModal: React.FC<Props> = ({ roleCode, onClose, onChanged }
             <div className="role-stats">
               <div className="role-stat"><strong>{detail.users.length}</strong><span>usuario{detail.users.length === 1 ? '' : 's'}</span></div>
               <div className="role-stat"><strong>{detail.permissions.length}</strong><span>permiso{detail.permissions.length === 1 ? '' : 's'}</span></div>
+            </div>
+            <div className="block-mt-sm">
+              <label>
+                <span className="muted small">Vista principal (no otorga permisos)</span>
+                <Select
+                  value={detail.defaultView ?? ''}
+                  onChange={e => void saveView(e.target.value || null)}
+                  disabled={saving !== null}
+                  aria-label="Vista principal del rol"
+                >
+                  <option value="">Mis solicitudes (por defecto)</option>
+                  {(detail.availableViews ?? []).map(v => (
+                    <option key={v.key} value={v.key}>{v.label}</option>
+                  ))}
+                </Select>
+              </label>
             </div>
           </section>
 

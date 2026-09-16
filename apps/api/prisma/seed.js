@@ -84,6 +84,8 @@ async function main() {
       // 14E: existe pero NO se otorga a ningún rol (deny by default).
       // Otorgarlo requiere acción administrativa explícita en fase posterior.
       'PROFIT.WRITE',
+      // 19: consulta global gerencial (deny by default; solo Admin MDM).
+      'SOLICITUDES.VIEW_ALL',
     ];
     for (const code of permissions) {
       await prisma.permission.create({ data: { code } });
@@ -99,7 +101,7 @@ async function main() {
       // 15A — revisa/aprueba; no clasifica (sin WAREHOUSE.CLASSIFY).
       WAREHOUSE_MANAGER: ['WAREHOUSE_MANAGER.VIEW', 'WAREHOUSE_MANAGER.APPROVE', 'REQUEST.VIEW', 'DASHBOARD.VIEW'],
       ACCOUNTING: ['ACCOUNTING.APPROVE', 'ACCOUNTING.VIEW', 'REQUEST.VIEW', 'DASHBOARD.VIEW'],
-      MASTER_DATA_ADMIN: ['ADMIN.MANAGE', 'DASHBOARD.VIEW', 'AUDIT.VIEW', 'IMPORT.RUN', 'IMPORT.VIEW'],
+      MASTER_DATA_ADMIN: ['ADMIN.MANAGE', 'DASHBOARD.VIEW', 'AUDIT.VIEW', 'IMPORT.RUN', 'IMPORT.VIEW', 'SOLICITUDES.VIEW_ALL'],
     };
     let rpCount = 0;
     for (const [roleCode, perms] of Object.entries(rolePermissions)) {

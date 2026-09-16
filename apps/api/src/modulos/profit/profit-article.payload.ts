@@ -119,8 +119,15 @@ export interface ProfitInsertStatement {
  * (14 originales + co_us_in al final), sin TEXT (dis_cen es VARCHAR(8000);
  * la columna TEXT lo convierte). Pura y testeable; el adapter solo mapea
  * kinds al driver.
+ * FASE 17: tableRef permite calificar la tabla ([DB].dbo.art) para el
+ * registro multiempresa en el mismo servidor. Default = comportamiento
+ * histórico (una sola base). Solo se aceptan referencias con formato
+ * [base].dbo.[tabla] o dbo.tabla; cualquier otra cosa falla cerrado.
  */
-export function buildInsertStatement(p: ProfitArticlePayload): ProfitInsertStatement {
+export function buildInsertStatement(p: ProfitArticlePayload, tableRef = 'dbo.art'): ProfitInsertStatement {
+  if (!/^(\[[A-Za-z0-9_]+\]\.dbo\.\[[a-z_]+\]|dbo\.art)$/i.test(tableRef)) {
+    throw new Error('Referencia de tabla Profit inválida');
+  }
   const cols = [
     'co_art', 'art_des', 'tipo', 'co_lin', 'co_subl', 'uni_venta', 'suni_venta',
     'tipo_imp', 'co_cat', 'co_color', 'procedenci', 'co_prov', 'tipo_cos', 'dis_cen',
@@ -146,7 +153,7 @@ export function buildInsertStatement(p: ProfitArticlePayload): ProfitInsertState
     P('co_us_in', 'char', 6, p.co_us_in),
   ];
   return {
-    sql: `INSERT INTO dbo.art (${cols.join(', ')}) VALUES (${cols.map((c) => '@' + c).join(', ')})`,
+    sql: `INSERT INTO ${tableRef} (${cols.join(', ')}) VALUES (${cols.map((c) => '@' + c).join(', ')})`,
     params,
   };
 }

@@ -22,7 +22,7 @@ const ROLE_PERMISSIONS = {
   ACCOUNTING: ['ACCOUNTING.APPROVE', 'ACCOUNTING.VIEW', 'REQUEST.VIEW', 'DASHBOARD.VIEW'],
   // 16A — el rol/permiso de revisión final salió del flujo
   // (los retira migrate-reestructuracion-16a.js).
-  MASTER_DATA_ADMIN: ['ADMIN.MANAGE', 'DASHBOARD.VIEW', 'AUDIT.VIEW', 'IMPORT.RUN', 'IMPORT.VIEW'],
+  MASTER_DATA_ADMIN: ['ADMIN.MANAGE', 'DASHBOARD.VIEW', 'AUDIT.VIEW', 'IMPORT.RUN', 'IMPORT.VIEW', 'SOLICITUDES.VIEW_ALL'],
 };
 
 async function main() {

@@ -4,7 +4,27 @@
  * 16A — Sin Validación Maestra, Aprobación Final ni Profit standalone:
  * Contabilidad es la última aprobación humana y Profit vive en su detalle.
  * Entrada a sección por permiso VIEW; acciones por su permiso específico.
+ * Iconografía: lucide-react, estilo outline único (stroke 1.8, 18px),
+ * un icono semántico por destino. Sin emojis ni glifos improvisados.
  */
+import type { LucideIcon } from 'lucide-react';
+import {
+  LayoutDashboard,
+  FileText,
+  FilePlus2,
+  ClipboardCheck,
+  Warehouse,
+  PackageCheck,
+  Calculator,
+  Import,
+  Settings,
+  UsersRound,
+  Building2,
+  ShieldCheck,
+  Database,
+  ScrollText,
+} from 'lucide-react';
+
 export type NavGroup = 'operacion' | 'trabajo' | 'administracion';
 
 export const GROUP_LABEL: Record<NavGroup, string> = {
@@ -18,13 +38,15 @@ export interface NavChild {
   to: string;
   label: string;
   permission: string;
+  /** Icono propio; si se omite se usa el de la entrada padre. */
+  icon?: LucideIcon;
 }
 
 export interface NavEntry {
   key: string;
   to?: string;
   label: string;
-  icon: string;
+  icon: LucideIcon;
   permission?: string;
   group: NavGroup;
   /** Rutas legacy que resuelven al mismo destino (breadcrumbs, sin mostrar). */
@@ -33,26 +55,26 @@ export interface NavEntry {
 }
 
 export const NAV: NavEntry[] = [
-  { key: 'dashboard', to: '/', label: 'Dashboard', icon: '◧', permission: 'DASHBOARD.VIEW', group: 'operacion' },
+  { key: 'dashboard', to: '/', label: 'Dashboard Gerencial', icon: LayoutDashboard, permission: 'DASHBOARD.VIEW', group: 'operacion' },
   {
-    key: 'solicitudes', to: '/solicitudes', label: 'Mis solicitudes', icon: '◻', permission: 'REQUEST.VIEW',
+    key: 'solicitudes', to: '/solicitudes', label: 'Mis solicitudes', icon: FileText, permission: 'REQUEST.VIEW',
     group: 'operacion', aliases: ['/requester'],
-    children: [{ key: 'new', to: '/requester/new', label: 'Crear solicitud', permission: 'REQUEST.CREATE' }],
+    children: [{ key: 'new', to: '/requester/new', label: 'Crear solicitud', permission: 'REQUEST.CREATE', icon: FilePlus2 }],
   },
-  { key: 'approvals', to: '/approvals', label: 'Aprobaciones', icon: '✔', permission: 'MANAGER.APPROVE', group: 'trabajo' },
-  { key: 'warehouse', to: '/warehouse', label: 'Almacén', icon: '▭', permission: 'WAREHOUSE.VIEW', group: 'trabajo' },
+  { key: 'approvals', to: '/approvals', label: 'Aprobaciones', icon: ClipboardCheck, permission: 'MANAGER.APPROVE', group: 'trabajo' },
+  { key: 'warehouse', to: '/warehouse', label: 'Almacén', icon: Warehouse, permission: 'WAREHOUSE.VIEW', group: 'trabajo' },
   // 15A — cola del Encargado de Almacén (permiso propio, no duplica Almacén).
-  { key: 'warehouse-approval', to: '/aprobacion-almacen', label: 'Aprobación Almacén', icon: '✔▭', permission: 'WAREHOUSE_MANAGER.VIEW', group: 'trabajo' },
-  { key: 'accounting', to: '/accounting', label: 'Contabilidad', icon: '✓', permission: 'ACCOUNTING.VIEW', group: 'trabajo' },
-  { key: 'imports', to: '/imports', label: 'Importaciones', icon: '↻', permission: 'IMPORT.VIEW', group: 'administracion' },
+  { key: 'warehouse-approval', to: '/aprobacion-almacen', label: 'Aprobación Almacén', icon: PackageCheck, permission: 'WAREHOUSE_MANAGER.VIEW', group: 'trabajo' },
+  { key: 'accounting', to: '/accounting', label: 'Contabilidad', icon: Calculator, permission: 'ACCOUNTING.VIEW', group: 'trabajo' },
+  { key: 'imports', to: '/imports', label: 'Importaciones', icon: Import, permission: 'IMPORT.VIEW', group: 'administracion' },
   {
-    key: 'admin', label: 'Administración', icon: '⚙', group: 'administracion',
+    key: 'admin', label: 'Administración', icon: Settings, group: 'administracion',
     children: [
-      { key: 'admin-personas', to: '/admin', label: 'Personas y acceso', permission: 'ADMIN.MANAGE' },
-      { key: 'admin-organizacion', to: '/admin/organizacion', label: 'Organización', permission: 'ADMIN.MANAGE' },
-      { key: 'admin-roles', to: '/admin/roles', label: 'Roles y permisos', permission: 'ADMIN.MANAGE' },
-      { key: 'admin-catalogos', to: '/admin/catalogos', label: 'Catálogos Profit', permission: 'ADMIN.MANAGE' },
-      { key: 'audit', to: '/audit', label: 'Auditoría', permission: 'AUDIT.VIEW' },
+      { key: 'admin-personas', to: '/admin', label: 'Personas y acceso', permission: 'ADMIN.MANAGE', icon: UsersRound },
+      { key: 'admin-organizacion', to: '/admin/organizacion', label: 'Organización', permission: 'ADMIN.MANAGE', icon: Building2 },
+      { key: 'admin-roles', to: '/admin/roles', label: 'Roles y permisos', permission: 'ADMIN.MANAGE', icon: ShieldCheck },
+      { key: 'admin-catalogos', to: '/admin/catalogos', label: 'Catálogos Profit', permission: 'ADMIN.MANAGE', icon: Database },
+      { key: 'audit', to: '/audit', label: 'Auditoría', permission: 'AUDIT.VIEW', icon: ScrollText },
     ],
   },
 ];

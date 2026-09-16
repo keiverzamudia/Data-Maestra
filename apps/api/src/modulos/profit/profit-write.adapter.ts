@@ -16,6 +16,9 @@ import type { ProfitArticlePayload } from './profit-article.payload';
  * - Única escritura autorizada: INSERT de artículo nuevo. NO expone
  *   update/delete de ningún tipo.
  */
+/** Firma de consulta dentro de una transacción global (FASE 17 §14). */
+export type ProfitTxQuery = <T>(sql: string, params?: Record<string, { type: any; value: any }>) => Promise<T[]>;
+
 export type ProfitWriteAuth = 'windows' | 'sql';
 
 @Injectable()
@@ -257,5 +260,62 @@ export class ProfitWriteAdapterService {
       { coArt: { type: mssql.Char(30), value: coArt.trim() } },
     );
     return rows[0] ?? null;
+  }
+
+  /**
+   * FASE 17 — Permiso efectivo de INSERT del login de escritura sobre el
+   * artículo de una empresa (preflight #11). Requiere flag (fail-closed).
+   * La prueba definitiva es la propia transacción (rollback si falla).
+   */
+  async hasInsertPermission(db: string): Promise<boolean> {
+    const safe = String(db ?? '').trim().toUpperCase();
+    if (!/^[A-Z0-9_]{1,30}$/.test(safe)) return false;
+    try {
+      const rows = await this.exec<{ p: number | null }>(
+        `SELECT HAS_PERMS_BY_NAME(@obj, 'OBJECT', 'INSERT') AS p`,
+        { obj: { type: (await this.types()).VarChar(100), value: `[${safe}].dbo.art` } },
+      );
+      return (rows[0]?.p ?? 0) === 1;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * FASE 17 §14 — Transacción GLOBAL multiempresa sobre una sola conexión.
+   * SQL Server permite cubrir varias bases del mismo servidor con nombres
+   * three-part ([Base].dbo.tabla) dentro de un único BEGIN/COMMIT.
+   * Garantía: o todo se confirma o todo se revierte; jamás commit parcial
+   * por empresa. Cualquier error (incl. verificación previa al commit) →
+   * ROLLBACK total. Si las empresas vivieran en servidores distintos, esta
+   * vía no ofrece atomicidad y el preflight debe abortar antes de llegar aquí.
+   */
+  async runInGlobalTransaction<T>(work: (query: ProfitTxQuery) => Promise<T>): Promise<T> {
+    this.assertWriteEnabled();
+    const pool = await this.getPool(true);
+    const sqlw: any = await this.types();
+    const tx = new sqlw.Transaction(pool);
+    await tx.begin();
+    const query: ProfitTxQuery = async <T>(sql: string, params: Record<string, { type: any; value: any }> = {}): Promise<T[]> => {
+      const request = new sqlw.Request(tx);
+      request.timeout = 15000;
+      for (const [name, def] of Object.entries(params)) {
+        request.input(name, def.type, def.value);
+      }
+      const result = await request.query(sql);
+      return (result.recordset ?? []) as T[];
+    };
+    try {
+      const out = await work(query);
+      await tx.commit();
+      return out;
+    } catch (e) {
+      try {
+        await tx.rollback();
+      } catch {
+        // Rollback best-effort: el error original es el que importa.
+      }
+      throw e;
+    }
   }
 }

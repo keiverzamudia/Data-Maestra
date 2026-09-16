@@ -1,10 +1,11 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
+import * as React from 'react';
 import { CompanyProvider } from '../contextos/CompanyContext';
 import { SessionProvider, useSession } from '../contextos/SessionContext';
 import { AppLayout } from '../componentes/diseno/AppLayout';
 import { LoginPage } from '../modulos/autenticacion';
 import { PanelPage } from '../modulos/panel';
-import { SolicitudesList, SolicitudCreate, SolicitudDetailPage, MisSolicitudesPage } from '../modulos/solicitudes';
+import { SolicitudesList, SolicitudCreate, SolicitudDetailPage, MisSolicitudesPage, TodasSolicitudesPage } from '../modulos/solicitudes';
 import { AlmacenList, AlmacenClassify } from '../modulos/almacen';
 import { AprobacionAlmacenPage } from '../modulos/aprobacion-almacen';
 import { ContabilidadList } from '../modulos/contabilidad';
@@ -13,6 +14,8 @@ import { ImportacionesPage } from '../modulos/importaciones';
 import { AuditoriaPage } from '../modulos/auditoria';
 import { AdministracionPage } from '../modulos/administracion';
 import { RequirePermission } from '../componentes/auth/Can';
+import { apiRolesService } from '../servicios/api/api-roles-service';
+import { resolveHomeRoute } from '../utilidades/vista-principal';
 
 export function App() {
   return (
@@ -27,6 +30,34 @@ export function App() {
 // FASE 10E/15 — Puerta real: loading sin flash → sin sesión LoginPage →
 // autenticado aplicación. La contraseña se valida contra Profit.
 // CompanyProvider vive dentro (sus endpoints exigen JWT).
+// FASE 20 — '/' es la única fuente de verdad de la vista principal: resuelve
+// vía /roles/mi-vista en cada entrada (login, directo, recarga, sesión nueva).
+// Con DASHBOARD.VIEW muestra el Dashboard Gerencial; sin él redirige al
+// fallback personal (/solicitudes). Nunca deja pantalla prohibida en la raíz.
+export function HomeIndex() {
+  const { hasPermission } = useSession();
+  const navigate = useNavigate();
+  const [ready, setReady] = React.useState(false);
+  React.useEffect(() => {
+    let cancelled = false;
+    apiRolesService.miVista().then(
+      (v) => {
+        if (cancelled) return;
+        const dest = resolveHomeRoute(v, hasPermission);
+        if (dest !== '/') navigate(dest, { replace: true });
+        else setReady(true);
+      },
+      () => {
+        if (!cancelled) navigate('/solicitudes', { replace: true });
+      },
+    );
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  if (!ready) return <div className="empty">Cargando…</div>;
+  return <RequirePermission permission="DASHBOARD.VIEW"><PanelPage /></RequirePermission>;
+}
+
 function Gate() {
   const { loading, authenticated } = useSession();
   if (loading) {
@@ -39,10 +70,11 @@ function Gate() {
     <CompanyProvider>
       <AppLayout>
         <Routes>
-              <Route path="/" element={<RequirePermission permission="DASHBOARD.VIEW"><PanelPage /></RequirePermission>} />
+              <Route path="/" element={<HomeIndex />} />
 
               {/* Solicitudes */}
               <Route path="/solicitudes" element={<RequirePermission permission="REQUEST.VIEW"><MisSolicitudesPage /></RequirePermission>} />
+              <Route path="/solicitudes/todas" element={<RequirePermission permission="SOLICITUDES.VIEW_ALL"><TodasSolicitudesPage /></RequirePermission>} />
               <Route path="/requester" element={<RequirePermission permission="REQUEST.VIEW"><SolicitudesList /></RequirePermission>} />
               <Route path="/requester/new" element={<RequirePermission permission="REQUEST.CREATE"><SolicitudCreate /></RequirePermission>} />
               <Route path="/requester/:id" element={<RequirePermission permission="REQUEST.VIEW"><SolicitudDetailPage /></RequirePermission>} />

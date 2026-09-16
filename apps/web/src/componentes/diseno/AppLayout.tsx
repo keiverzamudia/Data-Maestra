@@ -174,19 +174,32 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
   const groups: Array<'operacion' | 'trabajo' | 'administracion'> = ['operacion', 'trabajo', 'administracion'];
   const byGroup = (g: 'operacion' | 'trabajo' | 'administracion') => nav.filter(n => n.group === g);
 
+  // FASE 20 — una entrada con ruta propia + hijos muestra AMBOS enlaces.
+  // Antes, la ruta propia (p. ej. /solicitudes) nunca se renderizaba: con
+  // solo REQUEST.VIEW la sección quedaba como encabezado vacío sin acceso
+  // visible. Cada enlace sigue gobernado por su propio permiso.
   const renderEntry = (n: (typeof nav)[number]) => n.children ? (
     <div key={n.key} className="nav-group">
       {!collapsed && <div className="nav-section">{n.label}</div>}
-      {n.children.map(c => (
-        <NavLink key={c.to} to={c.to} title={c.label} className={({ isActive }) => `nav-link ${isActive ? 'nav-active' : ''}`}>
-          <span className="nav-icon" aria-hidden="true">{n.icon}</span>
-          {!collapsed && <span>{c.label}</span>}
+      {n.to && (!n.permission || hasPermission(n.permission)) && (
+        <NavLink key={n.to} to={n.to} title={n.label} className={({ isActive }) => `nav-link ${isActive ? 'nav-active' : ''}`}>
+          <span className="nav-icon" aria-hidden="true"><n.icon size={18} strokeWidth={1.8} /></span>
+          {!collapsed && <span>{n.label}</span>}
         </NavLink>
-      ))}
+      )}
+      {n.children.map(c => {
+        const Icon = c.icon ?? n.icon;
+        return (
+          <NavLink key={c.to} to={c.to} title={c.label} className={({ isActive }) => `nav-link ${isActive ? 'nav-active' : ''}`}>
+            <span className="nav-icon" aria-hidden="true"><Icon size={18} strokeWidth={1.8} /></span>
+            {!collapsed && <span>{c.label}</span>}
+          </NavLink>
+        );
+      })}
     </div>
   ) : (
     <NavLink key={n.to} to={n.to!} end={n.to === '/'} title={n.label} className={({ isActive }) => `nav-link ${isActive ? 'nav-active' : ''}`}>
-      <span className="nav-icon" aria-hidden="true">{n.icon}</span>
+      <span className="nav-icon" aria-hidden="true"><n.icon size={18} strokeWidth={1.8} /></span>
       {!collapsed && <span>{n.label}</span>}
     </NavLink>
   );

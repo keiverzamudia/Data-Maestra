@@ -117,7 +117,7 @@ export const DashboardPage: React.FC = () => {
 
   if (loading) {
     return (
-      <Page title="Dashboard" desc="Resumen de tu operación.">
+      <Page title="Dashboard Gerencial" desc="Resumen general de la operación de Data-Maestra.">
         <div className="stat-grid">
           {[1, 2, 3, 4].map(i => <Skeleton key={i} height={84} />)}
         </div>
@@ -128,7 +128,7 @@ export const DashboardPage: React.FC = () => {
 
   if (error) {
     return (
-      <Page title="Dashboard" desc={`Bienvenido, ${user?.displayName ?? ''}`}>
+      <Page title="Dashboard Gerencial" desc={`Bienvenido, ${user?.displayName ?? ''}`}>
         <ErrorState title="No pudimos cargar los datos del panel." onRetry={loadData} />
       </Page>
     );
@@ -136,16 +136,16 @@ export const DashboardPage: React.FC = () => {
 
   if (!stats) {
     return (
-      <Page title="Dashboard" desc={`Bienvenido, ${user?.displayName ?? ''}`}>
+      <Page title="Dashboard Gerencial" desc={`Bienvenido, ${user?.displayName ?? ''}`}>
         <EmptyState title="Sin datos disponibles" desc="Aún no hay información operativa para mostrar." />
       </Page>
     );
   }
 
   return (
-    <Page title="Dashboard" desc={`Bienvenido, ${user?.displayName ?? ''}. Resumen de tu operación.`} actions={<HelpButton helpKey="dashboard" />}>
+    <Page title="Dashboard Gerencial" desc="Resumen general de la operación de Data-Maestra." actions={<HelpButton helpKey="dashboard" />}>
       <section aria-label="Resumen">
-        <h2 className="section-title">Resumen</h2>
+        <h2 className="section-title">Resumen general</h2>
         <div className="stat-grid">
           <StatCard label="Pendientes de atención" value={stats.pendingRequests} tone={stats.pendingRequests > 0 ? 'warn' : undefined} />
           <StatCard label="En aprobación" value={stats.inApproval} tone="info" />
@@ -172,6 +172,12 @@ export const DashboardPage: React.FC = () => {
             ))}
           </div>
         )}
+      </SectionCard>
+
+      <SectionCard title="Todas las solicitudes" desc="Universo completo de solicitudes del ámbito autorizado.">
+        <Can permission="SOLICITUDES.VIEW_ALL">
+          <Button variant="secondary" onClick={() => navigate('/solicitudes/todas')}>Ver todas las solicitudes</Button>
+        </Can>
       </SectionCard>
 
       <div className="dash-duo">

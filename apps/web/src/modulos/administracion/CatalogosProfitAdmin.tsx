@@ -6,6 +6,7 @@ import {
   Skeleton, ErrorState, DataTable, Pagination, Select, type DataColumn,
 } from '../../componentes/ui';
 import { HelpButton } from '../../componentes/ayuda';
+import { HomologacionCorporativa } from './HomologacionCorporativa';
 
 const TYPES: Array<{ key: CatalogTypeKey; label: string }> = [
   { key: 'GROUP', label: 'Grupos' },
@@ -26,6 +27,7 @@ const PAGE_SIZE = 50;
  */
 export const CatalogosProfitAdmin: React.FC = () => {
   const { empresas } = useOrganizacion();
+  const [section, setSection] = React.useState<'visibilidad' | 'homologacion'>('visibilidad');
   const [type, setType] = React.useState<CatalogTypeKey>('GROUP');
   const [companyId, setCompanyId] = React.useState('');
   const [search, setSearch] = React.useState('');
@@ -191,6 +193,19 @@ export const CatalogosProfitAdmin: React.FC = () => {
       desc="Visibilidad local: qué valores de Profit se muestran en Data-Maestra. Ocultar nunca elimina de Profit."
       actions={<HelpButton helpKey="catalogos" />}
     >
+      <div className="toolbar" role="tablist" aria-label="Secciones de catálogos">
+        <Button variant={section === 'visibilidad' ? 'primary' : 'secondary'} size="sm" onClick={() => setSection('visibilidad')}>
+          Visibilidad
+        </Button>
+        <Button variant={section === 'homologacion' ? 'primary' : 'secondary'} size="sm" onClick={() => setSection('homologacion')}>
+          Homologación corporativa
+        </Button>
+      </div>
+
+      {section === 'homologacion' ? (
+        <HomologacionCorporativa />
+      ) : (
+      <>
       {notice && <Alert tone="info">{notice}</Alert>}
       {error && <Alert tone="danger">{error}</Alert>}
 
@@ -285,6 +300,8 @@ export const CatalogosProfitAdmin: React.FC = () => {
         onCancel={() => setConfirmMode(null)}
         onConfirm={() => void handleMode()}
       />
+      </>
+      )}
     </Page>
   );
 };

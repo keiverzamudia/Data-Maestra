@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Drawer, Button, Select, Alert, ConfirmDialog, Skeleton, ErrorState, Field } from '../../componentes/ui';
+import { Drawer, Button, Select, Alert, ConfirmDialog, Skeleton, ErrorState, Field, Badge } from '../../componentes/ui';
 import { apiUsuariosService, type AdminUserDetail } from '../../servicios/api/api-usuarios-service';
 import type { Company, Department, Role } from '../../tipos';
 import { getRoleLabel, getRoleDescription, getPermissionLabel } from '../../utilidades/presentacion';
@@ -13,9 +13,7 @@ interface Props {
   onChanged: () => void;
 }
 
-const sourceLabel: Record<string, string> = { HEREDADO: '✓ HEREDADO', CONCEDIDO: '+ CONCEDIDO', DENEGADO: '− DENEGADO' };
-
-/** 10H — Panel de administración de un usuario (drawer vía Modal). */
+/** 10H/19 — Administrar usuario: mismo modelo, presentación por bloques. */
 export const UserAdminModal: React.FC<Props> = ({ userId, empresas, departamentos, roles, onClose, onChanged }) => {
   const [detail, setDetail] = React.useState<AdminUserDetail | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -25,6 +23,7 @@ export const UserAdminModal: React.FC<Props> = ({ userId, empresas, departamento
   const [companyId, setCompanyId] = React.useState('');
   const [departmentId, setDepartmentId] = React.useState('');
   const [roleCode, setRoleCode] = React.useState('');
+  const [permSearch, setPermSearch] = React.useState('');
   const [confirmDeactivate, setConfirmDeactivate] = React.useState(false);
 
   const load = React.useCallback(async () => {
@@ -66,8 +65,29 @@ export const UserAdminModal: React.FC<Props> = ({ userId, empresas, departamento
 
   const overrideOf = (code: string) => detail?.permissionOverrides.find(o => o.permission.code === code)?.effect ?? null;
 
+  const q = permSearch.trim().toLowerCase();
+  const visiblePerms = React.useMemo(() => {
+    const list = detail?.effectivePermissions ?? [];
+    const filtered = q ? list.filter(p => p.code.toLowerCase().includes(q) || getPermissionLabel(p.code).toLowerCase().includes(q)) : list;
+    const groups = new Map<string, typeof filtered>();
+    for (const p of filtered) {
+      const domain = p.code.includes('.') ? p.code.split('.')[0]! : 'General';
+      const arr = groups.get(domain) ?? [];
+      arr.push(p);
+      groups.set(domain, arr);
+    }
+    return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [detail, q]);
+
+  const effectiveRoles = detail?.roleCodes ?? [];
+
   return (
-    <Drawer open onClose={onClose} title={detail ? `Administrar — ${detail.displayName}` : 'Administrar usuario'}>
+    <Drawer
+      open
+      onClose={onClose}
+      title={detail ? `Administrar — ${detail.displayName}` : 'Administrar usuario'}
+      subtitle={detail ? `Usuario ${detail.username} · ${detail.active ? 'Activo' : 'Inactivo'}` : undefined}
+    >
       {loading && (
         <div className="stack-sm" aria-label="Cargando usuario">
           <Skeleton height={16} width="40%" /><Skeleton height={60} /><Skeleton height={60} />
@@ -80,98 +100,131 @@ export const UserAdminModal: React.FC<Props> = ({ userId, empresas, departamento
           {saving && <span className="muted small">Guardando...</span>}
           {msg && <Alert tone="success">{msg}</Alert>}
 
-          <div className="card p16">
-            <h3 className="subsection-title">1. Información</h3>
-            <div className="review-grid" style={{ marginTop: 8 }}>
-              <div><span className="muted small">Nombre</span><br /><strong>{detail.displayName}</strong></div>
-              <div><span className="muted small">Usuario</span><br /><strong>{detail.username}</strong></div>
-              <div><span className="muted small">Código Profit</span><br /><strong>{detail.profitCode || '—'}</strong></div>
-              <div><span className="muted small">Estado</span><br /><strong>{detail.active ? 'Activo' : 'Inactivo'}</strong></div>
-              <div><span className="muted small">Último ingreso</span><br /><strong>{detail.lastLoginAt ? new Date(detail.lastLoginAt).toLocaleString('es-VE') : '—'}</strong></div>
-            </div>
-            {detail.profitCode && <p className="muted small" style={{ marginTop: 8 }}>Identidad respaldada por Profit (nombre, usuario y código se sincronizan).</p>}
-          </div>
+          <section className="card p16" aria-label="Información">
+            <h3 className="subsection-title">Información</h3>
+            <dl className="info-grid">
+              <div><dt>Nombre</dt><dd><strong>{detail.displayName}</strong></dd></div>
+              <div><dt>Usuario</dt><dd><strong>{detail.username}</strong></dd></div>
+              <div><dt>Código Profit</dt><dd><strong>{detail.profitCode || '—'}</strong></dd></div>
+              <div>
+                <dt>Estado</dt>
+                <dd><Badge tone={detail.active ? 'green' : 'gray'}>{detail.active ? 'Activo' : 'Inactivo'}</Badge></dd>
+              </div>
+              <div><dt>Último ingreso</dt><dd>{detail.lastLoginAt ? new Date(detail.lastLoginAt).toLocaleString('es-VE') : '—'}</dd></div>
+            </dl>
+            {detail.profitCode && <p className="muted small">Identidad respaldada por Profit.</p>}
+          </section>
 
-          <div className="card p16">
-            <h3 className="subsection-title">2. Organización</h3>
-            <div style={{ marginTop: 8 }} className="stack-sm">
-              {detail.userRoles.length === 0 && <p className="muted small">Sin empresa asignada.</p>}
+          <section className="card p16" aria-label="Organización">
+            <h3 className="subsection-title">Organización</h3>
+            <h4 className="muted small">Asignaciones actuales</h4>
+            {detail.userRoles.length === 0 && <p className="muted small">Sin empresa asignada.</p>}
+            <div className="stack-sm">
               {detail.userRoles.map(m => (
-                <div key={m.id} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <span><strong>{m.company.code}</strong> <span className="muted small">{m.company.name}</span></span>
-                  <span className="muted small">· {m.department ? `${m.department.code}` : 'Sin departamento'}</span>
-                  <span className="muted small">· {getRoleLabel(m.role.code, m.role.name)}</span>
-                  <Button size="sm" variant="secondary" disabled={!!saving} onClick={() => void run(`rm-${m.id}`, () => apiUsuariosService.quitarRol(detail.id, { roleCode: m.role.code, companyId: m.company.id, departmentId: m.department?.id ?? null }), 'Guardado correctamente')}>
+                <div key={m.id} className="assign-row">
+                  <div className="assign-main">
+                    <strong>{m.company.code}</strong> <span className="muted small">{m.company.name}</span>
+                    <div className="assign-chips">
+                      <Badge tone="blue">{m.department ? m.department.code : 'Sin departamento'}</Badge>
+                      <Badge>{getRoleLabel(m.role.code, m.role.name)}</Badge>
+                    </div>
+                  </div>
+                  <Button size="sm" variant="secondary" disabled={!!saving} aria-label={`Quitar asignación ${m.company.code} ${getRoleLabel(m.role.code, m.role.name)}`} onClick={() => void run(`rm-${m.id}`, () => apiUsuariosService.quitarRol(detail.id, { roleCode: m.role.code, companyId: m.company.id, departmentId: m.department?.id ?? null }), 'Guardado correctamente')}>
                     Quitar
                   </Button>
                 </div>
               ))}
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                <Field label="Empresa">
-                  <Select value={companyId} onChange={e => { setCompanyId(e.target.value); setDepartmentId(''); }} aria-label="Empresa">
-                    <option value="">Empresa...</option>
-                    {empresas.map(c => <option key={c.id} value={c.id}>{c.code} — {c.name}</option>)}
-                  </Select>
-                </Field>
-                <Field label="Departamento">
-                  <Select value={departmentId} onChange={e => setDepartmentId(e.target.value)} aria-label="Departamento" disabled={!companyId}>
-                    <option value="">Sin departamento</option>
-                    {deptosDeEmpresa.map(d => <option key={d.id} value={d.id}>{d.code} — {d.name}</option>)}
-                  </Select>
-                </Field>
-                <Field label="Rol" required>
-                  <Select value={roleCode} onChange={e => setRoleCode(e.target.value)} aria-label="Rol">
-                    <option value="">Rol...</option>
-                    {roles.map(r => <option key={r.id} value={r.code}>{getRoleLabel(r.code, r.name)}</option>)}
-                  </Select>
-                </Field>
-                {roleCode && getRoleDescription(roleCode) && (
-                  <p className="muted small">{getRoleDescription(roleCode)}</p>
-                )}
-                <Button size="sm" disabled={!!saving || !companyId || !roleCode} onClick={() => void run('assign', () => apiUsuariosService.asignarRol(detail.id, { roleCode, companyId, departmentId: departmentId || null }), 'Rol asignado correctamente')}>
-                  Asignar
-                </Button>
+            </div>
+            <h4 className="muted small block-mt-sm">Nueva asignación</h4>
+            <div className="assign-form">
+              <Field label="Empresa">
+                <Select value={companyId} onChange={e => { setCompanyId(e.target.value); setDepartmentId(''); }} aria-label="Empresa">
+                  <option value="">Empresa...</option>
+                  {empresas.map(c => <option key={c.id} value={c.id}>{c.code} — {c.name}</option>)}
+                </Select>
+              </Field>
+              <Field label="Departamento">
+                <Select value={departmentId} onChange={e => setDepartmentId(e.target.value)} aria-label="Departamento" disabled={!companyId}>
+                  <option value="">Sin departamento</option>
+                  {deptosDeEmpresa.map(d => <option key={d.id} value={d.id}>{d.code} — {d.name}</option>)}
+                </Select>
+              </Field>
+              <Field label="Rol" required>
+                <Select value={roleCode} onChange={e => setRoleCode(e.target.value)} aria-label="Rol">
+                  <option value="">Rol...</option>
+                  {roles.map(r => <option key={r.id} value={r.code}>{getRoleLabel(r.code, r.name)}</option>)}
+                </Select>
+              </Field>
+              <Button size="sm" disabled={!!saving || !companyId || !roleCode} onClick={() => void run('assign', () => apiUsuariosService.asignarRol(detail.id, { roleCode, companyId, departmentId: departmentId || null }), 'Rol asignado correctamente')}>
+                Asignar
+              </Button>
+            </div>
+            {roleCode && getRoleDescription(roleCode) && (
+              <p className="muted small">{getRoleDescription(roleCode)}</p>
+            )}
+          </section>
+
+          <section className="card p16" aria-label="Roles">
+            <h3 className="subsection-title">Roles</h3>
+            <div className="chip-row">
+              {effectiveRoles.length === 0 && <span className="muted small">—</span>}
+              {effectiveRoles.map(c => <Badge key={c} tone="blue">{getRoleLabel(c)}</Badge>)}
+            </div>
+            <p className="muted small">Los roles se derivan de las asignaciones de organización.</p>
+          </section>
+
+          <section className="card p16" aria-label="Permisos individuales">
+            <h3 className="subsection-title">Permisos individuales</h3>
+            <div className="block-mt-sm">
+              <input
+                className="input"
+                value={permSearch}
+                onChange={e => setPermSearch(e.target.value)}
+                placeholder="Buscar permiso..."
+                aria-label="Buscar permiso"
+              />
+            </div>
+            {visiblePerms.length === 0 && <p className="muted small block-mt-sm">Sin permisos para este filtro.</p>}
+            {visiblePerms.map(([domain, perms]) => (
+              <div key={domain} className="block-mt-sm">
+                <h4 className="perm-domain">{domain}</h4>
+                <div className="perm-table-wrap">
+                  <table className="table perm-table">
+                    <thead><tr><th>Permiso</th><th>Origen</th><th>Estado</th><th>Acción</th></tr></thead>
+                    <tbody>
+                      {perms.map(p => {
+                        const ov = overrideOf(p.code);
+                        return (
+                          <tr key={p.code}>
+                            <td>{getPermissionLabel(p.code)}</td>
+                            <td>
+                              <Badge tone={p.source === 'DENEGADO' ? 'red' : p.source === 'CONCEDIDO' ? 'green' : 'gray'}>
+                                {p.source === 'HEREDADO' ? 'Heredado' : p.source === 'CONCEDIDO' ? 'Directo' : 'Denegado'}
+                              </Badge>
+                            </td>
+                            <td>
+                              <Badge tone={p.granted ? 'green' : 'gray'}>{p.granted ? 'Concedido' : 'No concedido'}</Badge>
+                            </td>
+                            <td>
+                              <div className="perm-actions">
+                                {ov && <Button size="sm" variant="secondary" disabled={!!saving} onClick={() => void run(`ov-${p.code}`, () => apiUsuariosService.quitarOverride(detail.id, p.code), 'Guardado correctamente')}>Sin override</Button>}
+                                {ov !== 'GRANT' && <Button size="sm" variant="secondary" disabled={!!saving} onClick={() => void run(`ov-${p.code}`, () => apiUsuariosService.fijarOverride(detail.id, { permissionCode: p.code, effect: 'GRANT' }), 'Guardado correctamente')}>Conceder</Button>}
+                                {ov !== 'DENY' && <Button size="sm" variant="secondary" disabled={!!saving} onClick={() => void run(`ov-${p.code}`, () => apiUsuariosService.fijarOverride(detail.id, { permissionCode: p.code, effect: 'DENY' }), 'Guardado correctamente')}>Denegar</Button>}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
-          </div>
+            ))}
+            <p className="muted small">Prioridad: Denegado sobre Directo sobre Heredado.</p>
+          </section>
 
-          <div className="card p16">
-            <h3 className="subsection-title">3. Roles</h3>
-            <p style={{ marginTop: 8 }}><strong>{detail.roleCodes.length ? detail.roleCodes.map(c => getRoleLabel(c)).join(', ') : '—'}</strong></p>
-            <p className="muted small">Los roles se asignan y quitan desde la sección Organización (cada asignación lleva su empresa y departamento).</p>
-          </div>
-
-          <div className="card p16">
-            <h3 className="subsection-title">4. Permisos</h3>
-            <div style={{ marginTop: 8 }} className="stack-sm">
-              <table className="table">
-                <thead><tr><th>Permiso</th><th>Origen</th><th>Estado efectivo</th><th>Acción</th></tr></thead>
-                <tbody>
-                  {detail.effectivePermissions.map(p => {
-                    const ov = overrideOf(p.code);
-                    return (
-                      <tr key={p.code}>
-                        <td>{getPermissionLabel(p.code)}</td>
-                        <td>{sourceLabel[p.source]}</td>
-                        <td>{p.granted ? 'Concedido' : 'No concedido'}</td>
-                        <td>
-                          <div style={{ display: 'flex', gap: 4 }}>
-                            {ov && <Button size="sm" variant="secondary" disabled={!!saving} onClick={() => void run(`ov-${p.code}`, () => apiUsuariosService.quitarOverride(detail.id, p.code), 'Guardado correctamente')}>Sin override</Button>}
-                            {ov !== 'GRANT' && <Button size="sm" variant="secondary" disabled={!!saving} onClick={() => void run(`ov-${p.code}`, () => apiUsuariosService.fijarOverride(detail.id, { permissionCode: p.code, effect: 'GRANT' }), 'Guardado correctamente')}>Conceder</Button>}
-                            {ov !== 'DENY' && <Button size="sm" variant="secondary" disabled={!!saving} onClick={() => void run(`ov-${p.code}`, () => apiUsuariosService.fijarOverride(detail.id, { permissionCode: p.code, effect: 'DENY' }), 'Guardado correctamente')}>Denegar</Button>}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              <p className="muted small">Los permisos heredados no se modifican directamente. Prioridad: − DENEGADO sobre + CONCEDIDO sobre ✓ HEREDADO.</p>
-            </div>
-          </div>
-
-          <div className="card p16">
-            <h3 className="subsection-title">5. Seguridad</h3>
+          <section className="card p16" aria-label="Seguridad">
+            <h3 className="subsection-title">Seguridad</h3>
             <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {detail.active ? (
                 <Button
@@ -201,7 +254,7 @@ export const UserAdminModal: React.FC<Props> = ({ userId, empresas, departamento
               onConfirm={() => { setConfirmDeactivate(false); void run('active', () => apiUsuariosService.cambiarEstado(detail.id, false), 'Usuario desactivado correctamente'); }}
             />
             <p className="muted small" style={{ marginTop: 8 }}>Desactivar conserva roles, empresa, departamento y permisos. La contraseña se valida contra Profit.</p>
-          </div>
+          </section>
         </div>
       )}
     </Drawer>

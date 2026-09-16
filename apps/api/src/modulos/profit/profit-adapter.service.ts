@@ -213,6 +213,22 @@ export class ProfitAdapterService {
   }
 
   /**
+   * FASE 17 — Consulta parametrizada genérica de SOLO LECTURA sobre la
+   * conexión del servidor Profit. Permite three-part names ([DB].dbo.*)
+   * para comparar empresas del mismo servidor. Jamás concatena valores:
+   * los parámetros viajan con request.input. Sin flag: leer no escribe.
+   */
+  async rawQuery<T>(sql: string, params: Record<string, { type: any; value: any }> = {}): Promise<T[]> {
+    return this.query<T>(sql, params);
+  }
+
+  /** Origen de lectura (servidor/base) sin secretos, para preflight §14. */
+  describeSource(): { server: string; database: string } {
+    const { server, database } = this.getConfig();
+    return { server: server ?? '', database: database ?? '' };
+  }
+
+  /**
    * FASE 15 — Valida una contraseña contra Profit sin almacenarla.
    * Ejecuta `SELECT id FROM MasterProfit.dbo.autenticar(@code, @password)`
    * con parámetros (jamás concatenación). Retorna el id devuelto (trim) o

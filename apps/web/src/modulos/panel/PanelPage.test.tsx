@@ -41,7 +41,7 @@ describe('DashboardPage 14H — centro de resumen', () => {
 
   it('cuatro métricas únicas, sin tarjeta total ni barras duplicadas', async () => {
     render(<MemoryRouter><DashboardPage /></MemoryRouter>);
-    await screen.findByText('Resumen');
+    await screen.findByText('Resumen general');
     for (const label of ['Pendientes de atención', 'En aprobación', 'Completadas', 'Devueltas']) {
       expect(screen.getAllByText(label)).toHaveLength(1);
     }
@@ -72,11 +72,17 @@ describe('DashboardPage 14H — centro de resumen', () => {
     expect(screen.getByText(/2 pendientes/)).toBeTruthy();
   });
 
+  it('es Dashboard Gerencial (no vista personal)', async () => {
+    render(<MemoryRouter><DashboardPage /></MemoryRouter>);
+    expect(await screen.findByText('Dashboard Gerencial')).toBeTruthy();
+    expect(screen.queryByText('Mis solicitudes', { selector: 'h1' })).toBeNull();
+  });
+
   it('loading con skeleton', () => {
     statsMock.mockReturnValueOnce(new Promise(() => {}));
     activityMock.mockReturnValueOnce(new Promise(() => {}));
     render(<MemoryRouter><DashboardPage /></MemoryRouter>);
-    expect(screen.getByText('Dashboard')).toBeTruthy();
+    expect(screen.getByText('Dashboard Gerencial')).toBeTruthy();
   });
 
   it('error con reintento', async () => {

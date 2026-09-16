@@ -78,6 +78,8 @@ model Role {
   code        String   @unique
   name        String
   description String?
+  // FASE 18 §9-§10: vista principal del rol (clave de ROLE_VIEWS; null = fallback).
+  defaultView String?
 
   userRoles       UserRole[]
   rolePermissions RolePermission[]

@@ -31,22 +31,23 @@ export interface HelpEntry {
 const HELP: Record<string, HelpEntry> = {
   dashboard: {
     key: 'dashboard',
-    title: 'Ayuda — Panel principal',
-    subtitle: 'Resumen de tu operación en Data-Maestra.',
-    what: 'El panel muestra el resumen de tu operación: solicitudes pendientes, trabajo por bandeja y actividad reciente. No es una bandeja de trabajo.',
-    whyHere: 'Ves esta pantalla porque es el punto de partida después de iniciar sesión. Resume lo que requiere tu atención según tus permisos.',
+    title: 'Ayuda — Dashboard Gerencial',
+    subtitle: 'Resumen general de la operación de Data-Maestra.',
+    what: 'El Dashboard Gerencial muestra indicadores globales: volumen de solicitudes, trabajo pendiente por bandeja, actividad reciente y acceso a Todas las solicitudes. Sus números representan la operación general, no tus solicitudes personales.',
+    whyHere: 'Ves esta pantalla porque tu rol tiene asignada esta vista gerencial. Tu vista principal normal es Mis solicitudes.',
     responsibility: 'Tu responsabilidad es revisar tus pendientes y entrar a la bandeja que corresponda. El panel no aprueba ni modifica nada.',
     steps: [
-      'Revisa el resumen de solicitudes.',
+      'Revisa el resumen general de solicitudes.',
       'Entra a cada bandeja de Trabajo pendiente para actuar.',
-      'Usa Acciones rápidas para crear o consultar solicitudes.',
+      'Usa Todas las solicitudes para consultar el universo autorizado.',
     ],
     doNot: [
+      'No confundas estos indicadores con tus solicitudes: para eso está Mis solicitudes.',
       'No intentes aprobar desde el resumen: cada acción se hace en su bandeja.',
       'No uses el panel como prueba de auditoría: consulta Auditoría.',
     ],
     sources: [
-      { label: 'Resumen', desc: 'proviene de las solicitudes y su estado actual.' },
+      { label: 'Resumen general', desc: 'proviene de todas las solicitudes del ámbito autorizado.' },
       { label: 'Trabajo pendiente', desc: 'proviene de las colas reales de cada módulo.' },
       { label: 'Actividad reciente', desc: 'proviene de las últimas acciones registradas.' },
     ],
@@ -54,12 +55,32 @@ const HELP: Record<string, HelpEntry> = {
     nextOwner: 'Tú, según tu rol.',
     flowStatus: 'BORRADOR',
   },
+  todas: {
+    key: 'todas',
+    title: 'Ayuda — Todas las solicitudes',
+    subtitle: 'Universo completo del ámbito autorizado.',
+    what: 'Todas las solicitudes permite consultar el universo completo de solicitudes disponibles para tu ámbito gerencial autorizado, con búsqueda, filtros, orden y paginación.',
+    whyHere: 'Estás aquí porque tienes autorización de consulta global. Esta vista no otorga permisos de aprobación o registro.',
+    steps: [
+      'Filtra por estado, empresa, solicitante o búsqueda.',
+      'Abre el detalle para ver el recorrido completo.',
+    ],
+    doNot: [
+      'No uses esta vista para actuar sobre solicitudes: cada acción se hace en su bandeja.',
+    ],
+    sources: [
+      { label: 'Listado', desc: 'proviene de las solicitudes del ámbito autorizado.' },
+    ],
+    next: 'Cada solicitud avanza a su siguiente etapa responsable.',
+    nextOwner: 'Responsable de la etapa actual.',
+    flowStatus: 'BORRADOR',
+  },
   solicitudes: {
     key: 'solicitudes',
-    title: 'Ayuda — Solicitudes',
-    subtitle: 'Bandeja de solicitudes de artículos.',
-    what: 'Una solicitud es el pedido formal de crear u homologar un artículo. Contiene descripción, propósito, prioridad, solicitante, área y su recorrido por el flujo.',
-    whyHere: 'Estás aquí para consultar el estado de las solicitudes visibles según tu rol y permisos.',
+    title: 'Ayuda — Mis solicitudes',
+    subtitle: 'Seguimiento de las solicitudes que has creado.',
+    what: 'Mis solicitudes muestra exclusivamente tus solicitudes, en todos sus estados: en proceso, completadas, con error o rechazadas. Sus métricas coinciden siempre con tu listado personal.',
+    whyHere: 'Esta es tu vista principal: aquí consultas el estado y seguimiento de lo que has creado.',
     steps: [
       'Filtra por pestaña (activas o historial) y búsqueda.',
       'Abre el detalle para ver el recorrido completo.',
@@ -391,6 +412,30 @@ const HELP: Record<string, HelpEntry> = {
     next: 'Sin siguiente etapa por ahora.',
     nextOwner: '—',
     flowStatus: 'BORRADOR',
+  },
+  homologacion: {
+    key: 'homologacion',
+    title: 'Ayuda — Homologación corporativa',
+    subtitle: 'Comparar contra el estándar y sincronizar empresas.',
+    what: 'La homologación compara los catálogos de cada empresa destino contra la empresa estándar y propone crear los elementos faltantes o actualizar descripciones, siempre con el mismo código.',
+    whyHere: 'Estás aquí con permiso de administración para comparar y, si tienes autorización de escritura, homologar.',
+    steps: [
+      'Selecciona las empresas destino.',
+      'Usa Comparar para ver las diferencias (solo lectura).',
+      'Usa Validar para comprobar que todas pueden sincronizarse.',
+      'Si tienes autorización, usa Homologar para sincronizar en una sola operación.',
+    ],
+    doNot: [
+      'No se escribe en ninguna empresa si alguna falla la validación.',
+      'Los elementos que requieren revisión no se homologan automáticamente.',
+    ],
+    sources: [
+      { label: 'Empresa estándar', desc: 'define los valores de referencia.' },
+      { label: 'Auditoría', desc: 'registra comparación, validación y homologación.' },
+    ],
+    next: 'Con los catálogos homologados, el artículo puede registrarse con el mismo código en todas las empresas.',
+    nextOwner: 'Almacén y Contabilidad.',
+    flowStatus: 'CONTABILIDAD_APROBADA',
   },
 };
 
