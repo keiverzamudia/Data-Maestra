@@ -57,10 +57,10 @@ describe('MisSolicitudesPage 14L', () => {
     renderPage();
     await waitFor(() => expect(listMock).toHaveBeenCalled());
     const mainCalls = () => listMock.mock.calls.map((c: any[]) => c[0]).filter((p: any) => p.page !== undefined);
-    fireEvent.change(screen.getByLabelText('Filtrar por estado'), { target: { value: 'error' } });
+    fireEvent.change(screen.getByLabelText('Filtrar por estado'), { target: { value: 'rechazadas' } });
     await waitFor(() => {
       const last = mainCalls()[mainCalls().length - 1];
-      expect(last.statuses).toEqual(['ERROR_PROFIT']);
+      expect(last.bucket).toBe('rechazadas');
     });
     fireEvent.change(screen.getByLabelText('Ordenar'), { target: { value: 'antiguas' } });
     await waitFor(() => {
@@ -72,5 +72,23 @@ describe('MisSolicitudesPage 14L', () => {
       const last = mainCalls()[mainCalls().length - 1];
       expect(last.search).toBe('FERMIS');
     });
+  });
+
+  it('CASO A/D: métricas personales sin "Con error" (nunca global)', async () => {
+    listMock.mockImplementation((p: any) => {
+      if (p.bucket === 'proceso') return Promise.resolve({ data: [], total: 0, filteredTotal: 0, page: 1, limit: 1 });
+      if (p.bucket === 'completadas') return Promise.resolve({ data: [], total: 0, filteredTotal: 1, page: 1, limit: 1 });
+      if (p.bucket === 'rechazadas') return Promise.resolve({ data: [], total: 0, filteredTotal: 0, page: 1, limit: 1 });
+      return Promise.resolve({ data: [ROW], total: 1, filteredTotal: 1, page: 1, limit: 25 });
+    });
+    renderPage();
+    await screen.findByText('GANCHOS');
+    expect(screen.getByText('Total').parentElement?.textContent).toContain('1');
+    expect(screen.queryByText('Con error')).toBeNull();
+    expect(screen.queryByRole('option', { name: 'Con error' })).toBeNull();
+    expect(screen.getAllByText('Rechazadas').length).toBeGreaterThan(0);
+    for (const call of listMock.mock.calls) {
+      expect(call[0].mine).toBe(true);
+    }
   });
 });

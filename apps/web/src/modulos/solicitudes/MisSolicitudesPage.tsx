@@ -10,16 +10,16 @@ import { HelpButton } from '../../componentes/ayuda';
 import { etapaActual } from '../../utilidades/presentacion';
 import type { Request } from '../../tipos';
 
-type Filtro = 'todos' | 'proceso' | 'completadas' | 'rechazadas' | 'error';
+type Filtro = 'todos' | 'proceso' | 'completadas' | 'rechazadas';
 type Orden = 'recientes' | 'antiguas' | 'actualizadas';
 
-/** 14L — Bandeja personal: solo solicitudes creadas por el usuario (mine server-side). */
+/** 14L/21 — Bandeja personal: solo solicitudes creadas por el usuario (mine server-side). Buckets mutuamente excluyentes y exhaustivos: proceso + completadas + rechazadas = total. */
 export const MisSolicitudesPage: React.FC = () => {
   const { companyId, companies } = useCompany();
   const { departamentos } = useOrganizacion(companyId);
   const navigate = useNavigate();
   const [requests, setRequests] = React.useState<Request[]>([]);
-  const [totals, setTotals] = React.useState({ total: 0, proceso: 0, completadas: 0, error: 0 });
+  const [totals, setTotals] = React.useState({ total: 0, proceso: 0, completadas: 0, rechazadas: 0 });
   const [search, setSearch] = React.useState('');
   const [filtro, setFiltro] = React.useState<Filtro>('todos');
   const [orden, setOrden] = React.useState<Orden>('recientes');
@@ -32,8 +32,7 @@ export const MisSolicitudesPage: React.FC = () => {
 
   const queryFor = React.useCallback((f: Filtro) => {
     const base: Record<string, unknown> = { mine: true };
-    if (f === 'error') return { ...base, statuses: ['ERROR_PROFIT'] };
-    if (f !== 'todos') return { ...base, bucket: f === 'rechazadas' ? 'rechazadas' : f };
+    if (f !== 'todos') return { ...base, bucket: f };
     return base;
   }, []);
 
@@ -48,11 +47,11 @@ export const MisSolicitudesPage: React.FC = () => {
         page,
         limit,
       };
-      const [list, proceso, completadas, conError] = await Promise.all([
+      const [list, proceso, completadas, rechazadas] = await Promise.all([
         requestService.list({ ...common, ...queryFor(filtro) }),
         requestService.list({ mine: true, bucket: 'proceso', limit: 1 }),
         requestService.list({ mine: true, bucket: 'completadas', limit: 1 }),
-        requestService.list({ mine: true, statuses: ['ERROR_PROFIT'], limit: 1 }),
+        requestService.list({ mine: true, bucket: 'rechazadas', limit: 1 }),
       ]);
       setRequests(list.data);
       setFilteredTotal(list.filteredTotal ?? list.total);
@@ -61,7 +60,7 @@ export const MisSolicitudesPage: React.FC = () => {
         total: list.total,
         proceso: proceso.filteredTotal ?? proceso.total,
         completadas: completadas.filteredTotal ?? completadas.total,
-        error: conError.filteredTotal ?? conError.total,
+        rechazadas: rechazadas.filteredTotal ?? rechazadas.total,
       });
     } catch {
       setRequests([]);
@@ -96,7 +95,7 @@ export const MisSolicitudesPage: React.FC = () => {
         <StatCard label="Total" value={totals.total} />
         <StatCard label="En proceso" value={totals.proceso} tone="info" />
         <StatCard label="Completadas" value={totals.completadas} tone="ok" />
-        <StatCard label="Con error" value={totals.error} tone={totals.error > 0 ? 'bad' : undefined} />
+        <StatCard label="Rechazadas" value={totals.rechazadas} tone={totals.rechazadas > 0 ? 'bad' : undefined} />
       </div>
 
       <div className="toolbar" role="search">
@@ -112,7 +111,6 @@ export const MisSolicitudesPage: React.FC = () => {
           <option value="proceso">En proceso</option>
           <option value="completadas">Completadas</option>
           <option value="rechazadas">Rechazadas</option>
-          <option value="error">Con error</option>
         </Select>
         <Select value={orden} onChange={e => { setOrden(e.target.value as Orden); setPage(1); }} aria-label="Ordenar">
           <option value="recientes">Más recientes</option>

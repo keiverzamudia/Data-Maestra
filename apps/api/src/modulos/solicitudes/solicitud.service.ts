@@ -354,10 +354,10 @@ export class SolicitudesService {
   ) {
     const viewer = await this.getViewer(userId);
     const scope = opts.scope === 'historial' ? 'historial' : 'activas';
-    // FASE 18 §13: mine=true es "solicitudes creadas por mí" en TODOS los
-    // estados (incl. completadas, registradas en Profit o con error). El
-    // propietario nunca pierde sus solicitudes por cambio de estado.
-    const base = opts.mine ? {} : await this.buildScopeWhere(viewer, scope);
+    // FASE 18 §13 + FASE 21: mine=true es "solicitudes creadas por mí" en
+    // TODOS los estados. La base es el propietario (no el scope operativo),
+    // de modo que Total y tabla representan exactamente el mismo universo.
+    const base = opts.mine ? { requesterId: userId } : await this.buildScopeWhere(viewer, scope);
     // 14L: mine=true fuerza requesterId al usuario de la sesión (ignora spoof).
     const extra = this.filtersWhere(opts.mine ? { ...opts, requesterId: userId } : opts);
     const hasExtra = Object.keys(extra).length > 0;
