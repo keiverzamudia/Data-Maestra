@@ -129,3 +129,84 @@ const AUDIT_ACTIONS: Record<string, string> = {
 export function getAuditActionLabel(action: string): string {
   return AUDIT_ACTIONS[action] ?? action;
 }
+
+// FASE 19 — Etiquetas en español del dominio matching (fundación del futuro
+// motor). Los códigos internos (SAME, HIGH, DESCRIPTION_SIMILARITY, …)
+// permanecen intactos; esta capa SOLO traduce lo visible al usuario.
+const MATCH_DECISIONS: Record<string, string> = {
+  SAME: 'Mismo artículo',
+  DIFFERENT: 'Artículos diferentes',
+  REVIEW: 'Requiere revisión',
+};
+
+const MATCH_CLASSIFICATIONS: Record<string, string> = {
+  HIGH: 'Coincidencia alta',
+  MEDIUM: 'Coincidencia media',
+  LOW: 'Coincidencia baja',
+  REVIEW: 'Requiere revisión',
+};
+
+const MATCH_EVIDENCE: Record<string, string> = {
+  DESCRIPTION_SIMILARITY: 'Descripción similar',
+  BRAND_MATCH: 'Marca coincidente',
+  MODEL_MATCH: 'Modelo coincidente',
+  PART_NUMBER_MATCH: 'Número de parte coincidente',
+  CATEGORY_MATCH: 'Categoría coincidente',
+  SUBCATEGORY_MATCH: 'Subcategoría coincidente',
+  APPLICATION_MATCH: 'Aplicación compatible',
+  PURPOSE_MATCH: 'Propósito compatible',
+  PHOTO_SIMILARITY: 'Imagen similar',
+  UNIT_MATCH: 'Unidad coincidente',
+};
+
+const MATCH_CONFLICTS: Record<string, string> = {
+  BRAND_CONFLICT: 'Conflicto de marca',
+  MODEL_CONFLICT: 'Conflicto de modelo',
+  PART_NUMBER_CONFLICT: 'Conflicto de número de parte',
+  CATEGORY_CONFLICT: 'Conflicto de categoría',
+  UNIT_CONFLICT: 'Conflicto de unidad',
+  APPLICATION_CONFLICT: 'Conflicto de aplicación',
+};
+
+const MATCH_ENGINE_STATUS: Record<string, string> = {
+  NOT_IMPLEMENTED: 'Función en preparación',
+};
+
+const MATCH_FIELDS: Record<string, string> = {
+  normalizeArticle: 'Normalizar artículo',
+  originalDescription: 'Descripción original',
+  normalizedDescription: 'Descripción normalizada',
+  detectedFeatures: 'Características detectadas',
+  referenceData: 'Datos de referencia',
+  purpose: 'Propósito',
+  application: 'Aplicación',
+  brand: 'Marca',
+  model: 'Modelo',
+  partNumber: 'Número de parte',
+  unit: 'Unidad',
+  existingArticle: 'Artículo existente',
+};
+
+export function getMatchDecisionLabel(code: string): string {
+  return MATCH_DECISIONS[code] ?? code;
+}
+
+export function getMatchClassificationLabel(code: string): string {
+  return MATCH_CLASSIFICATIONS[code] ?? code;
+}
+
+export function getMatchEvidenceLabel(code: string): string {
+  return MATCH_EVIDENCE[code] ?? code;
+}
+
+export function getMatchConflictLabel(code: string): string {
+  return MATCH_CONFLICTS[code] ?? code;
+}
+
+export function getMatchEngineStatusLabel(code: string): string {
+  return MATCH_ENGINE_STATUS[code] ?? code;
+}
+
+export function getMatchFieldLabel(code: string): string {
+  return MATCH_FIELDS[code] ?? code;
+}

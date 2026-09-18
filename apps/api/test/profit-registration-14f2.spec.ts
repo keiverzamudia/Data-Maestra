@@ -29,6 +29,7 @@ function makeService(overrides: {
     catalogSubgroup: { findUnique: vi.fn().mockResolvedValue(overrides.subgroup ?? { id: 's1', code: 'EQT' }) },
     catalogCategory: { findUnique: vi.fn().mockResolvedValue(null) },
     requestData: { update: vi.fn().mockResolvedValue({}) },
+    requestArticleLink: { findUnique: vi.fn().mockResolvedValue(null) },
     auditEvent: { create: vi.fn().mockResolvedValue({}) },
   };
   const engine = overrides.engine ?? {

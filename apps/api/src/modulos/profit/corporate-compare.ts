@@ -85,9 +85,23 @@ export function compareCatalogRows(
 }
 
 /**
- * Construye el plan determinístico (§12): comparar → plan → preflight →
- * ejecutar. IGUAL no escribe; FALTA crea con código del estándar;
- * solo-descripción actualiza descripción; resto bloquea sin adivinar.
+ * Catálogos cuya descripción es funcionalmente global (tasas estatutarias y
+ * unidades físicas). Evidencia Fase 17.2: todas sus diferencias observadas
+ * son cosméticas (KILOGRAMOS/KILOS, UNIDAD/UNIDADES). Solo en ellos una
+ * diferencia solo-descripción puede homologarse automáticamente.
+ * En los demás catálogos los códigos son namespaces locales por empresa
+ * (evidencia: lin_art 01 = FLETES en TRANS vs COMBUSTIBLE en DIST;
+ * cat_art 002 = REPUESTO vs ARTICULOS DE OFICINA): actualizar la
+ * descripción corrompería el significado local → REQUIERE_REVISION_HUMANA.
+ */
+export const SAFE_DESC_CATALOGS: ReadonlyArray<string> = ['tabulado', 'unidades'];
+
+/**
+ * Construye el plan determinístico (§12, FASE 17.2 §10): comparar → plan →
+ * preflight → ejecutar. IGUAL no escribe; FALTA crea con código del estándar
+ * (el código no existe en destino: nada que corromper); solo-descripción
+ * actualiza descripción SOLO en catálogos funcionalmente globales;
+ * resto bloquea sin adivinar.
  */
 export function buildSyncPlanItem(diff: CatalogDiff, desc?: CorporateCatalogDescriptor): SyncPlanItem {
   switch (diff.state) {
@@ -100,13 +114,23 @@ export function buildSyncPlanItem(diff: CatalogDiff, desc?: CorporateCatalogDesc
         reason: `Crear con el mismo código del estándar (${desc?.label ?? diff.catalog}).`,
         safe: true,
       };
-    case 'DESCRIPCION_DIFERENTE':
+    case 'DESCRIPCION_DIFERENTE': {
+      // Fail-closed: sin descriptor de catálogo no puede afirmarse seguridad.
+      if (desc && SAFE_DESC_CATALOGS.includes(desc.key)) {
+        return {
+          ...diff,
+          operation: 'UPDATE_DESCRIPTION',
+          reason: 'Solo cambia la descripción en catálogo funcional; el código se conserva.',
+          safe: true,
+        };
+      }
       return {
         ...diff,
-        operation: 'UPDATE_DESCRIPTION',
-        reason: 'Solo cambia la descripción; el código se conserva.',
-        safe: true,
+        operation: 'BLOCKED',
+        reason: 'Descripción con posible significado local: requiere revisión humana, no se homologa automáticamente.',
+        safe: false,
       };
+    }
     case 'DATOS_DIFERENTES':
     case 'NO_COMPATIBLE':
     case 'ERROR':
@@ -135,6 +159,50 @@ export function summarizePlan(items: SyncPlanItem[]): SyncPlanSummary {
 /** El plan es ejecutable solo si no hay bloqueos ni errores (§13/§30). */
 export function isPlanExecutable(items: SyncPlanItem[]): boolean {
   return items.every((i) => i.operation !== 'BLOCKED' && i.state !== 'ERROR');
+}
+
+// ---------------------------------------------------------------------------
+// FASE 17.1 — Compatibilidad funcional de TrigI_art con el INSERT de
+// Data-Maestra. La comparación byte a byte es insuficiente: el citado con
+// corchetes y la calificación con el esquema default ([dbo].[art] vs art)
+// cambian el texto sin cambiar la lógica. Regla conservadora: solo se acepta
+// el texto idéntico o el idéntico salvo ese estilo; CUALQUIER otra diferencia
+// de tokens sigue bloqueando. Pura y testeable. Jamás deshabilita triggers.
+// ---------------------------------------------------------------------------
+
+export type TrigCompatReason = 'IDENTICO' | 'CITADO' | 'DIFIERE' | 'ILEGIBLE';
+
+export interface TrigCompat {
+  compatible: boolean;
+  reason: TrigCompatReason;
+}
+
+/** Normaliza espacios y caso (comparación textual estricta). */
+export function normDef(v: unknown): string {
+  return String(v ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+/**
+ * Normaliza espacios/caso, elimina corchetes de citado y la calificación con
+ * el esquema default (dbo.). Solo estilo: [dbo].[TrigI_art] ≡ TrigI_art.
+ * Cualquier otro esquema, objeto o token distinto sigue bloqueando.
+ */
+export function normTrigDef(v: unknown): string {
+  return String(v ?? '')
+    .replace(/[[\]]/g, '')
+    .replace(/\bdbo\./gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+export function trigInsertCompatible(stdDef: unknown, destDef: unknown): TrigCompat {
+  const std = String(stdDef ?? '').trim();
+  const dest = String(destDef ?? '').trim();
+  if (!std || !dest) return { compatible: false, reason: 'ILEGIBLE' };
+  if (normDef(std) === normDef(dest)) return { compatible: true, reason: 'IDENTICO' };
+  if (normTrigDef(std) === normTrigDef(dest)) return { compatible: true, reason: 'CITADO' };
+  return { compatible: false, reason: 'DIFIERE' };
 }
 
 // ---------------------------------------------------------------------------

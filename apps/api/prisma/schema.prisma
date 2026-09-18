@@ -351,6 +351,174 @@ model MasterItem {
   @@map("master_items")
 }
 
+// --- FASE 18 (motor de coincidencia): identidad y normalización ---
+// ArticleNormalizationProfile: representación auxiliar por artículo Profit
+// (companyCode + profitArticleCode, nunca solo el código). La descripción
+// original se preserva siempre; la normalizada es derivada versionada.
+// ArticleMatchDecision: decisión humana SAME/DIFFERENT/REVIEW entre dos
+// artículos. Solo registra; no crea maestros ni toca Profit. La pareja se
+// ordena canónicamente y pairKey evita duplicados A-B/B-A.
+
+model ArticleNormalizationProfile {
+  id                    String   @id @default(uuid())
+  companyCode           String   @map("company_code")
+  profitArticleCode     String   @map("profit_article_code")
+  originalDescription   String   @map("original_description")
+  normalizedDescription String   @map("normalized_description")
+  normalizationVersion  String   @default("v1") @map("normalization_version")
+  // FASE 19: representación comparable v2 (tokens y señales como texto
+  // JSON; escalares simples, sin Json insurer: SQLite + Prisma 6).
+  tokensJson            String?  @map("tokens_json")
+  featuresJson          String?  @map("features_json")
+  // FASE 22: origen del perfil (NULL = previo/flujo solicitud, 'HISTORICO'
+  // = carga del universo), cobertura de información y fingerprint de
+  // preselección (agrupación futura, jamás identidad).
+  origin                String?
+  coverage              String?
+  fingerprint           String?
+  brand                 String?
+  model                 String?
+  partNumber            String?  @map("part_number")
+  category              String?
+  subCategory           String?  @map("sub_category")
+  unit                  String?
+  application           String?
+  photoReference        String?  @map("photo_reference")
+  normalizedAt          DateTime @default(now()) @map("normalized_at")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @default(now()) @map("updated_at")
+
+  @@unique([companyCode, profitArticleCode])
+  @@index([normalizedDescription])
+  @@index([fingerprint])
+  @@map("article_normalization_profiles")
+}
+
+model ArticleMatchDecision {
+  id                String    @id @default(uuid())
+  articleACompany   String    @map("article_a_company")
+  articleAProfitCode String   @map("article_a_profit_code")
+  articleBCompany   String    @map("article_b_company")
+  articleBProfitCode String   @map("article_b_profit_code")
+  pairKey           String    @unique @map("pair_key")
+  decision          String
+  reason            String?
+  evidenceJson      String?   @map("evidence_json")
+  decidedBy         String?   @map("decided_by")
+  decidedAt         DateTime  @default(now()) @map("decided_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @default(now()) @map("updated_at")
+
+  @@index([decision])
+  @@map("article_match_decisions")
+}
+
+// FASE 23 — Detección histórica de posibles duplicados. Relaciones NO
+// dirigidas entre perfiles (pairKey canónico), evidencia/conflictos del
+// motor v1 y grupos conservadores (cliques, PENDIENTE_REVISION).
+// DETECCIÓN ≠ DECISIÓN: jamás SAME/DIFFERENT automático.
+
+model HistoricalMatchRelation {
+  id                String   @id @default(uuid())
+  pairKey           String   @unique @map("pair_key")
+  companyACode      String   @map("company_a_code")
+  profitACode       String   @map("profit_a_code")
+  companyBCode      String   @map("company_b_code")
+  profitBCode       String   @map("profit_b_code")
+  score             Int
+  classification    String
+  evidencesJson     String   @map("evidences_json")
+  conflictsJson     String   @map("conflicts_json")
+  evidenceCount     Int      @default(0) @map("evidence_count")
+  conflictCount     Int      @default(0) @map("conflict_count")
+  explanation       String
+  engineVersion     String   @default("deterministic-v1") @map("engine_version")
+  coverageA         String?  @map("coverage_a")
+  coverageB         String?  @map("coverage_b")
+  status            String   @default("PENDIENTE_REVISION")
+  detectedAt        DateTime @default(now()) @map("detected_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @default(now()) @map("updated_at")
+
+  @@index([classification])
+  @@index([status])
+  @@map("historical_match_relations")
+}
+
+model HistoricalMatchGroup {
+  id             String   @id @default(uuid())
+  status         String   @default("PENDIENTE_REVISION")
+  memberCount    Int      @default(0) @map("member_count")
+  engineVersion  String   @default("deterministic-v1") @map("engine_version")
+  summaryJson    String?  @map("summary_json")
+  detectedAt     DateTime @default(now()) @map("detected_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @default(now()) @map("updated_at")
+
+  members HistoricalMatchGroupMember[]
+
+  @@map("historical_match_groups")
+}
+
+model HistoricalMatchGroupMember {
+  id                String   @id @default(uuid())
+  groupId           String   @map("group_id")
+  companyCode       String   @map("company_code")
+  profitArticleCode String   @map("profit_article_code")
+
+  group HistoricalMatchGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, companyCode, profitArticleCode])
+  @@map("historical_match_group_members")
+}
+
+// FASE 21 — Vínculo solicitud → artículo Profit existente (Comprador
+// Inteligente). Estado VIGENTE por solicitud (última decisión manda): SAME
+// referencia el artículo a reutilizar y evita crear duplicados;
+// DIFFERENT registra el candidato descartado y deja continuar el flujo.
+// FASE 23.2 — el historial completo vive en RequestArticleDecision; este
+// modelo conserva solo la última decisión para lectura eficiente del estado
+// activo. Solo lectura Profit + escritura local. Sin homologación.
+
+model RequestArticleLink {
+  id                String   @id @default(uuid())
+  requestId         String   @unique @map("request_id")
+  companyCode       String   @map("company_code")
+  profitArticleCode String   @map("profit_article_code")
+  decision          String
+  decidedBy         String?  @map("decided_by")
+  decidedAt         DateTime @default(now()) @map("decided_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @default(now()) @map("updated_at")
+
+  request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([decision])
+  @@map("request_article_links")
+}
+
+// FASE 23.2 — Historial de decisiones del Analizador por solicitud.
+// Cada par (solicitud, artículo) guarda su decisión sin sobrescribir:
+// A→DIFFERENT, B→DIFFERENT, C→SAME coexisten. El estado vigente se lee en
+// RequestArticleLink (última decisión). Sin homologación, sin Profit.
+
+model RequestArticleDecision {
+  id                String   @id @default(uuid())
+  requestId         String   @map("request_id")
+  companyCode       String   @map("company_code")
+  profitArticleCode String   @map("profit_article_code")
+  decision          String
+  decidedBy         String?  @map("decided_by")
+  decidedAt         DateTime @default(now()) @map("decided_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, companyCode, profitArticleCode])
+  @@index([requestId])
+  @@map("request_article_decisions")
+}
+
 // --- Requests ---
 
 model Request {
@@ -375,6 +543,8 @@ model Request {
   workflowInstance     WorkflowInstance?
   approvals            Approval[]
   accountingCodes      RequestAccountingCode[]
+  articleLink          RequestArticleLink?
+  decisions            RequestArticleDecision[]
 
   @@index([status])
   @@index([companyId])

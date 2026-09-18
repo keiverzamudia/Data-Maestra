@@ -7,12 +7,13 @@ import { warehouseService, auditService } from '../../servicios';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
 import { useCatalogos } from '../../hooks/useCatalogos';
 import { useProfitCatalogos } from '../../hooks/useProfitCatalogos';
-import type { DryRunResult } from '../../contratos';
 import { analyzerProposals } from '../../mock/source-items';
 import { Button, Select, Textarea, Modal, ImageLightbox, Alert, ConfirmDialog, Field, StatusBadge, Skeleton, SectionCard } from '../../componentes/ui';
 import { Page } from '../../componentes/ui';
 import { HelpButton, HelpFieldInfo } from '../../componentes/ayuda';
 import { WorkflowStepper, WorkflowStatusInfo, AnalyzerPanel, MasterCodePreview } from '../../componentes/workflow';
+import { Analizador } from './Analizador';
+import type { AnalyzerDraft } from '../../servicios/api/api-matching-service';
 import type { Request } from '../../tipos';
 
 export const WarehouseClassify: React.FC = () => {
@@ -46,8 +47,14 @@ export const WarehouseClassify: React.FC = () => {
   const [taxType, setTaxType] = React.useState('');
   const [taxTouched, setTaxTouched] = React.useState(false);
   const [unitCode, setUnitCode] = React.useState('');
-  const [dryRun, setDryRun] = React.useState<DryRunResult | null>(null);
-  const [validating, setValidating] = React.useState(false);
+  // FASE 23.1 — Analizador: disparo manual desde "Validar artículo".
+  const [analyzerRun, setAnalyzerRun] = React.useState(0);
+  // FASE 23.2 — análisis en curso (deshabilita Validar) y recarga tras decisión.
+  const [analyzerBusy, setAnalyzerBusy] = React.useState(false);
+  const reloadRequest = React.useCallback(() => {
+    if (!id) return Promise.resolve();
+    return warehouseService.getRequestForClassification(id).then(r => { if (r) setRequest(r); });
+  }, [id]);
   // manualRef=true si Warehouse eligió el tipo a mano (§18: no sobrescribir).
   const manualRef = React.useRef(false);
   const {
@@ -66,6 +73,20 @@ export const WarehouseClassify: React.FC = () => {
   const [lightboxOpen, setLightboxOpen] = React.useState(false);
   // Quién clasificó (auditoría CLASSIFIED, tolerante a fallos).
   const [classifiedBy, setClassifiedBy] = React.useState<string | null>(null);
+
+  // FASE 23.1 — Borrador del Analizador: descripción y finalidad de la
+  // solicitud + códigos del formulario (datos aún no guardados).
+  const draft: AnalyzerDraft = React.useMemo(() => ({
+    description: request?.requestedDescription,
+    purpose: (request as { purpose?: string } | null)?.purpose,
+    groupCode: groupCode || undefined,
+    subgroupCode: subgroupCode || undefined,
+    categoryCode: categoryCode || undefined,
+    brandCode: brandCode || undefined,
+    unitCode: unitCode || undefined,
+    partNumber: partNumber || undefined,
+    application: application || undefined,
+  }), [request, groupCode, subgroupCode, categoryCode, brandCode, unitCode, partNumber, application]);
 
   // Prefill: traduce IDs locales guardados a códigos Profit (el catálogo local
   // cubre los códigos Profit, verificado en FASE 8F).
@@ -119,9 +140,6 @@ export const WarehouseClassify: React.FC = () => {
       });
     }
   }, [id, idToCode]);
-
-  // El dry-run caduca si cambia cualquier dato clasificado.
-  React.useEffect(() => { setDryRun(null); }, [groupCode, subgroupCode, articleType, unitCode, taxType]);
 
   // Clasificador real (auditoría); el estado de negocio siempre viene del request.
   React.useEffect(() => {
@@ -195,19 +213,14 @@ export const WarehouseClassify: React.FC = () => {
 
   const canApprove = !!groupCode && !!subgroupCode && !!articleType && !!unitCode;
 
-  const handleValidate = async () => {
-    // Defensa en profundidad: el backend también valida estado y permiso.
-    if (!id || validating || request?.status !== 'PENDIENTE_ALMACEN') return;
-    setValidating(true);
-    setError(null);
-    try {
-      const result = await warehouseService.validateArticle(id, buildPayload());
-      setDryRun(result);
-    } catch (err: any) {
-      setError(err?.message || 'Error al validar el artículo.');
-    } finally {
-      setValidating(false);
-    }
+  // FASE 23.2 — SAME vigente: solicitud resuelta con el artículo existente.
+  const sameLink = request?.articleLink?.decision === 'SAME' ? request.articleLink : null;
+
+  const handleValidate = () => {
+    // FASE 23.1 — "Validar artículo" ejecuta el Analizador ahora (no valida
+    // campos; los obligatorios se exigen al aprobar). Sin doble ejecución.
+    if (!id || request?.status !== 'PENDIENTE_ALMACEN' || analyzerBusy) return;
+    setAnalyzerRun((n) => n + 1);
   };
 
   const handleSave = async () => {
@@ -266,6 +279,30 @@ export const WarehouseClassify: React.FC = () => {
       <WorkflowStepper status={request.status} />
       <WorkflowStatusInfo status={request.status} />
 
+      {/* FASE 23.1 — Analizador: candidatos del motor (solo presenta). */}
+      {id && (
+        <Analizador
+          requestId={id}
+          canDecide={canEditClassification}
+          manualRun={analyzerRun}
+          photoUri={request.referencePhotoUri}
+          draft={draft}
+          onChanged={() => { void reloadRequest(); }}
+          onBusyChange={setAnalyzerBusy}
+        />
+      )}
+
+      {/* FASE 23.2 — SAME vigente: resuelta con el artículo existente. */}
+      {sameLink && isPendingWarehouse && (
+        <Alert tone="success">
+          <strong>Solicitud resuelta con artículo existente</strong>
+          <p className="muted small" style={{ marginTop: 4 }}>
+            Esta solicitud corresponde al artículo {sameLink.companyCode}:{sameLink.profitArticleCode} de Profit.
+            Se reutilizará ese código: no se creará un artículo nuevo{sameLink.companyCode ? ` en ${sameLink.companyCode}` : ''}.
+          </p>
+        </Alert>
+      )}
+
       {/* Clasificación terminada: enviada al Encargado de Almacén. */}
       {!isPendingWarehouse && (
         <Alert tone="info">
@@ -285,7 +322,7 @@ export const WarehouseClassify: React.FC = () => {
             .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
           const lastRejection = candidates[0];
           if (lastRejection) {
-            return (
+  return (
               <Alert tone="danger">
                 <div className="callout callout-pad">
                   <strong>Observación de Contabilidad</strong>
@@ -493,8 +530,10 @@ export const WarehouseClassify: React.FC = () => {
               <Can permission="WAREHOUSE.CLASSIFY">
                 <Button variant="ghost" onClick={() => setReturnModal(true)} disabled={saving}>Devolver</Button>
                 <Button variant="secondary" onClick={handleSave} disabled={saving}>{saving ? 'Guardando...' : saved ? 'Guardar Borrador ✓' : 'Guardar Borrador'}</Button>
-                <Button variant="secondary" onClick={handleValidate} disabled={validating || saving}>{validating ? 'Validando...' : 'Validar artículo'}</Button>
-                <Button onClick={() => setConfirmApprove(true)} disabled={saving || !canApprove}>{saving ? 'Procesando...' : 'Aprobar Clasificación'}</Button>
+                <Button variant="secondary" onClick={handleValidate} disabled={saving || analyzerBusy}>{analyzerBusy ? 'Analizando...' : 'Validar artículo'}</Button>
+                {!sameLink && (
+                  <Button onClick={() => setConfirmApprove(true)} disabled={saving || !canApprove}>{saving ? 'Procesando...' : 'Aprobar Clasificación'}</Button>
+                )}
               </Can>
             </div>
           )}
@@ -504,41 +543,7 @@ export const WarehouseClassify: React.FC = () => {
             </p>
           )}
 
-          {/* Datos listos para Profit (§23): solo lectura, sin botón de escritura. */}
-          <SectionCard
-            title="Datos listos para Profit"
-            desc="Verificación previa a la futura escritura. No escribe en Profit."
-          >
-            {!dryRun ? (
-              <p className="muted small">
-                {canEditClassification
-                  ? 'Pulse «Validar artículo» para ejecutar la validación completa.'
-                  : 'Validación informativa: la clasificación ya fue enviada al Encargado de Almacén.'}
-              </p>
-            ) : (
-              <div className="stack-sm">
-                <p className={`dryrun-verdict ${dryRun.ready ? 'dryrun-ready' : 'dryrun-notready'}`}>
-                  {dryRun.ready ? 'ARTÍCULO LISTO' : 'ARTÍCULO NO LISTO'}
-                </p>
-                {dryRun.checks.map(c => (
-                  <div key={c.key} className="dryrun-check">
-                    <span aria-hidden>{c.status === 'COMPLETO' ? '✓' : c.status === 'NO_APLICA' ? '–' : '✗'}</span>
-                    <div>
-                      <strong>{c.label}:</strong> {c.status}
-                      {c.detail && <span className="muted small"> — {c.detail}</span>}
-                    </div>
-                  </div>
-                ))}
-                {dryRun.warnings.map((w, i) => (
-                  <Alert key={i} tone="info">{w}</Alert>
-                ))}
-                {dryRun.wouldProvision.length > 0 && (
-                  <p className="muted small">Al guardar se completarían en catálogo local: {dryRun.wouldProvision.join(', ')}.</p>
-                )}
-              </div>
-            )}
-          </SectionCard>
-
+          {/* Los campos obligatorios se exigen al aprobar (canApprove). */}
           <ConfirmDialog
             open={confirmApprove}
             title="Aprobar clasificación"

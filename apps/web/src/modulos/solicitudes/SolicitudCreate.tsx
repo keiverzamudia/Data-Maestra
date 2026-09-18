@@ -211,9 +211,12 @@ export const RequestCreate: React.FC = () => {
                 value={description}
                 onChange={e => setDescription(e.target.value)}
                 rows={4}
-                aria-describedby="desc-counter"
+                aria-describedby="desc-counter desc-ayuda"
               />
             </Field>
+            <p id="desc-ayuda" className="muted small" style={{ marginTop: 4 }}>
+              Indique qué artículo necesita, para qué se utiliza, equipo o modelo al que pertenece, marca si la conoce y medidas, voltaje o capacidad cuando aplique.
+            </p>
             <p id="desc-counter" className="muted small" style={{ marginTop: 4 }}>{descLen} caracteres (mínimo 3)</p>
           </SectionCard>
 

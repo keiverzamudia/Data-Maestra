@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../comun/prisma/prisma.service';
 import { SolicitudesService } from '../solicitudes/solicitud.service';
 import { flattenRequestData } from '../../comun/utilidades/flatten-request-data';
@@ -8,6 +8,8 @@ const REQUEST_INCLUDE = {
   department: true,
   requester: true,
   requestData: true,
+  // FASE 23.2 — estado vigente del Analizador (última decisión SAME/DIFFERENT).
+  articleLink: true,
   workflowInstance: true,
   approvals: {
     include: { actor: { select: { id: true, username: true, displayName: true } } },
@@ -77,6 +79,16 @@ export class AlmacenService {
     }
     if (request.status !== 'PENDIENTE_ALMACEN') {
       throw new NotFoundException(`Request ${id} is not pending warehouse classification`);
+    }
+
+    // FASE 23.2 — SAME activo: la solicitud quedó resuelta con el artículo
+    // existente (código conservado). No puede avanzar hacia la creación de
+    // un artículo nuevo. Registrar DIFFERENT sobre el mismo par la libera.
+    const activeLink = (request as { articleLink?: { decision?: string; profitArticleCode?: string } | null }).articleLink;
+    if (activeLink?.decision === 'SAME') {
+      throw new ConflictException(
+        `Request ${id} resuelta con artículo existente ${activeLink.profitArticleCode ?? ''}: no puede aprobarse clasificación para crear un código nuevo (SAME_LINKED).`,
+      );
     }
 
     // Validate classification exists before advancing

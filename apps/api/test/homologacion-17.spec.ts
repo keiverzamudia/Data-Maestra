@@ -21,6 +21,7 @@ import {
   isPlanExecutable,
   compareArticlePayload,
   evaluateGlobalPreflight,
+  trigInsertCompatible,
 } from '../src/modulos/profit/corporate-compare';
 import { buildInsertStatement } from '../src/modulos/profit/profit-article.payload';
 import { CorporateCompaniesService } from '../src/modulos/profit/corporate-companies.service';
@@ -123,10 +124,21 @@ describe('FASE 17 — comparación y plan', () => {
     expect(item.safe).toBe(true);
   });
 
-  it('solo descripción → UPDATE_DESCRIPTION sin tocar código', () => {
-    const diffs = compareCatalogRows('Líneas', [{ code: 'FER', description: 'Ferretería' }], [{ code: 'FER', description: 'FERRETERIA' }]);
+  it('solo descripción en catálogo funcional → UPDATE_DESCRIPTION sin tocar código', () => {
+    const diffs = compareCatalogRows('Unidades', [{ code: 'KG', description: 'KILOGRAMOS' }], [{ code: 'KG', description: 'KILOS' }]);
     expect(diffs[0]!.state).toBe('DESCRIPCION_DIFERENTE');
-    expect(buildSyncPlanItem(diffs[0]!).operation).toBe('UPDATE_DESCRIPTION');
+    expect(buildSyncPlanItem(diffs[0]!, CORPORATE_CATALOGS['unidades']).operation).toBe('UPDATE_DESCRIPTION');
+  });
+
+  it('FASE 17.2: descripción en catálogo local → BLOCKED (código es namespace local)', () => {
+    // Evidencia real: lin_art 01 = FLETES (TRANS) vs COMBUSTIBLE (DIST).
+    const diffs = compareCatalogRows('Líneas', [{ code: '01', description: 'FLETES' }], [{ code: '01', description: 'COMBUSTIBLE' }]);
+    expect(diffs[0]!.state).toBe('DESCRIPCION_DIFERENTE');
+    const item = buildSyncPlanItem(diffs[0]!, CORPORATE_CATALOGS['lin_art']);
+    expect(item.operation).toBe('BLOCKED');
+    expect(item.safe).toBe(false);
+    // Fail-closed: sin descriptor no se afirma seguridad.
+    expect(buildSyncPlanItem(diffs[0]!).operation).toBe('BLOCKED');
   });
 
   it('padre distinto → DATOS_DIFERENTES/BLOCKED (no adivina)', () => {
@@ -146,7 +158,7 @@ describe('FASE 17 — comparación y plan', () => {
     const items = [
       buildSyncPlanItem({ catalog: 'U', code: 'A', standardValue: 'a', destValue: 'a', state: 'IGUAL' }),
       buildSyncPlanItem({ catalog: 'U', code: 'B', standardValue: 'b', destValue: null, state: 'FALTA_EN_DESTINO' }),
-      buildSyncPlanItem({ catalog: 'U', code: 'C', standardValue: 'c', destValue: 'x', state: 'DESCRIPCION_DIFERENTE' }),
+      buildSyncPlanItem({ catalog: 'U', code: 'C', standardValue: 'c', destValue: 'x', state: 'DESCRIPCION_DIFERENTE' }, CORPORATE_CATALOGS['unidades']),
       buildSyncPlanItem({ catalog: 'U', code: 'D', standardValue: 'd', destValue: 'y', state: 'DATOS_DIFERENTES' }),
     ];
     const s = summarizePlan(items);
@@ -182,6 +194,7 @@ interface MemDb {
   art: Array<Record<string, string>>;
   triggers: string[];
   trigDef: string;
+  trigDisabled?: boolean;
   accounts: string[];
 }
 
@@ -295,14 +308,16 @@ function makeHarness(opts: {
       const t = pv('t').toLowerCase();
       return (COL_META[t] ?? []).map((c) => ({ ...c }));
     }
+    if (/sql_modules/.test(sql)) {
+      const m = /\[([A-Z0-9_]+)\]\.sys\.triggers/i.exec(sql);
+      const db = (m?.[1] ?? dbOf(sql) ?? '').toUpperCase();
+      const t = model[db];
+      if (!t) return [];
+      return [{ def: t.trigDef ?? null, dis: t.trigDisabled ? 1 : 0 }];
+    }
     if (/sys\.triggers/.test(sql)) {
       const db = dbOf(sql);
       return (model[db]?.triggers ?? []).map((n) => ({ n }));
-    }
-    if (/OBJECT_DEFINITION/.test(sql)) {
-      const m = /\[([A-Z0-9_]+)\]\.dbo\.\[(\w+)\]/i.exec(sql);
-      const db = (m?.[1] ?? '').toUpperCase();
-      return [{ def: model[db]?.trigDef ?? null }];
     }
     if (/MAX\(RIGHT/.test(sql)) {
       const ref = tableOf(sql)!;
@@ -552,5 +567,166 @@ describe('FASE 17 — registro multiempresa del artículo', () => {
     expect(h.txCalls()).toBe(0);
     expect(h.committed()['AD_DIST']!.art.length).toBe(0);
     expect(h.committed()['AD_TRANS']!.art.length).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FASE 17.1 — Compatibilidad funcional de TrigI_art. Cero escrituras reales.
+// Evidencia real: TRANS/DIST/SLS/LUBSL/ROMA byte-idénticos; COR_A3 idéntico
+// salvo citado con corchetes; misma validación suni_venta→unidades en los 6.
+// ---------------------------------------------------------------------------
+
+const STD_TRIG = `CREATE TRIGGER TrigI_art ON dbo.art FOR INSERT AS
+IF (SELECT COUNT(*) FROM inserted) !=
+   (SELECT COUNT(*) FROM unidades, inserted WHERE (unidades.co_uni = inserted.suni_venta))
+BEGIN RAISERROR ('Cannot add or change record.',16,1) ROLLBACK TRANSACTION END`;
+
+const COR_A3_TRIG = `CREATE TRIGGER [dbo].[TrigI_art] ON [dbo].[art] FOR INSERT AS
+IF (SELECT COUNT(*) FROM inserted) !=
+   (SELECT COUNT(*) FROM unidades, inserted WHERE (unidades.co_uni = inserted.suni_venta))
+BEGIN RAISERROR ('Cannot add or change record.',16,1) ROLLBACK TRANSACTION END`;
+
+const OTHER_LOGIC_TRIG = `CREATE TRIGGER TrigI_art ON dbo.art FOR INSERT AS
+IF EXISTS (SELECT * FROM inserted WHERE suni_venta NOT IN (SELECT co_uni FROM unidades))
+BEGIN RAISERROR ('Unidad invalida.',16,1) ROLLBACK TRANSACTION END
+UPDATE art SET art_des = UPPER(art_des) WHERE co_art IN (SELECT co_art FROM inserted)`;
+
+describe('FASE 17.1 — compatibilidad funcional de triggers', () => {
+  it('1: trigger idéntico → LISTA (AD_LUBSL/AD_ROMA: byte-idénticos al estándar)', () => {
+    expect(trigInsertCompatible(STD_TRIG, STD_TRIG)).toEqual({ compatible: true, reason: 'IDENTICO' });
+  });
+
+  it('2: diferencia solo de citado con corchetes → LISTA (COR_A3)', () => {
+    expect(trigInsertCompatible(STD_TRIG, COR_A3_TRIG)).toEqual({ compatible: true, reason: 'CITADO' });
+  });
+
+  it('3: otra lógica (valida distinto / modifica filas) → BLOQUEADA', () => {
+    expect(trigInsertCompatible(STD_TRIG, OTHER_LOGIC_TRIG).compatible).toBe(false);
+    expect(trigInsertCompatible(STD_TRIG, OTHER_LOGIC_TRIG).reason).toBe('DIFIERE');
+    expect(trigInsertCompatible(STD_TRIG, '').reason).toBe('ILEGIBLE');
+    expect(trigInsertCompatible('', STD_TRIG).reason).toBe('ILEGIBLE');
+  });
+
+  it('4: empresa con lógica distinta → preflight falla → 0 escrituras globales', async () => {
+    const dbs = twoDbs();
+    dbs['COR_A3'] = memDb();
+    dbs['COR_A3']!.trigDef = OTHER_LOGIC_TRIG;
+    const h = makeHarness({ dbs, listed: ['AD_TRANS', 'AD_DIST', 'COR_A3'] });
+    const p = await h.svc.preflight(['AD_DIST', 'COR_A3'], { article: ARTICLE });
+    expect(p.ok).toBe(false);
+    const cor = p.companies.find((c) => c.company === 'COR_A3')!;
+    expect(cor.checks.find((k) => k.key === 'TRIGGER_COMPAT')!.ok).toBe(false);
+    const r = await h.svc.registerArticle(['AD_DIST', 'COR_A3'], ARTICLE, CTX);
+    expect(r.ok).toBe(false);
+    expect(h.txCalls()).toBe(0);
+  });
+
+  it('trigger deshabilitado en destino → BLOQUEADA (posible intervención en curso)', async () => {
+    const dbs = twoDbs();
+    dbs['AD_DIST']!.trigDef = STD_TRIG;
+    dbs['AD_DIST']!.trigDisabled = true;
+    const h = makeHarness({ dbs });
+    const p = await h.svc.preflight(['AD_DIST'], { article: ARTICLE });
+    expect(p.ok).toBe(false);
+    expect(h.txCalls()).toBe(0);
+  });
+
+  it('variante solo de citado → preflight LISTA y registro multiempresa OK', async () => {
+    const dbs = twoDbs();
+    dbs['AD_TRANS']!.trigDef = STD_TRIG;
+    dbs['AD_DIST']!.trigDef = STD_TRIG;
+    dbs['COR_A3'] = memDb();
+    dbs['COR_A3']!.trigDef = COR_A3_TRIG;
+    const h = makeHarness({ dbs, listed: ['AD_TRANS', 'AD_DIST', 'COR_A3'] });
+    const p = await h.svc.preflight(['AD_DIST', 'COR_A3'], { article: ARTICLE });
+    const cor = p.companies.find((c) => c.company === 'COR_A3')!;
+    expect(cor.checks.find((k) => k.key === 'TRIGGER_COMPAT')!.ok).toBe(true);
+    const r = await h.svc.registerArticle(['AD_DIST', 'COR_A3'], ARTICLE, CTX);
+    expect(r.ok).toBe(true);
+    expect(r.coArt).toBe('FERMIS0664');
+    for (const db of ['AD_TRANS', 'AD_DIST', 'COR_A3']) {
+      expect(h.committed()[db]!.art.filter((a) => a['co_art'] === 'FERMIS0664').length).toBe(1);
+    }
+  });
+
+  it('5: jamás DISABLE TRIGGER en el motor corporativo', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join, dirname } = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const dir = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'modulos', 'profit');
+    for (const f of ['corporate-homologation.service.ts', 'corporate-compare.ts', 'profit-write.adapter.ts']) {
+      const src = readFileSync(join(dir, f), 'utf8');
+      expect(src).not.toMatch(/DISABLE\s+TRIGGER/i);
+    }
+  });
+
+  it('6: el INSERT de artículo existente continúa sin cambios (15 columnas)', () => {
+    const p: any = { co_art: 'X', art_des: 'Y', tipo: 'C', co_lin: 'A', co_subl: 'B', uni_venta: 'U', suni_venta: 'U', tipo_imp: '1', co_cat: '01', co_color: '01', procedenci: '01', co_prov: 'GEN', tipo_cos: 'ULCO', dis_cen: '', co_us_in: 'DM' };
+    const st = buildInsertStatement(p);
+    expect(st.sql).toBe('INSERT INTO dbo.art (co_art, art_des, tipo, co_lin, co_subl, uni_venta, suni_venta, tipo_imp, co_cat, co_color, procedenci, co_prov, tipo_cos, dis_cen, co_us_in) VALUES (@co_art, @art_des, @tipo, @co_lin, @co_subl, @uni_venta, @suni_venta, @tipo_imp, @co_cat, @co_color, @procedenci, @co_prov, @tipo_cos, @dis_cen, @co_us_in)');
+    expect(st.params.length).toBe(15);
+  });
+
+  it('7-8: AD_TRANS estándar; LUBSL/ROMA idénticas; COR_A3 equivalente funcional', () => {
+    expect(STANDARD_COMPANY).toBe('AD_TRANS');
+    expect(trigInsertCompatible(STD_TRIG, STD_TRIG).compatible).toBe(true);
+    expect(trigInsertCompatible(STD_TRIG, COR_A3_TRIG)).toEqual({ compatible: true, reason: 'CITADO' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FASE 17.2 — Bloqueos del preflight con datos reales. Cero escrituras.
+// Regla corregida (H): UPDATE_DESCRIPTION automático solo en
+// tabulado/unidades; descripciones locales → revisión humana.
+// ---------------------------------------------------------------------------
+
+describe('FASE 17.2 — plan y preflight con divergencia real', () => {
+  it('Caso 5: catálogos idénticos → GLOBAL READY sin escribir', async () => {
+    const h = makeHarness({ dbs: { AD_TRANS: memDb(), AD_DIST: memDb() } });
+    const c = await h.svc.compare(['AD_DIST']);
+    expect(c.executable).toBe(true);
+    expect(c.companies[0]!.summary.bloqueados).toBe(0);
+    const p = await h.svc.preflight(['AD_DIST']);
+    expect(p.ok).toBe(true);
+    expect(h.txCalls()).toBe(0);
+  });
+
+  it('Caso 7: dependencia faltante cubierta por el plan → elegible y se crea en TX', async () => {
+    const h = makeHarness({ dbs: twoDbs() });
+    const c = await h.svc.compare(['AD_DIST']);
+    const fer = c.companies[0]!.items.find((i) => i.catalog === 'Líneas' && i.code === 'FER');
+    expect(fer?.operation).toBe('INSERT');
+    const r = await h.svc.registerArticle(['AD_DIST'], ARTICLE, CTX);
+    expect(r.ok).toBe(true);
+    expect(h.committed()['AD_DIST']!.catalogs['lin_art'].some((x) => x.code === 'FER')).toBe(true);
+  });
+
+  it('Caso 2/3: descripción local divergente → BLOCKED, nunca UPDATE silencioso', async () => {
+    // Evidencia real Fase 17.2: VEH = VEHICULOS (TRANS) vs VEHICULO (DIST).
+    const dbs = twoDbs();
+    dbs['AD_TRANS']!.catalogs['lin_art'].push({ code: 'VEH', description: 'VEHICULOS' });
+    dbs['AD_DIST']!.catalogs['lin_art'].push({ code: 'VEH', description: 'VEHICULO' });
+    const h = makeHarness({ dbs });
+    const c = await h.svc.compare(['AD_DIST']);
+    const veh = c.companies[0]!.items.find((i) => i.catalog === 'Líneas' && i.code === 'VEH');
+    expect(veh?.state).toBe('DESCRIPCION_DIFERENTE');
+    expect(veh?.operation).toBe('BLOCKED');
+    expect(c.executable).toBe(false);
+    const r = await h.svc.homologate(['AD_DIST'], CTX);
+    expect(r.ok).toBe(false);
+    expect(r.errorCode).toBe('CORPORATE_PLAN_BLOCKED');
+    expect(h.txCalls()).toBe(0);
+    expect(h.committed()['AD_DIST']!.catalogs['lin_art'].find((x) => x.code === 'VEH')!.description).toBe('VEHICULO');
+  });
+
+  it('Caso 6: código existente con datos ajenos → el candidato avanza, no sobrescribe', async () => {
+    const dbs = twoDbs();
+    dbs['AD_DIST']!.art.push({ co_art: 'FERMIS0664', art_des: 'AJENO', tipo: 'C', co_lin: 'FER', co_subl: 'MIS', uni_venta: 'UND', suni_venta: 'UND', tipo_imp: '1', co_cat: '01', co_color: '01', procedenci: '01', co_prov: 'GEN', tipo_cos: 'ULCO', dis_cen: '', co_us_in: 'OT' });
+    const h = makeHarness({ dbs });
+    const r = await h.svc.registerArticle(['AD_DIST'], ARTICLE, CTX);
+    expect(r.ok).toBe(false);
+    expect(r.errorCode).toBe('CORPORATE_PREFLIGHT_FAILED');
+    expect(h.txCalls()).toBe(0);
+    expect(h.committed()['AD_DIST']!.art.filter((a) => a['co_art'] === 'FERMIS0664')[0]!['art_des']).toBe('AJENO');
   });
 });

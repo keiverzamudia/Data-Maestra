@@ -11,6 +11,7 @@ import { BulkAssignModal } from './BulkAssignModal';
 import { RoleAdminModal } from './RoleAdminModal';
 import { OrganizacionSection } from './OrganizacionSection';
 import { CatalogosProfitAdmin } from './CatalogosProfitAdmin';
+import { AuditoriaHistorica } from './AuditoriaHistorica';
 import type { Company, Department, Role } from '../../tipos';
 
 function uniq(values: (string | null | undefined)[]): string {
@@ -326,7 +327,7 @@ const RolesSection: React.FC = () => {
     </SectionCard>
   );
 };
-export type AdminSection = 'personas' | 'organizacion' | 'roles' | 'catalogos';
+export type AdminSection = 'personas' | 'organizacion' | 'roles' | 'catalogos' | 'historico';
 
 export const AdminPage: React.FC<{ section?: AdminSection }> = ({ section = 'personas' }) => {
   const { empresas, departamentos, usuarios, roles: rolesData } = useOrganizacion();
@@ -350,6 +351,10 @@ export const AdminPage: React.FC<{ section?: AdminSection }> = ({ section = 'per
 
   if (section === 'catalogos') {
     return <CatalogosProfitAdmin />;
+  }
+
+  if (section === 'historico') {
+    return <AuditoriaHistorica />;
   }
 
   return (

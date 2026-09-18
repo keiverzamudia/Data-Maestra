@@ -118,6 +118,7 @@ describe('16A — gates de Registro Profit', () => {
       catalogSubgroup: { findUnique: vi.fn().mockResolvedValue({ id: 's1', code: 'MIS' }) },
       catalogCategory: { findUnique: vi.fn().mockResolvedValue(null) },
       requestData: { update: vi.fn().mockResolvedValue({}) },
+      requestArticleLink: { findUnique: vi.fn().mockResolvedValue(null) },
       auditEvent: { create: vi.fn().mockResolvedValue({}) },
     };
     const svc = new SolicitudesService(db, {} as any, {} as any, {} as any, {} as any, engine);

@@ -46,6 +46,14 @@ vi.mock('../../servicios', () => ({
   },
 }));
 
+const mockAnalizar = vi.fn();
+vi.mock('../../servicios/api/api-matching-service', () => ({
+  apiMatchingService: {
+    analizar: (...args: unknown[]) => mockAnalizar(...args),
+    vincular: vi.fn(),
+  },
+}));
+
 const { LOCAL_CATALOGS } = vi.hoisted(() => ({
   LOCAL_CATALOGS: {
     grupos: [], subgrupos: [], categorias: [], marcas: [],
@@ -230,18 +238,15 @@ describe('AlmacenClassify 14C-FORM: tipo, unidad Profit, impuesto, dry-run', () 
     await screen.findByText(/tasa 1/i);
   });
 
-  it('botón Validar artículo ejecuta el dry-run y muestra el resultado', async () => {
-    mockValidate.mockResolvedValue({
-      ready: true,
-      checks: [{ key: 'tipo', label: 'Tipo de artículo', status: 'COMPLETO', detail: 'C' }],
-      warnings: [],
-      wouldProvision: [],
-    });
+  it('botón Validar artículo ejecuta el Analizador manualmente', async () => {
+    mockAnalizar.mockResolvedValue({ input: {}, candidates: [], insufficient: false, engineVersion: 'v1' });
     renderClassify();
     await screen.findByLabelText(/Grupo \(Profit\)/i, { selector: 'select' });
     fireEvent.click(screen.getByRole('button', { name: /Validar art/i }));
-    await waitFor(() => expect(mockValidate).toHaveBeenCalled());
-    await screen.findByText(/ARTÍCULO LISTO/i);
+    await waitFor(() => expect(mockAnalizar).toHaveBeenCalled());
+    const last = mockAnalizar.mock.calls[mockAnalizar.mock.calls.length - 1]!;
+    expect(last[0]).toBe('r1');
+    expect(await screen.findByText('✓ Validación completada')).toBeTruthy();
   });
 });
 
@@ -374,5 +379,48 @@ describe('AlmacenClassify vista post-clasificación (solo lectura por estado)', 
     // El segundo payload conserva el part number del primero (estado del formulario).
     expect(mockSave.mock.calls[1]![1]).toMatchObject({ partNumber: 'P-001', application: 'Bomba' });
     expect((screen.getByPlaceholderText('Part Number') as HTMLInputElement).value).toBe('P-001');
+  });
+});
+
+describe('AlmacenClassify 23.2 SAME resuelto con artículo existente', () => {
+  beforeEach(() => {
+    sessionAllow.value = true;
+    mockGetRequest.mockResolvedValue({
+      ...REQUEST,
+      articleLink: {
+        companyCode: 'AD_TRANS', profitArticleCode: '094-7134-CAT',
+        decision: 'SAME', decidedBy: 'u-alm',
+      },
+    });
+    mockAnalizar.mockResolvedValue({ input: {}, candidates: [], insufficient: false, engineVersion: 'v1' });
+    mockAuditEvents.mockResolvedValue({ data: [], total: 0 });
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('muestra banner resuelto y oculta Aprobar Clasificación', async () => {
+    renderClassify();
+    await screen.findByLabelText(/Grupo \(Profit\)/i, { selector: 'select' });
+    expect(await screen.findByText(/Solicitud resuelta con artículo existente/)).toBeTruthy();
+    expect(screen.getByText(/094-7134-CAT/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Aprobar Clasificación' })).toBeNull();
+    // Guardar/Validar/Devolver siguen disponibles (no avanzan a creación).
+    expect(screen.getByRole('button', { name: 'Guardar Borrador' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Validar art/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Devolver' })).toBeTruthy();
+  });
+
+  it('Validar artículo se deshabilita mientras el Analizador trabaja', async () => {
+    let resolveRun!: (v: any) => void;
+    mockAnalizar.mockImplementation(() => new Promise((res) => { resolveRun = res; }));
+    renderClassify();
+    await screen.findByLabelText(/Grupo \(Profit\)/i, { selector: 'select' });
+    const btn = screen.getByRole('button', { name: /Validar art/i });
+    fireEvent.click(btn);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Analizando...' })).toBeTruthy());
+    resolveRun!({ input: {}, candidates: [], insufficient: false, engineVersion: 'v1' });
+    await waitFor(() => expect(screen.getByRole('button', { name: /Validar art/i })).toBeTruthy());
   });
 });

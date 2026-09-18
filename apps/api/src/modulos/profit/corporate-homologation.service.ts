@@ -27,6 +27,7 @@ import {
   isPlanExecutable,
   compareArticlePayload,
   evaluateGlobalPreflight,
+  trigInsertCompatible,
   type CompanyPreflight,
   type GlobalPreflight,
   type PreflightCheck,
@@ -93,8 +94,6 @@ const ART_INSERT_COLUMNS = [
 const ART_TRIGGERS = ['TrigI_art', 'TrigU_art', 'TrigD_art', 'TrigD_artMce'];
 
 const norm = (v: unknown): string => String(v ?? '').trim().toUpperCase();
-
-const normDef = (v: unknown): string => String(v ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
 
 function check(key: PreflightCheckKey, ok: boolean, detail: string): PreflightCheck {
   return { key, ok, detail };
@@ -191,7 +190,7 @@ export class CorporateHomologationService {
     const companies = Array.from(new Set([STANDARD_COMPANY, ...requested.filter((c) => c !== STANDARD_COMPANY)]));
     const article = opts?.article ? this.validateArticleInput(opts.article) : null;
     const candidate = article ? await this.universalCandidate(article) : null;
-    const stdTrigDef = await this.triggerDefinition(STANDARD_COMPANY, 'TrigI_art');
+    const stdTrig = await this.triggerDefinition(STANDARD_COMPANY, 'TrigI_art');
     const pendingByCompany = new Map<string, Set<string>>();
     for (const item of opts?.planItems ?? []) {
       if (item.operation !== 'INSERT') continue;
@@ -201,7 +200,7 @@ export class CorporateHomologationService {
     }
     const checks: CompanyPreflight[] = [];
     for (const company of companies) {
-      checks.push(await this.preflightCompany(company, article, candidate, stdTrigDef, pendingByCompany.get(company) ?? new Set(), opts?.planned ?? []));
+      checks.push(await this.preflightCompany(company, article, candidate, stdTrig, pendingByCompany.get(company) ?? new Set(), opts?.planned ?? []));
     }
     return evaluateGlobalPreflight(checks);
   }
@@ -257,20 +256,40 @@ export class CorporateHomologationService {
     return m && /^\d+$/.test(m) ? parseInt(m, 10) : 0;
   }
 
-  private async triggerDefinition(db: string, name: string): Promise<string | null> {
+  /**
+   * FASE 17.1 — Lectura fiable de la definición de un trigger sobre art.
+   * NO usa OBJECT_DEFINITION(OBJECT_ID(...)): OBJECT_DEFINITION resuelve el
+   * ID en la base actual y puede devolver la definición de OTRO objeto con
+   * el mismo ID (comprobado en Fase 17.1). Se lee sys.sql_modules de la base
+   * destino con joins three-part. Solo lectura.
+   */
+  private async triggerDefinition(
+    db: string,
+    name: string,
+  ): Promise<{ def: string | null; disabled: boolean }> {
+    if (!/^(TrigI_art|TrigU_art|TrigD_art|TrigD_artMce)$/.test(name)) {
+      throw new Error('Trigger corporativo inválido');
+    }
     const safeDb = norm(db);
-    const rows = await this.readAdapter.rawQuery<{ def: string | null }>(
-      `SELECT OBJECT_DEFINITION(OBJECT_ID('[${safeDb}].dbo.[${name}]')) AS def`,
+    const rows = await this.readAdapter.rawQuery<{ def: string | null; dis: boolean | number }>(
+      `SELECT TOP 1 m.definition AS def, t.is_disabled AS dis
+       FROM [${safeDb}].sys.triggers t
+       JOIN [${safeDb}].sys.sql_modules m ON m.object_id = t.object_id
+       WHERE t.name = @n AND t.parent_id = OBJECT_ID('[${safeDb}].dbo.art')`,
+      { n: { type: (await this.types()).VarChar(60), value: name } },
     );
     const def = rows[0]?.def;
-    return typeof def === 'string' && def.trim() ? def : null;
+    return {
+      def: typeof def === 'string' && def.trim() ? def : null,
+      disabled: (rows[0]?.dis ?? false) === true || rows[0]?.dis === 1,
+    };
   }
 
   private async preflightCompany(
     company: string,
     article: ProfitArticleInput | null,
     candidate: { candidate: string; seq: number; prefix: string } | null,
-    stdTrigDef: string | null,
+    stdTrig: { def: string | null; disabled: boolean },
     pendingInserts: Set<string>,
     planned: Array<{ catalog: string; code: string; company: string }>,
   ): Promise<CompanyPreflight> {
@@ -393,23 +412,33 @@ export class CorporateHomologationService {
     }
     checks.push(check('TRIGGERS', trigOk, trigDetail));
 
-    // 15. Compatibilidad de TrigI_art: mismo texto normalizado que el estándar.
+    // 15. Compatibilidad funcional de TrigI_art con el INSERT de
+    // Data-Maestra (FASE 17.1): texto idéntico o idéntico salvo citado con
+    // corchetes → compatible. Trigger deshabilitado, ausente o con otra
+    // lógica → bloquea (fail-closed). Jamás se deshabilita ni modifica.
     let compatOk = false;
     let compatDetail = '';
     try {
-      const def = await this.triggerDefinition(company, 'TrigI_art');
-      if (!def) {
-        compatDetail = 'TrigI_art sin definición legible.';
-      } else if (!stdTrigDef) {
+      const dest = await this.triggerDefinition(company, 'TrigI_art');
+      if (!dest.def) {
+        compatDetail = 'Sin validación de registro legible en destino: no se escribe.';
+      } else if (!stdTrig.def) {
         compatDetail = 'Sin referencia del estándar.';
-      } else if (normDef(def) === normDef(stdTrigDef)) {
-        compatOk = true;
-        compatDetail = 'TrigI_art compatible con el estándar.';
+      } else if (dest.disabled) {
+        compatDetail = 'Validación de registro deshabilitada en destino: posible intervención en curso, no se escribe.';
       } else {
-        compatDetail = 'TrigI_art difiere del estándar: requiere revisión DBA, no se escribe.';
+        const r = trigInsertCompatible(stdTrig.def, dest.def);
+        if (r.compatible) {
+          compatOk = true;
+          compatDetail = r.reason === 'IDENTICO'
+            ? 'Validación de registro idéntica al estándar.'
+            : 'Validación de registro equivalente al estándar.';
+        } else {
+          compatDetail = 'Validación de registro difiere del estándar: requiere revisión, no se escribe.';
+        }
       }
     } catch {
-      compatDetail = 'No se pudo comparar TrigI_art.';
+      compatDetail = 'No se pudo comparar la validación de registro.';
     }
     checks.push(check('TRIGGER_COMPAT', compatOk, compatDetail));
 

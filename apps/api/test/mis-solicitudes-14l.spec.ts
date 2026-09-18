@@ -14,6 +14,7 @@ function makeService() {
       updateMany: vi.fn(),
     },
     requestData: { findUnique: vi.fn(), update: vi.fn() },
+    requestArticleLink: { findUnique: vi.fn().mockResolvedValue(null) },
     auditEvent: { findMany: vi.fn().mockResolvedValue([]), create: vi.fn() },
     catalogGroup: { findUnique: vi.fn() },
     catalogSubgroup: { findFirst: vi.fn(), findUnique: vi.fn() },

@@ -32,6 +32,11 @@ export interface Request {
   articleType?: string; articleTypeManual?: boolean; taxType?: string; unitCode?: string;
   /** Código Profit real tras registro (14L). */
   profitCode?: string;
+  /** FASE 23.2 — vínculo vigente del Analizador (última decisión SAME/DIFFERENT). */
+  articleLink?: {
+    companyCode: string; profitArticleCode: string; decision: string;
+    decidedBy?: string | null; decidedAt?: string;
+  } | null;
   notes?: string; attributes?: Record<string,string>;
   accountingCodes?: { code: string; description: string; position?: string }[];
   createdAt: string; updatedAt: string;
@@ -84,3 +89,36 @@ export interface AuditEvent { id: string; correlationId: string; requestId?: str
 
 // ── Notifications ──
 export interface Notification { id: string; title: string; body: string; type: string; readAt: string | null; createdAt: string; link?: string; requestId?: string | null; }
+
+// FASE 18 (motor de coincidencia): tipos del dominio matching.
+// El MatchCandidate heredado (source-vs-master) se conserva sin cambios;
+// estos tipos cubren identidad Profit (companyCode + profitArticleCode),
+// normalizaci�n versionada y decisiones humanas para el futuro motor.
+export interface ProfitArticleRef { companyCode: string; profitArticleCode: string; }
+export type MatchDecisionKind = 'SAME' | 'DIFFERENT' | 'REVIEW';
+export type MatchEvidenceKind =
+  | 'DESCRIPTION_SIMILARITY' | 'BRAND_MATCH' | 'MODEL_MATCH' | 'PART_NUMBER_MATCH'
+  | 'CATEGORY_MATCH' | 'SUBCATEGORY_MATCH' | 'APPLICATION_MATCH' | 'PURPOSE_MATCH'
+  | 'PHOTO_SIMILARITY' | 'UNIT_MATCH';
+export type MatchConflictKind =
+  | 'BRAND_CONFLICT' | 'MODEL_CONFLICT' | 'PART_NUMBER_CONFLICT'
+  | 'CATEGORY_CONFLICT' | 'UNIT_CONFLICT' | 'APPLICATION_CONFLICT';
+export type MatchCandidateClassification = 'HIGH' | 'MEDIUM' | 'LOW' | 'REVIEW';
+export interface ArticleMatchCandidate {
+  article: ProfitArticleRef;
+  confidence: number;
+  classification: MatchCandidateClassification;
+  evidence: MatchEvidenceKind[];
+  conflicts: MatchConflictKind[];
+  score?: number;
+  explanation?: string;
+  engineVersion?: string;
+  priorDecision?: MatchDecisionKind;
+}
+export interface NormalizationProfile extends ProfitArticleRef {
+  id: string;
+  originalDescription: string;
+  normalizedDescription: string;
+  normalizationVersion: string;
+}
+

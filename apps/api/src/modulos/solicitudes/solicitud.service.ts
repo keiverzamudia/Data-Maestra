@@ -1257,6 +1257,19 @@ export class SolicitudesService {
     }
   }
 
+  /**
+   * FASE 21 — Vínculo SAME vigente de la solicitud (Comprador Inteligente).
+   * Devuelve el artículo existente a reutilizar o null para flujo normal.
+   * Solo lectura local; nunca toca Profit.
+   */
+  private async linkedExistingArticle(
+    id: string,
+  ): Promise<{ companyCode: string; profitArticleCode: string } | null> {
+    const link = await this.prisma.requestArticleLink.findUnique({ where: { requestId: id } });
+    if (!link || link.decision !== 'SAME') return null;
+    return { companyCode: link.companyCode, profitArticleCode: link.profitArticleCode };
+  }
+
   private async runProfitCreation(
     id: string,
     userId: string,
@@ -1281,6 +1294,35 @@ export class SolicitudesService {
       throw new ConflictException(`Request ${id} ya no está disponible para registro (PROFIT_WRITE_IN_PROGRESS)`);
     }
     await this.profitAudit(id, correlationId, userId, companyId, 'PROFIT_WRITE_STARTED', { ...base });
+
+    // FASE 21 — SAME vinculado en Almacén: reutiliza el artículo existente
+    // en lugar de insertar un duplicado. Sin INSERT, con auditoría.
+    const linked = await this.linkedExistingArticle(id);
+    if (linked) {
+      await this.prisma.request.update({
+        where: { id },
+        data: { status: 'INSERTADO_PROFIT' },
+      });
+      await this.prisma.requestData.update({
+        where: { requestId: id },
+        data: { profitCode: linked.profitArticleCode },
+      });
+      await this.profitAudit(id, correlationId, userId, companyId, 'PROFIT_WRITE_SKIPPED_EXISTING', {
+        ...base,
+        co_art: linked.profitArticleCode,
+        linkedCompany: linked.companyCode,
+      });
+      return {
+        requestId: id,
+        correlationId,
+        ok: true,
+        coArt: linked.profitArticleCode,
+        attempts: [],
+        reconcile: 'CREATED_AND_VERIFIED',
+        differences: [],
+        alreadyRegistered: true,
+      };
+    }
 
     const t0 = Date.now();
     let result: CreationResult;
@@ -1369,6 +1411,35 @@ export class SolicitudesService {
       throw new ConflictException(`Request ${id} ya no está disponible para registro (PROFIT_WRITE_IN_PROGRESS)`);
     }
     await this.profitAudit(id, correlationId, userId, companyId, 'PROFIT_WRITE_STARTED', { ...base });
+
+    // FASE 21 — SAME vinculado: reutiliza sin insertar en ninguna empresa.
+    const linked = await this.linkedExistingArticle(id);
+    if (linked) {
+      await this.prisma.request.update({
+        where: { id },
+        data: { status: 'INSERTADO_PROFIT' },
+      });
+      await this.prisma.requestData.update({
+        where: { requestId: id },
+        data: { profitCode: linked.profitArticleCode },
+      });
+      await this.profitAudit(id, correlationId, userId, companyId, 'PROFIT_WRITE_SKIPPED_EXISTING', {
+        ...base,
+        co_art: linked.profitArticleCode,
+        linkedCompany: linked.companyCode,
+      });
+      return {
+        requestId: id,
+        correlationId,
+        ok: true,
+        coArt: linked.profitArticleCode,
+        attempts: [],
+        reconcile: 'CREATED_AND_VERIFIED',
+        differences: [],
+        alreadyRegistered: true,
+        companies: destinos,
+      };
+    }
 
     const t0 = Date.now();
     let corp: Awaited<ReturnType<CorporateHomologationService['registerArticle']>>;
