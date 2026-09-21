@@ -155,3 +155,46 @@ a{color:inherit;text-decoration:none}
 .pipeline-stage:hover{background:var(--surface-soft)}
 /* btn disabled */
 .btn:disabled{opacity:.5;cursor:not-allowed}
+/* acción primaria positiva del Analizador (verde institucional) */
+.btn-accent{background:var(--color-secondary);color:var(--color-secondary-contrast)}
+.btn-accent:hover:not(:disabled){filter:brightness(.96)}
+/* carrusel del Analizador */
+.carousel-request{border-left:3px solid var(--blue);padding-left:var(--sp-3);margin-bottom:var(--sp-2)}
+.carousel-card{animation:carousel-in .2s ease}
+.carousel-card:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+@keyframes carousel-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.carousel-actions{justify-content:flex-start;flex-wrap:wrap}
+.carousel-nav{display:flex;align-items:center;gap:var(--sp-3);margin-top:var(--sp-3);flex-wrap:wrap}
+.carousel-dots{display:flex;gap:6px;align-items:center}
+.carousel-dot{width:10px;height:10px;border-radius:var(--radius-pill);border:1px solid var(--blue);background:transparent;padding:0;cursor:pointer}
+.carousel-dot-active{background:var(--blue)}
+.carousel-photo-btn{border:1px solid var(--border);border-radius:var(--radius-sm);padding:0;background:var(--card);cursor:zoom-in;max-width:100%}
+.carousel-photo-btn img{display:block;max-width:100%;max-height:220px;border-radius:var(--radius-sm)}
+.carousel-photo-actions{justify-content:flex-start;margin-top:0}
+.carousel-viewer-img{display:block;max-width:100%;max-height:60vh;margin:0 auto;border-radius:var(--radius-sm)}
+.discard-tray{margin-top:var(--sp-3);padding-top:var(--sp-2);border-top:1px solid var(--border-soft)}
+.discard-chips{display:flex;flex-wrap:wrap;gap:var(--sp-2);margin-top:var(--sp-2)}
+.discard-chip{border:1px solid var(--border);background:var(--card);border-radius:var(--radius-pill);padding:4px 12px;font-size:var(--text-sm);font-family:var(--font-mono);cursor:pointer;transition:background-color .18s ease}
+.discard-chip:hover{background:var(--surface-soft)}
+@media(max-width:767px){.carousel-nav{gap:var(--sp-2)}.carousel-card{padding:var(--sp-3)}}
+/* comparador de coincidencias */
+.modal-wide{width:min(1000px,calc(100vw - 32px))}
+.compare-head{display:flex;align-items:baseline;gap:var(--sp-2);flex-wrap:wrap;margin-bottom:var(--sp-3)}
+.compare-score{font-size:var(--text-h1);font-weight:800;color:var(--blue)}
+.compare-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3)}
+.compare-panel{border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--sp-3);background:var(--card)}
+.compare-panel h4{margin-bottom:2px}
+.compare-photo{height:170px;border:1px solid var(--border-soft);border-radius:var(--radius-sm);background:var(--surface-soft);display:grid;place-items:center;overflow:hidden;margin:var(--sp-2) 0;text-align:center;padding:var(--sp-2)}
+.compare-photo img{max-width:100%;max-height:100%;object-fit:contain;cursor:zoom-in}
+.compare-photo-empty{color:var(--muted);font-size:var(--text-sm)}
+.compare-row{padding:6px 0;border-bottom:1px solid var(--border-soft);font-size:var(--text-md)}
+.compare-row:last-child{border-bottom:none}
+.compare-row-label{font-size:var(--text-sm);color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+.compare-vals{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-2)}
+.compare-mark-ok{color:var(--success-text);font-weight:700}
+.compare-why{background:var(--blue-soft);border-radius:var(--radius-md);padding:var(--sp-3);margin-top:var(--sp-3)}
+.compare-why ul{list-style:none;padding:0;margin:var(--sp-2) 0 0;display:flex;flex-direction:column;gap:6px}
+.compare-foot{display:flex;gap:var(--sp-2);justify-content:space-between;align-items:center;margin-top:var(--sp-4);padding-top:var(--sp-3);border-top:1px solid var(--border);flex-wrap:wrap}
+.compare-foot-group{display:flex;gap:var(--sp-2);flex-wrap:wrap}
+.carousel-viewer-img{display:block;max-width:100%;max-height:60vh;margin:0 auto;border-radius:var(--radius-sm)}
+@media(max-width:767px){.compare-grid{grid-template-columns:1fr}.compare-vals{grid-template-columns:1fr}}

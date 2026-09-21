@@ -563,6 +563,8 @@ model RequestData {
   unitId           String? @map("unit_id")
   manufacturer     String?
   model            String?
+  // FASE 24.2 — referencia del artículo (Profit art.ref, char 20, opcional).
+  ref              String?
   partNumber       String? @map("part_number")
   application      String?
   masterCode       String? @map("master_code")

@@ -201,7 +201,7 @@ export class ProfitArticleCreationService {
     const fields: Array<keyof ProfitArticlePayload> = [
       'co_art', 'art_des', 'tipo', 'co_lin', 'co_subl', 'uni_venta', 'suni_venta',
       'tipo_imp', 'co_cat', 'co_color', 'procedenci', 'co_prov', 'tipo_cos',
-      'co_us_in',
+      'co_us_in', 'co_sucu', 'uni_compra', 'modelo', 'ref',
     ];
     const differences: string[] = [];
     for (const f of fields) {

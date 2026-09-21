@@ -11,6 +11,7 @@ export function flattenRequestData(raw: any) {
     unitId: requestData.unitId,
     manufacturer: requestData.manufacturer,
     model: requestData.model,
+    ref: (requestData as { ref?: string }).ref,
     partNumber: requestData.partNumber,
     application: requestData.application,
     masterCode: requestData.masterCode,

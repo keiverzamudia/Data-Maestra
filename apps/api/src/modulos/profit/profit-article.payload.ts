@@ -1,9 +1,8 @@
 /**
  * Payload definitivo de creación de artículo en Profit (FASE 14D §4 / 14E §5).
- * 15 campos: los 14 originales + co_us_in (usuario de integración, fijado
- * internamente desde configuración; jamás desde frontend/DTO).
- * Sin `any`. Sin campos generados por Profit (rowguid, fecha_reg, stocks),
- * sin co_imp, sin master_code.
+ * FASE 24.2: 19 columnas (las 15 originales + co_sucu, uni_compra, modelo,
+ * ref). Sin `any`. Sin campos generados por Profit (rowguid, fecha_reg,
+ * stocks), sin co_imp, sin master_code, sin fechas manuales.
  */
 
 /** Clasificación de Data-Maestra lista para convertirse en payload Profit. */
@@ -20,6 +19,17 @@ export interface ProfitArticleInput {
   providerCode?: string;
   costType?: string;
   disCen?: string;
+  /**
+   * Modelo del artículo (Profit art.modelo, char 20). Dato de negocio
+   * opcional: si el usuario lo aporta llega a Profit; si no, queda vacío.
+   * Nunca inventado.
+   */
+  model?: string;
+  /**
+   * Referencia del artículo (Profit art.ref, char 20). Igual que modelo:
+   * opcional, solo con dato real aportado.
+   */
+  ref?: string;
   /**
    * Código del usuario de integración Profit (p. ej. DM). Lo establece el
    * motor desde PROFIT_INTEGRATION_USER_CODE; NUNCA proviene del frontend
@@ -46,6 +56,14 @@ export interface ProfitArticlePayload {
   dis_cen: string;
   /** Usuario de integración Profit (char(6), fijado por el motor). */
   co_us_in: string;
+  /** Sucursal (char(6), automática '01'; FASE 24.2). */
+  co_sucu: string;
+  /** Unidad de compra (char(6), = unidad de venta; FASE 24.2). */
+  uni_compra: string;
+  /** Modelo (char(20), opcional; FASE 24.2). */
+  modelo: string;
+  /** Referencia (char(20), opcional; FASE 24.2). */
+  ref: string;
 }
 
 /** Límites del contrato 14D §5/§8. */
@@ -58,17 +76,20 @@ const clean = (v: unknown): string => String(v ?? '').trim();
 /**
  * Construye el payload sin co_art (puro, sin I/O). Los defaults de línea
  * AMBART se aplican aquí de forma explícita y auditable.
+ * FASE 24.2: co_sucu='01' automático, uni_compra=uni_venta, modelo/ref solo
+ * con dato real (char 20, trim). Sin fechas manuales.
  */
 export function buildProfitArticlePayload(coArt: string, input: ProfitArticleInput): ProfitArticlePayload {
   const tipo = clean(input.articleType);
+  const unit = clean(input.unitCode);
   return {
     co_art: clean(coArt),
     art_des: clean(input.description),
     tipo,
     co_lin: clean(input.groupCode),
     co_subl: clean(input.subgroupCode),
-    uni_venta: clean(input.unitCode),
-    suni_venta: clean(input.unitCode),
+    uni_venta: unit,
+    suni_venta: unit,
     tipo_imp: clean(input.taxType),
     co_cat: clean(input.categoryCode) || '01',
     co_color: clean(input.colorCode) || '01',
@@ -77,6 +98,10 @@ export function buildProfitArticlePayload(coArt: string, input: ProfitArticleInp
     tipo_cos: clean(input.costType) || (tipo === 'S' ? 'ULOM' : 'ULCO'),
     dis_cen: clean(input.disCen),
     co_us_in: clean(input.integrationUser),
+    co_sucu: '01',
+    uni_compra: unit,
+    modelo: clean(input.model).slice(0, 20),
+    ref: clean(input.ref).slice(0, 20),
   };
 }
 
@@ -115,10 +140,10 @@ export interface ProfitInsertStatement {
 }
 
 /**
- * Sentencia INSERT explícita y controlada (14K.5): 15 columnas fijas
- * (14 originales + co_us_in al final), sin TEXT (dis_cen es VARCHAR(8000);
- * la columna TEXT lo convierte). Pura y testeable; el adapter solo mapea
- * kinds al driver.
+ * Sentencia INSERT explícita y controlada (14K.5): 19 columnas fijas
+ * (15 originales + co_sucu, uni_compra, modelo, ref), sin TEXT
+ * (dis_cen es VARCHAR(8000); la columna TEXT lo convierte). Pura y
+ * testeable; el adapter solo mapea kinds al driver.
  * FASE 17: tableRef permite calificar la tabla ([DB].dbo.art) para el
  * registro multiempresa en el mismo servidor. Default = comportamiento
  * histórico (una sola base). Solo se aceptan referencias con formato
@@ -131,7 +156,7 @@ export function buildInsertStatement(p: ProfitArticlePayload, tableRef = 'dbo.ar
   const cols = [
     'co_art', 'art_des', 'tipo', 'co_lin', 'co_subl', 'uni_venta', 'suni_venta',
     'tipo_imp', 'co_cat', 'co_color', 'procedenci', 'co_prov', 'tipo_cos', 'dis_cen',
-    'co_us_in',
+    'co_us_in', 'co_sucu', 'uni_compra', 'modelo', 'ref',
   ];
   const P = (name: string, kind: ProfitParamKind, size: number, value: string): ProfitParam =>
     ({ name, kind, size, value });
@@ -151,6 +176,10 @@ export function buildInsertStatement(p: ProfitArticlePayload, tableRef = 'dbo.ar
     P('tipo_cos', 'char', 4, p.tipo_cos),
     P('dis_cen', 'varchar', 8000, p.dis_cen),
     P('co_us_in', 'char', 6, p.co_us_in),
+    P('co_sucu', 'char', 6, p.co_sucu),
+    P('uni_compra', 'char', 6, p.uni_compra),
+    P('modelo', 'char', 20, p.modelo),
+    P('ref', 'char', 20, p.ref),
   ];
   return {
     sql: `INSERT INTO ${tableRef} (${cols.join(', ')}) VALUES (${cols.map((c) => '@' + c).join(', ')})`,

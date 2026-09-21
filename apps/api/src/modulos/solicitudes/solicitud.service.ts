@@ -891,6 +891,9 @@ export class SolicitudesService {
       if (dto.taxType !== undefined) patch.taxType = dto.taxType;
       if (dto.unitCode !== undefined) patch.unitCode = dto.unitCode.trim() || undefined;
       if (dto.brandCode !== undefined) patch.brandCode = dto.brandCode.trim() || undefined;
+      // FASE 24.2 — modelo/referencia opcionales (Profit art.modelo/art.ref).
+      if (dto.model !== undefined) patch.model = dto.model.trim().slice(0, 20) || undefined;
+      if (dto.ref !== undefined) patch.ref = dto.ref.trim().slice(0, 20) || undefined;
       if (masterCode) patch.masterCode = masterCode;
 
       const requestData = existing
@@ -1133,6 +1136,9 @@ export class SolicitudesService {
       categoryCode: (category as any)?.code,
       colorCode: rd.brandCode ?? undefined,
       disCen: disCen || undefined,
+      // FASE 24.2 — modelo/referencia solo con dato real (opcionales).
+      model: rd.model?.trim() ? rd.model.trim() : undefined,
+      ref: rd.ref?.trim() ? rd.ref.trim().slice(0, 20) : undefined,
     };
     return { request, input, warnings };
   }

@@ -660,11 +660,11 @@ describe('FASE 17.1 — compatibilidad funcional de triggers', () => {
     }
   });
 
-  it('6: el INSERT de artículo existente continúa sin cambios (15 columnas)', () => {
-    const p: any = { co_art: 'X', art_des: 'Y', tipo: 'C', co_lin: 'A', co_subl: 'B', uni_venta: 'U', suni_venta: 'U', tipo_imp: '1', co_cat: '01', co_color: '01', procedenci: '01', co_prov: 'GEN', tipo_cos: 'ULCO', dis_cen: '', co_us_in: 'DM' };
+  it('6: el INSERT de artículo existente continúa sin cambios (19 columnas FASE 24.2)', () => {
+    const p: any = { co_art: 'X', art_des: 'Y', tipo: 'C', co_lin: 'A', co_subl: 'B', uni_venta: 'U', suni_venta: 'U', tipo_imp: '1', co_cat: '01', co_color: '01', procedenci: '01', co_prov: 'GEN', tipo_cos: 'ULCO', dis_cen: '', co_us_in: 'DM', co_sucu: '01', uni_compra: 'U', modelo: '', ref: '' };
     const st = buildInsertStatement(p);
-    expect(st.sql).toBe('INSERT INTO dbo.art (co_art, art_des, tipo, co_lin, co_subl, uni_venta, suni_venta, tipo_imp, co_cat, co_color, procedenci, co_prov, tipo_cos, dis_cen, co_us_in) VALUES (@co_art, @art_des, @tipo, @co_lin, @co_subl, @uni_venta, @suni_venta, @tipo_imp, @co_cat, @co_color, @procedenci, @co_prov, @tipo_cos, @dis_cen, @co_us_in)');
-    expect(st.params.length).toBe(15);
+    expect(st.sql).toBe('INSERT INTO dbo.art (co_art, art_des, tipo, co_lin, co_subl, uni_venta, suni_venta, tipo_imp, co_cat, co_color, procedenci, co_prov, tipo_cos, dis_cen, co_us_in, co_sucu, uni_compra, modelo, ref) VALUES (@co_art, @art_des, @tipo, @co_lin, @co_subl, @uni_venta, @suni_venta, @tipo_imp, @co_cat, @co_color, @procedenci, @co_prov, @tipo_cos, @dis_cen, @co_us_in, @co_sucu, @uni_compra, @modelo, @ref)');
+    expect(st.params.length).toBe(19);
   });
 
   it('7-8: AD_TRANS estándar; LUBSL/ROMA idénticas; COR_A3 equivalente funcional', () => {

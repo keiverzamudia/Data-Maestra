@@ -14,17 +14,22 @@ export type ProfitArticleTypeCode = (typeof PROFIT_ARTICLE_TYPE_DOMAIN)[number];
 /** Tipos funcionales iniciales expuestos en el formulario (§5). */
 export const FUNCTIONAL_ARTICLE_TYPES: ProfitArticleTypeCode[] = ['C', 'S', 'V'];
 
-/** Tipos reservados: válidos por CHECK, sin semántica confirmada. */
+/** Tipos reservados: válidos por CHECK, sin uso funcional confirmado en formulario. */
 export const RESERVED_ARTICLE_TYPES: ProfitArticleTypeCode[] = ['F', 'E', 'M', 'N'];
 
+/**
+ * Etiquetas reales de la pantalla Artículos de Profit Plus
+ * (V=VENTA, C=CONSUMO, S=SERVICIO, F=FABRICACION, M=MATERIA PRIMA,
+ * E=MATERIAL DE EMPAQUE, N=MATERIAL DE ENVASE).
+ */
 export const ARTICLE_TYPE_LABELS: Record<ProfitArticleTypeCode, string> = {
   C: 'Consumo',
   S: 'Servicio',
   V: 'Venta',
-  F: 'Reservado F',
-  E: 'Reservado E',
-  M: 'Reservado M',
-  N: 'Reservado N',
+  F: 'Fabricación',
+  E: 'Material de empaque',
+  M: 'Materia prima',
+  N: 'Material de envase',
 };
 
 export function isArticleTypeCode(v: unknown): v is ProfitArticleTypeCode {

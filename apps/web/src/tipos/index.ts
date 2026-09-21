@@ -27,6 +27,8 @@ export interface Request {
   suggestedMasterItemId?: string; status: RequestStatus; priority: Priority;
   groupId?: string; subgroupId?: string; categoryId?: string; unitId?: string; brandId?: string;
   manufacturer?: string; model?: string; partNumber?: string; application?: string;
+  /** Referencia del artículo (Profit art.ref, máx. 20). FASE 24.2. */
+  ref?: string;
   masterCode?: string;
   /** Clasificación Profit del artículo (14C-FORM). */
   articleType?: string; articleTypeManual?: boolean; taxType?: string; unitCode?: string;

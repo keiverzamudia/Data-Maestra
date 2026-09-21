@@ -20,7 +20,7 @@ const TIPOS = [
   { code: 'C', label: 'Consumo', functional: true, usageCount: 10 },
   { code: 'S', label: 'Servicio', functional: true, usageCount: 5 },
   { code: 'V', label: 'Venta', functional: true, usageCount: 3 },
-  { code: 'F', label: 'Reservado F', functional: false, usageCount: 0 },
+  { code: 'F', label: 'Fabricación', functional: false, usageCount: 0 },
 ];
 const TASAS = [{ tipo: '1', descripcio: 'TASA GENERAL' }, { tipo: '6', descripcio: 'EXENTOS' }];
 const P_UNIDADES = [{ co_uni: 'UND', des_uni: 'UNIDAD' }];

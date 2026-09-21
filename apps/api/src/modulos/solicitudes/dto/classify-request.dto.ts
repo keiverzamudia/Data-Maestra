@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsIn, IsBoolean } from 'class-validator';
+import { IsString, IsOptional, IsIn, IsBoolean, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class ClassifyRequestDto {
@@ -88,4 +88,16 @@ export class ClassifyRequestDto {
   @IsString()
   @IsOptional()
   unitCode?: string;
+
+  @ApiPropertyOptional({ example: 'DT466', description: 'Modelo del artículo (Profit art.modelo, char 20). Opcional; solo con dato real.' })
+  @IsString()
+  @IsOptional()
+  @MaxLength(20, { message: 'El modelo admite máximo 20 caracteres.' })
+  model?: string;
+
+  @ApiPropertyOptional({ example: 'LF9009', description: 'Referencia del artículo (Profit art.ref, char 20). Opcional; solo con dato real.' })
+  @IsString()
+  @IsOptional()
+  @MaxLength(20, { message: 'La referencia admite máximo 20 caracteres.' })
+  ref?: string;
 }

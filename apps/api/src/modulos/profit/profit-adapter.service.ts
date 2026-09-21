@@ -387,7 +387,8 @@ export class ProfitAdapterService {
         LTRIM(RTRIM(tipo_imp)) AS tipo_imp, LTRIM(RTRIM(co_cat)) AS co_cat, LTRIM(RTRIM(co_color)) AS co_color,
         LTRIM(RTRIM(procedenci)) AS procedenci, LTRIM(RTRIM(co_prov)) AS co_prov,
         LTRIM(RTRIM(tipo_cos)) AS tipo_cos, LTRIM(RTRIM(CAST(ISNULL(dis_cen,'') AS VARCHAR(MAX)))) AS dis_cen,
-        LTRIM(RTRIM(co_us_in)) AS co_us_in
+        LTRIM(RTRIM(co_us_in)) AS co_us_in, LTRIM(RTRIM(co_sucu)) AS co_sucu,
+        LTRIM(RTRIM(uni_compra)) AS uni_compra, LTRIM(RTRIM(modelo)) AS modelo, LTRIM(RTRIM(ref)) AS ref
        FROM dbo.art WHERE co_art = @coArt`,
       { coArt: { type: mssql.Char(30), value: coArt.trim() } },
     );

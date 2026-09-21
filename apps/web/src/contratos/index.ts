@@ -69,6 +69,10 @@ export interface ClassificationData {
   unitId?: string;
   partNumber?: string;
   application?: string;
+  /** Modelo del artículo (Profit art.modelo, máx. 20). Opcional. */
+  model?: string;
+  /** Referencia del artículo (Profit art.ref, máx. 20). Opcional. */
+  ref?: string;
   /** Tipo Profit art.tipo (dominio CK_art_TIPO). Fuente: Profit, nunca lista manual. */
   articleType?: string;
   /** true si Warehouse cambió manualmente el default sugerido de la línea. */

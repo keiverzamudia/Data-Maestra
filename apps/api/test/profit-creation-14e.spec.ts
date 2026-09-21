@@ -109,13 +109,13 @@ describe('14E helpers puros', () => {
     expect(profitSequenceOf('ACTEQTCAT', 'ACTEQT')).toBeNull();
   });
 
-  it('14K.5: buildInsertStatement con 15 columnas y dis_cen VARCHAR(8000)', () => {
+  it('14K.5: buildInsertStatement con 19 columnas y dis_cen VARCHAR(8000)', () => {
     const p = buildProfitArticlePayload('ACTEQT0001', INPUT);
     const st = buildInsertStatement(p);
     expect(st.sql).toContain('INSERT INTO dbo.art');
-    expect(st.params).toHaveLength(15);
+    expect(st.params).toHaveLength(19);
     const names = st.params.map((x) => x.name);
-    expect(names).toEqual(['co_art', 'art_des', 'tipo', 'co_lin', 'co_subl', 'uni_venta', 'suni_venta', 'tipo_imp', 'co_cat', 'co_color', 'procedenci', 'co_prov', 'tipo_cos', 'dis_cen', 'co_us_in']);
+    expect(names).toEqual(['co_art', 'art_des', 'tipo', 'co_lin', 'co_subl', 'uni_venta', 'suni_venta', 'tipo_imp', 'co_cat', 'co_color', 'procedenci', 'co_prov', 'tipo_cos', 'dis_cen', 'co_us_in', 'co_sucu', 'uni_compra', 'modelo', 'ref']);
     for (const n of names) {
       expect(st.sql).toContain('@' + n);
     }
@@ -127,6 +127,16 @@ describe('14E helpers puros', () => {
     const us = st.params.find((x) => x.name === 'co_us_in')!;
     expect(us.kind).toBe('char');
     expect(us.size).toBe(6);
+    const sucu = st.params.find((x) => x.name === 'co_sucu')!;
+    expect(sucu.kind).toBe('char');
+    expect(sucu.size).toBe(6);
+    expect(sucu.value).toBe('01');
+    const uc = st.params.find((x) => x.name === 'uni_compra')!;
+    expect(uc.kind).toBe('char');
+    expect(uc.size).toBe(6);
+    expect(uc.value).toBe('UND');
+    expect(st.params.find((x) => x.name === 'modelo')!.size).toBe(20);
+    expect(st.params.find((x) => x.name === 'ref')!.size).toBe(20);
   });
 
   it('payload fija co_us_in desde input.integrationUser (vacío si ausente)', () => {
@@ -274,7 +284,7 @@ describe('14E motor (18 escenarios)', () => {
       exists: () => false,
       insert: (p: any) => { store.add(p.co_art); throw sqlErr(-2, 'Timeout expired'); },
       read: (co: string) => (store.has(co)
-        ? { co_art: co, art_des: 'TORNILLO HEX', tipo: 'C', co_lin: 'ACT', co_subl: 'EQT', uni_venta: 'UND', suni_venta: 'UND', tipo_imp: '1', co_cat: '01', co_color: '01', procedenci: '01', co_prov: 'GEN', tipo_cos: 'ULCO', dis_cen: '', co_us_in: 'DM' }
+        ? { co_art: co, art_des: 'TORNILLO HEX', tipo: 'C', co_lin: 'ACT', co_subl: 'EQT', uni_venta: 'UND', suni_venta: 'UND', tipo_imp: '1', co_cat: '01', co_color: '01', procedenci: '01', co_prov: 'GEN', tipo_cos: 'ULCO', dis_cen: '', co_us_in: 'DM', co_sucu: '01', uni_compra: 'UND', modelo: '', ref: '' }
         : null),
     });
     const r = await engine.allocateAndInsert(INPUT);
@@ -322,7 +332,7 @@ describe('14E motor (18 escenarios)', () => {
         throw sqlErr(-2, 'Timeout expired');
       },
       read: (co: string) => (store.has(co)
-        ? { co_art: co, art_des: 'TORNILLO HEX', tipo: 'C', co_lin: 'ACT', co_subl: 'EQT', uni_venta: 'UND', suni_venta: 'UND', tipo_imp: '1', co_cat: '01', co_color: '01', procedenci: '01', co_prov: 'GEN', tipo_cos: 'ULCO', dis_cen: '', co_us_in: 'DM' }
+        ? { co_art: co, art_des: 'TORNILLO HEX', tipo: 'C', co_lin: 'ACT', co_subl: 'EQT', uni_venta: 'UND', suni_venta: 'UND', tipo_imp: '1', co_cat: '01', co_color: '01', procedenci: '01', co_prov: 'GEN', tipo_cos: 'ULCO', dis_cen: '', co_us_in: 'DM', co_sucu: '01', uni_compra: 'UND', modelo: '', ref: '' }
         : null),
     });
     const r = await engine.allocateAndInsert(INPUT);
@@ -341,7 +351,7 @@ describe('14E motor (18 escenarios)', () => {
     const { engine } = fakeEngines({
       maxSeq: 9,
       exists: () => false,
-      read: () => ({ co_art: 'ACTEQT0010', art_des: 'TORNILLO HEX', tipo: 'C', co_lin: 'ACT', co_subl: 'EQT', uni_venta: 'UND', suni_venta: 'UND', tipo_imp: '1', co_cat: '01', co_color: '01', procedenci: '01', co_prov: 'GEN', tipo_cos: 'ULCO', dis_cen: 'CTA-999', co_us_in: 'DM' }),
+      read: () => ({ co_art: 'ACTEQT0010', art_des: 'TORNILLO HEX', tipo: 'C', co_lin: 'ACT', co_subl: 'EQT', uni_venta: 'UND', suni_venta: 'UND', tipo_imp: '1', co_cat: '01', co_color: '01', procedenci: '01', co_prov: 'GEN', tipo_cos: 'ULCO', dis_cen: 'CTA-999', co_us_in: 'DM', co_sucu: '01', uni_compra: 'UND', modelo: '', ref: '' }),
     });
     const r = await engine.allocateAndInsert({ ...INPUT, disCen: 'CTA-111' });
     expect(r.reconcile).toBe('CREATED_WITH_DIFFERENCES');
@@ -366,7 +376,7 @@ describe('14E motor (18 escenarios)', () => {
       maxSeq: 0,
       exists: () => true,
       insert: () => { inserts++; },
-      read: (co: string) => ({ co_art: co, art_des: 'TORNILLO HEX', tipo: 'C', co_lin: 'ACT', co_subl: 'EQT', uni_venta: 'UND', suni_venta: 'UND', tipo_imp: '1', co_cat: '01', co_color: '01', procedenci: '01', co_prov: 'GEN', tipo_cos: 'ULCO', dis_cen: '', co_us_in: 'DM' }),
+      read: (co: string) => ({ co_art: co, art_des: 'TORNILLO HEX', tipo: 'C', co_lin: 'ACT', co_subl: 'EQT', uni_venta: 'UND', suni_venta: 'UND', tipo_imp: '1', co_cat: '01', co_color: '01', procedenci: '01', co_prov: 'GEN', tipo_cos: 'ULCO', dis_cen: '', co_us_in: 'DM', co_sucu: '01', uni_compra: 'UND', modelo: '', ref: '' }),
     });
     const r = await engine.allocateAndInsert(INPUT);
     expect(r.ok).toBe(true);
@@ -482,7 +492,7 @@ describe('usuario de integración Profit (fase actual)', () => {
       maxSeq: 0,
       exists: () => true,
       rows: {
-        ACTEQT0001: { co_art: 'ACTEQT0001', art_des: 'TORNILLO HEX', tipo: 'C', co_lin: 'ACT', co_subl: 'EQT', uni_venta: 'UND', suni_venta: 'UND', tipo_imp: '1', co_cat: '01', co_color: '01', procedenci: '01', co_prov: 'GEN', tipo_cos: 'ULCO', dis_cen: '', co_us_in: 'DM' },
+        ACTEQT0001: { co_art: 'ACTEQT0001', art_des: 'TORNILLO HEX', tipo: 'C', co_lin: 'ACT', co_subl: 'EQT', uni_venta: 'UND', suni_venta: 'UND', tipo_imp: '1', co_cat: '01', co_color: '01', procedenci: '01', co_prov: 'GEN', tipo_cos: 'ULCO', dis_cen: '', co_us_in: 'DM', co_sucu: '01', uni_compra: 'UND', modelo: '', ref: '' },
       },
       integrationUser: 'DM',
     });
@@ -493,7 +503,7 @@ describe('usuario de integración Profit (fase actual)', () => {
       maxSeq: 0,
       exists: (co) => co === 'ACTEQT0001',
       rows: {
-        ACTEQT0001: { co_art: 'ACTEQT0001', art_des: 'TORNILLO HEX', tipo: 'C', co_lin: 'ACT', co_subl: 'EQT', uni_venta: 'UND', suni_venta: 'UND', tipo_imp: '1', co_cat: '01', co_color: '01', procedenci: '01', co_prov: 'GEN', tipo_cos: 'ULCO', dis_cen: '', co_us_in: 'OTRO' },
+        ACTEQT0001: { co_art: 'ACTEQT0001', art_des: 'TORNILLO HEX', tipo: 'C', co_lin: 'ACT', co_subl: 'EQT', uni_venta: 'UND', suni_venta: 'UND', tipo_imp: '1', co_cat: '01', co_color: '01', procedenci: '01', co_prov: 'GEN', tipo_cos: 'ULCO', dis_cen: '', co_us_in: 'OTRO', co_sucu: '01', uni_compra: 'UND', modelo: '', ref: '' },
       },
       integrationUser: 'DM',
     });

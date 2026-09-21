@@ -1,6 +1,6 @@
 import * as React from 'react';
-export const Button:React.FC<React.ButtonHTMLAttributes<HTMLButtonElement>&{variant?:'primary'|'secondary'|'ghost'|'danger';size?:'sm'|'md';loading?:boolean}> = ({variant='primary',size='md',loading=false,className='',disabled,...p})=>{
-  const v={primary:'btn-primary',secondary:'btn-secondary',ghost:'btn-ghost',danger:'btn-danger'}[variant];
+export const Button:React.FC<React.ButtonHTMLAttributes<HTMLButtonElement>&{variant?:'primary'|'secondary'|'ghost'|'danger'|'accent';size?:'sm'|'md';loading?:boolean}> = ({variant='primary',size='md',loading=false,className='',disabled,...p})=>{
+  const v={primary:'btn-primary',secondary:'btn-secondary',ghost:'btn-ghost',danger:'btn-danger',accent:'btn-accent'}[variant];
   const s=size==='sm'?'btn-sm':'';
   return <button className={`btn ${v} ${s} ${loading?'btn-loading':''} ${className}`} disabled={disabled||loading} aria-busy={loading||undefined} {...p}>{loading && <span className="spinner" aria-hidden="true" />} {p.children}</button>;
 };
@@ -48,14 +48,14 @@ export const Tabs:React.FC<{tabs:string[];active:number;onChange:(i:number)=>voi
     </div>
   );
 };
-export const Modal:React.FC<{open:boolean; onClose:()=>void; title:string; children:React.ReactNode}> = ({open,onClose,title,children})=>{
+export const Modal:React.FC<{open:boolean; onClose:()=>void; title:string; children:React.ReactNode; wide?:boolean}> = ({open,onClose,title,children,wide=false})=>{
   React.useEffect(()=>{
     if(!open) return;
     const onKey=(e:KeyboardEvent)=>{ if(e.key==='Escape') onClose(); };
     window.addEventListener('keydown',onKey);
     return ()=>window.removeEventListener('keydown',onKey);
   },[open,onClose]);
-  if(!open) return null; return <div className="modal-overlay" onClick={onClose}><div className="modal" role="dialog" aria-modal="true" aria-label={title} onClick={e=>e.stopPropagation()}><div className="modal-head"><h3>{title}</h3><button className="btn btn-ghost" onClick={onClose} aria-label="Cerrar">✕</button></div><div className="modal-body">{children}</div></div></div>;
+  if(!open) return null; return <div className="modal-overlay" onClick={onClose}><div className={`modal${wide?' modal-wide':''}`} role="dialog" aria-modal="true" aria-label={title} onClick={e=>e.stopPropagation()}><div className="modal-head"><h3>{title}</h3><button className="btn btn-ghost" onClick={onClose} aria-label="Cerrar">✕</button></div><div className="modal-body">{children}</div></div></div>;
 };
 export const EmptyState:React.FC<{title:string; desc?:string; icon?:React.ReactNode; action?:React.ReactNode}> = ({title,desc,icon,action})=><div className="empty">{icon && <div className="empty-icon" aria-hidden="true">{icon}</div>}<div className="empty-title">{title}</div>{desc && <div className="muted">{desc}</div>}{action && <div className="empty-action">{action}</div>}</div>;
 export const SearchInput:React.FC<{value:string; onChange:(v:string)=>void; placeholder?:string; ariaLabel?:string}> = ({value,onChange,placeholder,ariaLabel})=>(

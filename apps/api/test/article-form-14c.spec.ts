@@ -27,6 +27,13 @@ describe('article-taxonomy (14C-FORM §5/§13/§14)', () => {
     expect(ARTICLE_TYPE_LABELS.V).toBe('Venta');
   });
 
+  it('etiquetas reales de Profit (pantalla Artículos: F/M/E/N)', () => {
+    expect(ARTICLE_TYPE_LABELS.F).toBe('Fabricación');
+    expect(ARTICLE_TYPE_LABELS.M).toBe('Materia prima');
+    expect(ARTICLE_TYPE_LABELS.E).toBe('Material de empaque');
+    expect(ARTICLE_TYPE_LABELS.N).toBe('Material de envase');
+  });
+
   it('valida dominios', () => {
     expect(isArticleTypeCode('C')).toBe(true);
     expect(isArticleTypeCode('MP')).toBe(false);

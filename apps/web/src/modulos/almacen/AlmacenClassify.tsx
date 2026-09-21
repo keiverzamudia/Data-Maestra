@@ -64,6 +64,9 @@ export const WarehouseClassify: React.FC = () => {
   } = useProfitCatalogos(groupCode || undefined, companyId || undefined);
   const [partNumber, setPartNumber] = React.useState('');
   const [application, setApplication] = React.useState('');
+  // FASE 24.2 — modelo/referencia opcionales (Profit art.modelo/art.ref).
+  const [model, setModel] = React.useState('');
+  const [ref, setRef] = React.useState('');
   const [returnModal, setReturnModal] = React.useState(false);
   const [returnReason, setReturnReason] = React.useState('');
   const [confirmApprove, setConfirmApprove] = React.useState(false);
@@ -136,6 +139,8 @@ export const WarehouseClassify: React.FC = () => {
           if (r.unitCode) setUnitCode(r.unitCode);
           if (r.partNumber) setPartNumber(r.partNumber);
           if (r.application) setApplication(r.application);
+          if (r.model) setModel(r.model);
+          if (r.ref) setRef(r.ref);
         }
       });
     }
@@ -209,6 +214,9 @@ export const WarehouseClassify: React.FC = () => {
     taxType: effectiveTax || undefined,
     unitCode: unitCode || undefined,
     partNumber: partNumber || undefined, application: application || undefined,
+    // FASE 24.2 — modelo/referencia opcionales (Profit art.modelo/art.ref).
+    model: model.trim().slice(0, 20) || undefined,
+    ref: ref.trim().slice(0, 20) || undefined,
   });
 
   const canApprove = !!groupCode && !!subgroupCode && !!articleType && !!unitCode;
@@ -502,7 +510,7 @@ export const WarehouseClassify: React.FC = () => {
                   disabled={!canEditClassification}
                   onChange={e => { setTaxType(e.target.value.trim()); setTaxTouched(true); }}
                 >
-                  <option value="">Derivar por regla</option>
+                  <option value="">Seleccionar tasa</option>
                   {pTasas.map(t => <option key={t.tipo.trim()} value={t.tipo.trim()}>{t.tipo.trim()} — {t.descripcio}</option>)}
                 </Select>
                 {taxWarning && (
@@ -516,6 +524,14 @@ export const WarehouseClassify: React.FC = () => {
               <label>
                 <span className="muted small">Part Number</span>
                 <input className="input" value={partNumber} onChange={e => setPartNumber(e.target.value)} placeholder="Part Number" disabled={!canEditClassification} />
+              </label>
+              <label>
+                <span className="muted small">Modelo (opcional)</span>
+                <input className="input" value={model} onChange={e => setModel(e.target.value)} placeholder="Modelo del artículo" maxLength={20} disabled={!canEditClassification} />
+              </label>
+              <label>
+                <span className="muted small">Referencia (opcional)</span>
+                <input className="input" value={ref} onChange={e => setRef(e.target.value)} placeholder="Referencia del artículo" maxLength={20} disabled={!canEditClassification} />
               </label>
             </div>
 
