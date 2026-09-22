@@ -7,16 +7,16 @@ dist
 build
 *.tsbuildinfo
 
-# Vite generated config (from tsc -b)
-apps/web/vite.config.js
-apps/web/vite.config.d.ts
+# # Vite generated config (from tsc -b)
+# apps/web/vite.config.js
+# apps/web/vite.config.d.ts
 
-# Environment
-.env
-.env.local
-.env.*.local
-!.env.example
-!.env.docker
+# # Environment
+# .env
+# .env.local
+# .env.*.local
+# !.env.example
+# !.env.docker
 
 # IDE
 .vscode
