@@ -12,13 +12,13 @@ build
 apps/web/vite.config.js
 apps/web/vite.config.d.ts
 
-# Environment (por worktree, NUNCA versionado)
-.env
-.env.local
-.env.*.local
-apps/*/.env
-apps/*/.env.local
-!**/.env.example
+# Environment local/secreto — NUNCA versionar.
+# Solo se versionan los *.example y los .env de la app sin secretos.
+# El unico archivo que se copia a mano por worktree/clon es .env.local.
+/.env
+/.env.local
+**/.env.local
+/.env.*.local
 !.env.docker
 
 # IDE

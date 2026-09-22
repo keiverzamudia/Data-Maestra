@@ -45,4 +45,16 @@ pnpm dev
 - **`docs/REGLAS_ARQUITECTURA.md`** — Reglas de arquitectura
 - **`docs/GLOSARIO_PROYECTO.md`** — Glosario de términos
 - **`docs/`** — Toda la documentación
+- **`docs/WORKTREES.md`** — Varios entornos (worktrees) en paralelo
 - **`AGENTS.md`** — Reglas para OpenCode
+
+## Worktrees y configuración local
+
+- Cada worktree/clon corre en sus propios puertos mediante un único archivo
+  **no versionado**: `.env.local` (copiado de `.env.local.example`).
+- Worktree A: `API_PORT=3001`, `WEB_PORT=5173`.
+- Worktree B: `API_PORT=3002`, `WEB_PORT=5174` → `pnpm install` y `pnpm dev`.
+- `api-restart/stop/health` y `verify-local` operan solo sobre los puertos de
+  ese worktree.
+- **Nunca** versionar `.env.local` ni credenciales. Detalle en
+  [`docs/WORKTREES.md`](docs/WORKTREES.md).

@@ -9,14 +9,22 @@ La configuración de puertos vive en un archivo **no versionado** por worktree:
 <repoRoot>/.env.local
 ```
 
-## 1. Perfil de puertos
+## 1. Perfil local (único archivo a copiar)
 
-Cada worktree define su propio `.env.local` (copiado de `.env.local.example`):
+`.env.local` es el **único** archivo que se copia a mano en cada worktree/clon.
+Contiene los puertos del worktree **y** los secretos (por eso nunca se versiona):
 
 ```dotenv
 API_PORT=3001
 WEB_PORT=5173
 CORS_ORIGINS=http://localhost:5173
+DATABASE_URL="file:../data/dev.db"
+JWT_SECRET=
+PROFIT_DB_SERVER=
+PROFIT_DB_DATABASE=
+PROFIT_DB_USER=
+PROFIT_DB_PASSWORD=
+# ...
 ```
 
 | Worktree | API_PORT | WEB_PORT |
@@ -38,8 +46,9 @@ git worktree add ..\Data-Maestra-b -b feature-x
 # En el nuevo worktree
 cd ..\Data-Maestra-b
 Copy-Item .env.local.example .env.local
-# editar .env.local -> API_PORT=3002, WEB_PORT=5174, CORS_ORIGINS=http://localhost:5174
-Copy-Item apps\api\.env.example apps\api\.env.local   # completar credenciales Profit
+# editar .env.local:
+#   API_PORT=3002  WEB_PORT=5174  CORS_ORIGINS=http://localhost:5174
+#   + credenciales Profit (se copian una vez; no se versionan)
 pnpm install                                          # dependencias por worktree
 ```
 
@@ -67,5 +76,31 @@ cada worktree opera únicamente sobre sus propios puertos.
 - **`vite.config.ts`**: es la única fuente. Los artefactos generados
   (`vite.config.js` / `.d.ts`) se emiten en `node_modules/.tmp/` y están
   ignorados, para que nunca ensombrezcan al `.ts`.
-- **Nunca versionar** `.env`, `.env.local`, `apps/*/.env` ni `apps/*/.env.local`.
-  Usar los `.env.example` como plantilla.
+
+## 5. Qué se versiona y qué no
+
+| Archivo | Git | Notas |
+|---|---|---|
+| `.env.local` | **NO** | Único archivo manual por worktree. Puertos + secretos. |
+| `.env` (raíz) | **NO** | Obsoleto; ya no se usa. |
+| `apps/api/.env` | Sí | Defaults sin secretos (SQLite, prefijo, puerto). |
+| `apps/web/.env` | Sí | `VITE_DATA_MODE=api`, sin secretos. |
+| `.env.local.example` | Sí | Plantilla de la que se copia `.env.local`. |
+| `apps/*/.env.example` | Sí | Plantillas sin secretos. |
+
+## 6. Seguridad
+
+- **Nunca** versionar `.env.local` ni ningún archivo con credenciales reales.
+- Si un secreto llegó a commitearse, **rotarlo** en Profit/DBA (cambiar la
+  contraseña) aunque ya se haya destrackeado: sigue en el historial.
+- Para limpiar el historial (opcional, reescribe commits — coordinar con el
+  equipo y hacer respaldo antes):
+
+  ```powershell
+  # Opción recomendada: git-filter-repo
+  git filter-repo --path apps/api/.env.local --invert-paths --force
+  # Alternativa con BFG: java -jar bfg.jar --delete-files '.env.local'
+  ```
+
+  Tras reescribir historial: `git push --force-with-lease` y avisar a quienes
+  tengan clones.
