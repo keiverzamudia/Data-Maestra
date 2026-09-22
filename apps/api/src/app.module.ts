@@ -24,7 +24,13 @@ import { PrismaModule } from './comun/prisma/prisma.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: [join(__dirname, '..', '.env.local'), join(__dirname, '..', '.env')],
+      // Prioridad: perfil de worktree (<repoRoot>/.env.local, no versionado) →
+      // overrides locales de la API → defaults de la API. El primer archivo gana.
+      envFilePath: [
+        join(__dirname, '..', '..', '..', '.env.local'),
+        join(__dirname, '..', '.env.local'),
+        join(__dirname, '..', '.env'),
+      ],
     }),
     PrismaModule,
     SaludModule,

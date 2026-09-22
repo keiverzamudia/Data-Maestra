@@ -2,7 +2,9 @@
 # Uso: .\scripts\api-start.ps1
 # Retorna inmediatamente. El proceso Node continua en background.
 
-$port = 3001
+. "$PSScriptRoot\_worktree.ps1"
+
+$port = $ApiPort
 $projectRoot = Split-Path $PSScriptRoot -Parent
 $apiDir = Join-Path $projectRoot "apps\api"
 $nodeExe = "node"

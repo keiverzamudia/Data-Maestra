@@ -1,7 +1,9 @@
 # api-stop.ps1 - Detiene la API que escucha en puerto 3001
 # Uso: .\scripts\api-stop.ps1
 
-$port = 3001
+. "$PSScriptRoot\_worktree.ps1"
+
+$port = $ApiPort
 $conn = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue |
         Where-Object State -eq Listen |
         Select-Object -First 1

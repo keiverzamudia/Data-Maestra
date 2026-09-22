@@ -5,6 +5,8 @@ Write-Host ""
 Write-Host "=== Data-Maestra - Verificacion Local ===" -ForegroundColor Cyan
 Write-Host ""
 
+. "$PSScriptRoot\_worktree.ps1"
+
 $passCount = 0
 $failCount = 0
 
@@ -28,18 +30,18 @@ if (Test-Path $nmPath) { $passCount++; Write-Host "  [PASS] node_modules" -Foreg
 
 # 5. API port
 $apiPort = $false
-try { $c = Test-NetConnection localhost -Port 3001 -WarningAction SilentlyContinue -InformationLevel Quiet; if ($c) { $apiPort = $true } } catch {}
-if ($apiPort) { $passCount++; Write-Host "  [PASS] Puerto 3001 (API)" -ForegroundColor Green } else { $failCount++; Write-Host "  [FAIL] Puerto 3001 - Backend no iniciado" -ForegroundColor Red }
+try { $c = Test-NetConnection localhost -Port $ApiPort -WarningAction SilentlyContinue -InformationLevel Quiet; if ($c) { $apiPort = $true } } catch {}
+if ($apiPort) { $passCount++; Write-Host "  [PASS] Puerto $ApiPort (API)" -ForegroundColor Green } else { $failCount++; Write-Host "  [FAIL] Puerto $ApiPort - Backend no iniciado" -ForegroundColor Red }
 
 # 6. Health
 $healthOk = $false
-try { Invoke-WebRequest -Uri "http://localhost:3001/api/v1/health" -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop | Out-Null; $healthOk = $true } catch {}
+try { Invoke-WebRequest -Uri "http://localhost:$ApiPort/api/v1/health" -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop | Out-Null; $healthOk = $true } catch {}
 if ($healthOk) { $passCount++; Write-Host "  [PASS] Health API" -ForegroundColor Green } else { $failCount++; Write-Host "  [FAIL] Health API - No responde" -ForegroundColor Red }
 
 # 7. Web port
 $webPort = $false
-try { $c = Test-NetConnection localhost -Port 5173 -WarningAction SilentlyContinue -InformationLevel Quiet; if ($c) { $webPort = $true } } catch {}
-if ($webPort) { $passCount++; Write-Host "  [PASS] Puerto 5173 (Web)" -ForegroundColor Green } else { $failCount++; Write-Host "  [FAIL] Puerto 5173 - Frontend no iniciado" -ForegroundColor Red }
+try { $c = Test-NetConnection localhost -Port $WebPort -WarningAction SilentlyContinue -InformationLevel Quiet; if ($c) { $webPort = $true } } catch {}
+if ($webPort) { $passCount++; Write-Host "  [PASS] Puerto $WebPort (Web)" -ForegroundColor Green } else { $failCount++; Write-Host "  [FAIL] Puerto $WebPort - Frontend no iniciado" -ForegroundColor Red }
 
 Write-Host ""
 Write-Host "Resultado: $passCount PASS / $failCount FAIL" -ForegroundColor $(if ($failCount -eq 0) { "Green" } else { "Yellow" })

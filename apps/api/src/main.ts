@@ -12,16 +12,28 @@ async function bootstrap() {
   app.use(cookieParser());
 
   const configService = app.get(ConfigService);
-  const port = configService.get<number>('PORT', 3001);
+  // Puertos por worktree (ver <repoRoot>/.env.local). Fallback a los defaults
+  // históricos: API_PORT/PORT=3001, WEB_PORT=5173.
+  const port = Number(
+    configService.get<string>('API_PORT') ?? configService.get<string>('PORT') ?? 3001,
+  );
+  const webPort = Number(configService.get<string>('WEB_PORT') ?? 5173);
   const apiPrefix = configService.get<string>('API_PREFIX', 'api/v1');
   const corsOrigins = configService.get<string>('CORS_ORIGINS', 'http://localhost:5173');
 
   // Global prefix
   app.setGlobalPrefix(apiPrefix);
 
-  // CORS
+  // CORS: siempre se permite el WEB_PORT de este worktree, además de CORS_ORIGINS.
+  const allowedOrigins = [
+    ...new Set(
+      [...corsOrigins.split(','), `http://localhost:${webPort}`]
+        .map((origin) => origin.trim())
+        .filter(Boolean),
+    ),
+  ];
   app.enableCors({
-    origin: corsOrigins.split(','),
+    origin: allowedOrigins,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
   });

@@ -2,7 +2,9 @@
 # Uso: .\scripts\api-health.ps1
 # Retorna exit 0 si health OK, exit 1 si timeout.
 
-$url = "http://localhost:3001/api/v1/health"
+. "$PSScriptRoot\_worktree.ps1"
+
+$url = "http://localhost:$ApiPort/api/v1/health"
 $maxAttempts = 30
 $delaySeconds = 2
 
