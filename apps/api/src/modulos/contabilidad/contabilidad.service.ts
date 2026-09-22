@@ -18,6 +18,13 @@ const REQUEST_INCLUDE = {
   },
 } as const;
 
+/**
+ * 26R — Estados de la cola "Pendientes de Registro Profit". Incluye la puerta
+ * (CONTABILIDAD_APROBADA) y los estados operativos en curso/fallidos, para que
+ * ninguna solicitud aprobada desaparezca del flujo mientras no tenga profit_code.
+ */
+const PROFIT_REGISTRATION_STATUSES = ['CONTABILIDAD_APROBADA', 'PROCESANDO_PROFIT', 'ERROR_PROFIT'];
+
 @Injectable()
 export class ContabilidadService {
   constructor(
@@ -31,6 +38,22 @@ export class ContabilidadService {
       where: { status: 'PENDIENTE_CONTABILIDAD' },
       include: REQUEST_INCLUDE,
       orderBy: { createdAt: 'asc' },
+    });
+    return rows.map(flattenRequestData);
+  }
+
+  /**
+   * 26R — Cola "Pendientes de Registro Profit": solicitudes ya aprobadas por
+   * Contabilidad que todavía NO fueron registradas exitosamente en Profit.
+   * Separada de findPendingApproval() (PENDIENTE_CONTABILIDAD), que es la cola
+   * de revisión/aprobación contable. Una solicitud CONTABILIDAD_APROBADA
+   * permanece visible aquí hasta que exista un profit_code real.
+   */
+  async findPendingProfitRegistration() {
+    const rows = await this.prisma.request.findMany({
+      where: { status: { in: PROFIT_REGISTRATION_STATUSES } },
+      include: REQUEST_INCLUDE,
+      orderBy: { updatedAt: 'asc' },
     });
     return rows.map(flattenRequestData);
   }

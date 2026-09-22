@@ -23,6 +23,13 @@ export class ContabilidadController {
     return this.accountingService.findPendingApproval();
   }
 
+  @Get('pending-profit')
+  @RequirePermission('ACCOUNTING.VIEW')
+  @ApiOperation({ summary: 'List accounting-approved requests pending Profit registration' })
+  findPendingProfit() {
+    return this.accountingService.findPendingProfitRegistration();
+  }
+
   @Get(':id')
   @RequirePermission('ACCOUNTING.VIEW')
   @ApiOperation({ summary: 'Get request with classification and accounting data' })

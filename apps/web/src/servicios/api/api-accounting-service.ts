@@ -10,6 +10,13 @@ export const apiAccountingService: AccountingService = {
     return api.get<Request[]>(`/api/v1/accounting/pending${qs ? `?${qs}` : ''}`);
   },
 
+  async getPendingProfitRegistration(companyId) {
+    const sp = new URLSearchParams();
+    if (companyId) sp.set('companyId', companyId);
+    const qs = sp.toString();
+    return api.get<Request[]>(`/api/v1/accounting/pending-profit${qs ? `?${qs}` : ''}`);
+  },
+
   async getAccountingDetail(id: string) {
     return api.get<Request>(`/api/v1/accounting/${encodeURIComponent(id)}`);
   },

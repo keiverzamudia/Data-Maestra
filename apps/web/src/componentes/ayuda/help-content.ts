@@ -374,6 +374,30 @@ const HELP: Record<string, HelpEntry> = {
     nextOwner: 'Almacén y Contabilidad.',
     flowStatus: 'PENDIENTE_ALMACEN',
   },
+  'empresas-profit': {
+    key: 'empresas-profit',
+    title: 'Ayuda — Empresas Profit',
+    subtitle: 'Disponibilidad de empresas para inserción multiempresa.',
+    what: 'La lista de empresas proviene de AD_GRUP.dbo.TEmpresas. Aquí solo se habilita o deshabilita la inserción y se marca la empresa estándar; no se modifica Profit.',
+    whyHere: 'Estás aquí con permiso de administración para controlar en qué empresas puede insertarse un artículo aprobado.',
+    responsibility: 'Tu responsabilidad es mantener habilitadas solo las empresas operativas y una única empresa estándar.',
+    steps: [
+      'Revisa las empresas descubiertas.',
+      'Deshabilita las que no deban recibir inserciones.',
+      'Marca la empresa estándar con confirmación.',
+    ],
+    doNot: [
+      'No deshabilites la empresa estándar sin designar otra.',
+      'No uses esta pantalla para modificar datos en Profit.',
+    ],
+    sources: [
+      { label: 'Empresas', desc: 'provienen de TEmpresas (descubrimiento dinámico).' },
+      { label: 'Inserción', desc: 'la ejecuta el Analizador multiempresa por empresa.' },
+    ],
+    next: 'Las empresas habilitadas aparecen en el Analizador de inserción multiempresa.',
+    nextOwner: 'Responsable del registro en Profit.',
+    flowStatus: 'CONTABILIDAD_APROBADA',
+  },
   auditoria: {
     key: 'auditoria',
     title: 'Ayuda — Auditoría',

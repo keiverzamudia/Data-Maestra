@@ -61,6 +61,33 @@ describe('ContabilidadService', () => {
     });
   });
 
+  describe('findPendingProfitRegistration (26R)', () => {
+    it('consulta solo los estados posteriores a la aprobación contable', async () => {
+      prisma.request.findMany.mockResolvedValue([
+        { id: 'req-0065', status: 'CONTABILIDAD_APROBADA', requestData: { groupId: 'g1', masterCode: 'RMEEQU-00001' }, accountingCodes: [] },
+      ]);
+
+      const result = await service.findPendingProfitRegistration();
+
+      expect(prisma.request.findMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: { status: { in: ['CONTABILIDAD_APROBADA', 'PROCESANDO_PROFIT', 'ERROR_PROFIT'] } },
+      }));
+      expect(result).toHaveLength(1);
+      expect(result[0].status).toBe('CONTABILIDAD_APROBADA');
+      // REQ-0065: aprobada por Contabilidad pero todavía sin profit_code.
+      expect(result[0].masterCode).toBe('RMEEQU-00001');
+    });
+
+    it('no incluye PENDIENTE_CONTABILIDAD (cola de aprobación separada)', async () => {
+      prisma.request.findMany.mockResolvedValue([]);
+
+      await service.findPendingProfitRegistration();
+
+      const where = (prisma.request.findMany as any).mock.calls[0][0].where;
+      expect(where.status.in).not.toContain('PENDIENTE_CONTABILIDAD');
+    });
+  });
+
   describe('findOneForReview', () => {
     it('returns request with flattened data', async () => {
       prisma.request.findUnique.mockResolvedValue({

@@ -6,7 +6,7 @@ import { useCompany } from '../../contextos/CompanyContext';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
 import { Page, Button, StatusBadge, Skeleton, ErrorState, Alert } from '../../componentes/ui';
 import { HelpButton } from '../../componentes/ayuda';
-import { RequestDetail, WorkflowStepper, ProfitRegistrationPanel } from '../../componentes/workflow';
+import { RequestDetail, WorkflowStepper } from '../../componentes/workflow';
 import type { Request, ApprovalRef } from '../../tipos';
 
 const AREA_ACTUAL: Record<string, string> = {
@@ -148,7 +148,6 @@ export const RequestDetailPage: React.FC = () => {
       <nav className="anchor-nav" aria-label="Secciones del detalle">
         <a href="#detalle-recorrido">Recorrido</a>
         <a href="#detalle-clasificacion">Clasificación</a>
-        <a href="#detalle-profit">Profit</a>
       </nav>
 
       {(myLast || isMine) && (
@@ -194,10 +193,6 @@ export const RequestDetailPage: React.FC = () => {
 
       <div id="detalle-clasificacion">
         <RequestDetail request={request} showWorkflow={false} />
-      </div>
-
-      <div id="detalle-profit">
-        <ProfitRegistrationPanel request={request} onChanged={load} />
       </div>
     </Page>
   );

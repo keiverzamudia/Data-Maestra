@@ -10,6 +10,15 @@ export const mockAccountingService: AccountingService = {
     if (companyId) d = d.filter(r => r.companyId === companyId);
     return d;
   },
+  async getPendingProfitRegistration(companyId) {
+    await delay();
+    // 26R — aprobadas por Contabilidad que aún no tienen profit_code real.
+    let d = requests.filter(r =>
+      ['CONTABILIDAD_APROBADA', 'PROCESANDO_PROFIT', 'ERROR_PROFIT'].includes(r.status),
+    );
+    if (companyId) d = d.filter(r => r.companyId === companyId);
+    return d;
+  },
   async getAccountingDetail(id) {
     await delay();
     const r = requests.find(x => x.id === id);

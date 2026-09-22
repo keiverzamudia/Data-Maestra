@@ -95,6 +95,7 @@ export interface WarehouseApprovalService {
 // ── Accounting Service ──
 export interface AccountingService {
   getPendingApprovals(companyId?: string): Promise<Request[]>;
+  getPendingProfitRegistration(companyId?: string): Promise<Request[]>;
   getAccountingDetail(id: string): Promise<Request>;
   approveAccounting(id: string, codes: AccountingCode[], comment?: string): Promise<void>;
   rejectAccounting(id: string, comment: string): Promise<void>;

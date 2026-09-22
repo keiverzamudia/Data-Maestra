@@ -5,3 +5,4 @@ export { StageTrace } from './StageTrace';
 export { AnalyzerPanel } from './AnalyzerPanel';
 export { MasterCodePreview } from './MasterCodePreview';
 export { ProfitRegistrationPanel } from './ProfitRegistrationPanel';
+export { MultiCompanyAnalyzer } from './MultiCompanyAnalyzer';

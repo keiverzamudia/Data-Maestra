@@ -6,7 +6,13 @@ import { AccountingList } from './ContabilidadList';
 import { useSession } from '../../contextos/SessionContext';
 
 vi.mock('../../servicios', () => ({
-  accountingService: { getPendingApprovals: vi.fn(), getAccountingDetail: vi.fn(), approveAccounting: vi.fn(), rejectAccounting: vi.fn() },
+  accountingService: {
+    getPendingApprovals: vi.fn(),
+    getPendingProfitRegistration: vi.fn().mockResolvedValue([]),
+    getAccountingDetail: vi.fn(),
+    approveAccounting: vi.fn(),
+    rejectAccounting: vi.fn(),
+  },
 }));
 vi.mock('../../contextos/SessionContext', () => ({ useSession: vi.fn() }));
 vi.mock('../../contextos/CompanyContext', () => ({ useCompany: () => ({ companyId: 'c1' }) }));
@@ -305,5 +311,65 @@ describe('ContabilidadList 12E — checklist y trazabilidad', () => {
     await openContabilidadTab();
     await screen.findByText('Checklist de Validación');
     expect(await screen.findAllByText('BLOQUEADO')).toHaveLength(2);
+  });
+});
+
+describe('ContabilidadList 26R — Pendientes de Registro Profit', () => {
+  const profitPendingMock = accountingService.getPendingProfitRegistration as any;
+
+  // REQ-0065: Contabilidad aprobó, profit_code todavía NULL.
+  const REQ_0065: any = {
+    id: 'req-0065', requestNumber: 65, requestedDescription: 'EQUIPO DE SEGURIDAD',
+    requesterId: 'u1', departmentId: 'd1', status: 'CONTABILIDAD_APROBADA',
+    groupId: 'g1', subgroupId: 's1', masterCode: 'RMEEQU-00001', profitCode: null,
+    createdAt: '2026-09-01T10:00:00.000Z',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (useSession as any).mockReturnValue({ hasPermission: () => true });
+    // La cola de aprobación NO contiene la solicitud aprobada.
+    pendingMock.mockResolvedValue([]);
+    profitPendingMock.mockResolvedValue([structuredClone(REQ_0065)]);
+    stdMock.mockResolvedValue({
+      groupCode: 'FER', configured: true,
+      positions: [{ position: 'c1', code: '1.1.04.03.01.006', description: 'Inventario', inCatalog: true }],
+    });
+    profitWriteStatusMock.mockResolvedValue({ enabled: true, configured: true, auth: 'sql', connected: true });
+    profitAttemptsMock.mockResolvedValue({ requestId: 'req-0065', attempts: [], verifications: [] });
+  });
+  afterEach(() => cleanup());
+
+  it('REQ-0065 aparece en Registro Profit, no en la cola de aprobación', async () => {
+    render(<MemoryRouter><AccountingList /></MemoryRouter>);
+    expect(await screen.findByText('No hay clasificaciones pendientes')).toBeTruthy();
+
+    const tab = await screen.findByRole('tab', { name: /Pendientes de Registro Profit \(1\)/ });
+    fireEvent.click(tab);
+
+    expect(await screen.findByText('RMEEQU-00001')).toBeTruthy();
+    // profit_code NULL → se muestra como pendiente, no como insertado.
+    expect(screen.getByText('Pendiente')).toBeTruthy();
+    expect(screen.queryByText('No hay clasificaciones pendientes')).toBeNull();
+  });
+
+  it('Continuar registro abre el workspace en la pestaña Registro en Profit', async () => {
+    detailMock.mockResolvedValue(structuredClone({ ...REQ_0065, approvals: APPROVALS }));
+    render(<MemoryRouter><AccountingList /></MemoryRouter>);
+    // Espera el conteo para que la etiqueta de la pestaña sea estable antes del clic.
+    fireEvent.click(await screen.findByRole('tab', { name: /Pendientes de Registro Profit \(1\)/ }));
+    await screen.findByText('RMEEQU-00001');
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar registro' }));
+
+    expect((await screen.findAllByText(/Aprobación Contable — 65/)).length).toBeGreaterThanOrEqual(1);
+    // Tab 2 ya desbloqueada: el panel de Registro en Profit está montado.
+    expect(await screen.findByText('Listo para enviar a Profit')).toBeTruthy();
+  });
+
+  it('PENDIENTE_CONTABILIDAD sigue en la cola de aprobación', async () => {
+    pendingMock.mockResolvedValue([structuredClone(REQ)]);
+    render(<MemoryRouter><AccountingList /></MemoryRouter>);
+    expect(await screen.findByText('VALVULA')).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /Pendientes de aprobación \(1\)/ })).toBeTruthy();
   });
 });

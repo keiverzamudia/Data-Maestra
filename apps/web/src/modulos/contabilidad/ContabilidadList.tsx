@@ -53,6 +53,11 @@ export const AccountingList: React.FC = () => {
   const [notes, setNotes] = React.useState('');
   // 16A — workspace por pestañas: Información | Contabilidad | Registro en Profit.
   const [tab, setTab] = React.useState(0);
+  // 26R — dos colas separadas: aprobación contable y Registro Profit pendiente.
+  const [queueTab, setQueueTab] = React.useState(0);
+  const [profitQueue, setProfitQueue] = React.useState<Request[]>([]);
+  const [profitLoading, setProfitLoading] = React.useState(true);
+  const [profitError, setProfitError] = React.useState<string | null>(null);
 
   const loadList = React.useCallback(() => {
     setLoading(true);
@@ -70,7 +75,25 @@ export const AccountingList: React.FC = () => {
     );
   }, [companyId]);
 
+  // 26R — cola de solicitudes aprobadas por Contabilidad aún sin profit_code.
+  const loadProfitQueue = React.useCallback(() => {
+    setProfitLoading(true);
+    setProfitError(null);
+    accountingService.getPendingProfitRegistration(companyId).then(
+      r => {
+        setProfitQueue(r);
+        setProfitLoading(false);
+      },
+      () => {
+        setProfitQueue([]);
+        setProfitError('No pudimos cargar los pendientes de Registro Profit.');
+        setProfitLoading(false);
+      },
+    );
+  }, [companyId]);
+
   React.useEffect(() => { loadList(); }, [loadList]);
+  React.useEffect(() => { loadProfitQueue(); }, [loadProfitQueue]);
 
   const loadStandard = React.useCallback(async (req: Request) => {
     const groupCode = grupos.find(g => g.id === req.groupId)?.code?.trim();
@@ -103,11 +126,11 @@ export const AccountingList: React.FC = () => {
     }
   }, [grupos]);
 
-  const openDetail = (r: Request) => {
+  const openDetail = (r: Request, initialTab = 0) => {
     setSelected(r);
     setError(null);
     setNotes('');
-    setTab(0);
+    setTab(initialTab);
     setDetailLoading(true);
     // Detalle con aprobaciones (trazabilidad real); si falla, se usa la fila.
     accountingService.getAccountingDetail(r.id).then(
@@ -129,7 +152,15 @@ export const AccountingList: React.FC = () => {
   const totalPages = Math.max(Math.ceil(filtered.length / pageSize), 1);
   const safePage = Math.min(page, totalPages);
   const visible = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+  // 26R — misma búsqueda/paginación para la cola de Registro Profit.
+  const profitFiltered = search
+    ? profitQueue.filter(r => r.requestedDescription.toLowerCase().includes(search.toLowerCase()))
+    : profitQueue;
+  const profitTotalPages = Math.max(Math.ceil(profitFiltered.length / pageSize), 1);
+  const profitSafePage = Math.min(page, profitTotalPages);
+  const profitVisible = profitFiltered.slice((profitSafePage - 1) * pageSize, profitSafePage * pageSize);
   const onSearch = (v: string) => { setSearch(v); setPage(1); };
+  const onChangeQueue = (next: number) => { setQueueTab(next); setSearch(''); setPage(1); };
 
   const masterCodeOf = (r: Request): string =>
     r.masterCode || (r.groupId && r.subgroupId
@@ -145,6 +176,17 @@ export const AccountingList: React.FC = () => {
     { key: 'mc', header: 'Código Master', label: 'Código Master', render: r => <span className="master-code-sm">{masterCodeOf(r)}</span> },
     { key: 'sol', header: 'Solicitante', label: 'Solicitante', render: r => usuarios.find(u => u.id === r.requesterId)?.displayName || '—' },
     { key: 'acc', header: 'Acción', label: 'Acción', render: r => <Button size="sm" onClick={() => openDetail(r)}>Revisar</Button> },
+  ];
+
+  // 26R — cola "Pendientes de Registro Profit" (aprobadas por Contabilidad).
+  const profitColumns: DataColumn<Request>[] = [
+    { key: 'num', header: 'N°', label: 'N°', render: r => <strong>#{r.requestNumber}</strong> },
+    { key: 'desc', header: 'Descripción', label: 'Descripción', render: r => <span className="ellipsis">{r.requestedDescription}</span> },
+    { key: 'mc', header: 'Código Master', label: 'Código Master', render: r => <span className="master-code-sm">{masterCodeOf(r)}</span> },
+    { key: 'pc', header: 'Código Profit', label: 'Código Profit', render: r => (r.profitCode ? <span className="master-code-sm">{r.profitCode}</span> : <span className="muted small">Pendiente</span>) },
+    { key: 'sol', header: 'Solicitante', label: 'Solicitante', render: r => usuarios.find(u => u.id === r.requesterId)?.displayName || '—' },
+    { key: 'est', header: 'Estado', label: 'Estado', render: r => <StatusBadge status={r.status} /> },
+    { key: 'acc', header: 'Acción', label: 'Acción', render: r => <Button size="sm" onClick={() => openDetail(r, 2)}>Continuar registro</Button> },
   ];
 
   const reloadDetail = React.useCallback((id: string, fallback: Request) => {
@@ -169,6 +211,7 @@ export const AccountingList: React.FC = () => {
       setEntries([]);
       setNotes('');
       accountingService.getPendingApprovals(companyId).then(setRequests);
+      loadProfitQueue();
       reloadDetail(selected.id, { ...selected, status: 'CONTABILIDAD_APROBADA' });
       setTab(2);
     } catch (err: any) {
@@ -188,6 +231,7 @@ export const AccountingList: React.FC = () => {
       setRejectModal(false);
       setRejectReason('');
       accountingService.getPendingApprovals(companyId).then(setRequests);
+      loadProfitQueue();
     } catch (err: any) {
       setError(err?.message || 'Error al rechazar la solicitud.');
     } finally {
@@ -361,6 +405,7 @@ export const AccountingList: React.FC = () => {
               onChanged={() => {
                 reloadDetail(selected.id, selected);
                 accountingService.getPendingApprovals(companyId).then(setRequests);
+                loadProfitQueue();
               }}
             />
           ) : (
@@ -404,34 +449,80 @@ export const AccountingList: React.FC = () => {
   }
 
 
+  const activeCount = queueTab === 0 ? filtered.length : profitFiltered.length;
+  const desc = queueTab === 0
+    ? (loading ? 'Revisa y aprueba las clasificaciones desde el punto de vista contable.' : `${activeCount} clasificación${activeCount === 1 ? '' : 'es'} por revisar.`)
+    : (profitLoading ? 'Solicitudes aprobadas pendientes de registrar en Profit.' : `${activeCount} solicitud${activeCount === 1 ? '' : 'es'} pendiente${activeCount === 1 ? '' : 's'} de Registro Profit.`);
+
   return (
     <Page
       title="Contabilidad"
-      desc={loading ? 'Revisa y aprueba las clasificaciones desde el punto de vista contable.' : `${filtered.length} clasificación${filtered.length === 1 ? '' : 'es'} por revisar.`}
+      desc={desc}
       actions={<HelpButton helpKey="contabilidad" />}
     >
-      <div className="toolbar" role="search">
-        <span className="grow"><SearchInput value={search} onChange={onSearch} placeholder="Buscar por descripción..." /></span>
-      </div>
+      {/* 26R — separación explícita: aprobación contable vs Registro Profit. */}
+      <Tabs
+        tabs={[
+          `Pendientes de aprobación${requests.length ? ` (${requests.length})` : ''}`,
+          `Pendientes de Registro Profit${profitQueue.length ? ` (${profitQueue.length})` : ''}`,
+        ]}
+        active={queueTab}
+        onChange={onChangeQueue}
+      />
 
-      {loading && (
-        <div className="card p16 stack-sm" aria-label="Cargando clasificaciones">
-          <Skeleton height={16} width="30%" /><Skeleton height={40} /><Skeleton height={40} />
-        </div>
-      )}
-      {!loading && listError && <ErrorState title="No pudimos cargar las clasificaciones pendientes." onRetry={loadList} />}
-      {!loading && !listError && filtered.length === 0 && (
-        <EmptyState title="No hay clasificaciones pendientes" desc="Todas las clasificaciones han sido procesadas" />
-      )}
-      {!loading && !listError && filtered.length > 0 && (
+      {queueTab === 0 ? (
         <>
-          <DataTable<Request>
-            columns={listColumns}
-            rows={visible}
-            rowKey={r => r.id}
-            caption={`${filtered.length} por revisar.`}
-          />
-          <Pagination page={safePage} totalPages={totalPages} total={filtered.length} pageSize={pageSize} onPage={setPage} onPageSize={n => { setPageSize(n); setPage(1); }} />
+          <div className="toolbar" role="search">
+            <span className="grow"><SearchInput value={search} onChange={onSearch} placeholder="Buscar por descripción..." /></span>
+          </div>
+
+          {loading && (
+            <div className="card p16 stack-sm" aria-label="Cargando clasificaciones">
+              <Skeleton height={16} width="30%" /><Skeleton height={40} /><Skeleton height={40} />
+            </div>
+          )}
+          {!loading && listError && <ErrorState title="No pudimos cargar las clasificaciones pendientes." onRetry={loadList} />}
+          {!loading && !listError && filtered.length === 0 && (
+            <EmptyState title="No hay clasificaciones pendientes" desc="Todas las clasificaciones han sido procesadas" />
+          )}
+          {!loading && !listError && filtered.length > 0 && (
+            <>
+              <DataTable<Request>
+                columns={listColumns}
+                rows={visible}
+                rowKey={r => r.id}
+                caption={`${filtered.length} por revisar.`}
+              />
+              <Pagination page={safePage} totalPages={totalPages} total={filtered.length} pageSize={pageSize} onPage={setPage} onPageSize={n => { setPageSize(n); setPage(1); }} />
+            </>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="toolbar" role="search">
+            <span className="grow"><SearchInput value={search} onChange={onSearch} placeholder="Buscar por descripción..." /></span>
+          </div>
+
+          {profitLoading && (
+            <div className="card p16 stack-sm" aria-label="Cargando pendientes de Registro Profit">
+              <Skeleton height={16} width="30%" /><Skeleton height={40} /><Skeleton height={40} />
+            </div>
+          )}
+          {!profitLoading && profitError && <ErrorState title="No pudimos cargar los pendientes de Registro Profit." onRetry={loadProfitQueue} />}
+          {!profitLoading && !profitError && profitFiltered.length === 0 && (
+            <EmptyState title="Sin pendientes de Registro Profit" desc="Todas las solicitudes aprobadas por Contabilidad ya fueron registradas en Profit" />
+          )}
+          {!profitLoading && !profitError && profitFiltered.length > 0 && (
+            <>
+              <DataTable<Request>
+                columns={profitColumns}
+                rows={profitVisible}
+                rowKey={r => r.id}
+                caption={`${profitFiltered.length} pendientes de Registro Profit.`}
+              />
+              <Pagination page={profitSafePage} totalPages={profitTotalPages} total={profitFiltered.length} pageSize={pageSize} onPage={setPage} onPageSize={n => { setPageSize(n); setPage(1); }} />
+            </>
+          )}
         </>
       )}
     </Page>

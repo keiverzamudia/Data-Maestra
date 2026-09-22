@@ -519,6 +519,24 @@ model RequestArticleDecision {
   @@map("request_article_decisions")
 }
 
+// --- Profit multiempresa ---
+
+// FASE 25 — Configuración administrativa de empresas Profit para inserción.
+// El descubrimiento sigue siendo dinámico (TEmpresas); aquí solo flags
+// locales: habilitada para inserción y marca de empresa estándar.
+// Sin esta fila, la empresa se considera habilitada (fail-open de lectura)
+// salvo que sea la estándar por código.
+
+model ProfitCompanyConfig {
+  code       String   @id @map("code")
+  enabled    Boolean  @default(true)
+  isStandard Boolean  @default(false) @map("is_standard")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @default(now()) @map("updated_at")
+
+  @@map("profit_company_config")
+}
+
 // --- Requests ---
 
 model Request {
