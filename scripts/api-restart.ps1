@@ -3,7 +3,11 @@
 # TERMINA completamente una vez que la API esta lista.
 
 $scriptsDir = $PSScriptRoot
+. "$scriptsDir\_worktree.ps1"
 
+Write-Host "Worktree: $RepoRoot"
+Write-Host "Puertos: API=$ApiPort WEB=$WebPort ($WorktreeEnvSource)"
+Write-Host ""
 Write-Host "=== 1. BUILD API ==="
 pnpm --filter @master-data/api run build
 if ($LASTEXITCODE -ne 0) {

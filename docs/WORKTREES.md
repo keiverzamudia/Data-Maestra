@@ -77,7 +77,26 @@ cada worktree opera únicamente sobre sus propios puertos.
   (`vite.config.js` / `.d.ts`) se emiten en `node_modules/.tmp/` y están
   ignorados, para que nunca ensombrezcan al `.ts`.
 
-## 5. Qué se versiona y qué no
+## 5. Solución de problemas
+
+- **Copié la carpeta pero `api-stop` mira el puerto 3001**: la copia no trae
+  `scripts/_worktree.ps1` (o trae scripts viejos). Vuelve a copiar la carpeta
+  `scripts/` completa desde el repo. Los scripts nuevos imprimen siempre
+  `Perfil: API_PORT=...` para que se vea qué configuración leyeron.
+- **`api-stop` no encontraba una API vieja**: el `api-stop` nuevo detiene por
+  puerto **y** por proceso (`node ... apps\api\dist\main.js` de ese worktree),
+  así que atrapa instancias aunque estén en otro puerto. No toca otros
+  worktrees.
+- **`Remove-Item api.log` en uso**: ya no falla; avisa y continúa agregando
+  al log existente. El aviso indica que una instancia anterior sigue viva
+  (detenerla primero con `api-stop.ps1`).
+- **Dos APIs (3001 y 3002) a la vez**: detener cada una con el `api-stop.ps1`
+  de su propio worktree.
+- **`nest start --watch` / `pnpm dev`**: `api-stop` no los detiene (cerrarlos
+  con Ctrl+C en su terminal); si no, el watcher relanza la API solo.
+
+## 6. Qué se versiona y qué no
+
 
 | Archivo | Git | Notas |
 |---|---|---|
@@ -88,7 +107,7 @@ cada worktree opera únicamente sobre sus propios puertos.
 | `.env.local.example` | Sí | Plantilla de la que se copia `.env.local`. |
 | `apps/*/.env.example` | Sí | Plantillas sin secretos. |
 
-## 6. Seguridad
+## 7. Seguridad
 
 - **Nunca** versionar `.env.local` ni ningún archivo con credenciales reales.
 - Si un secreto llegó a commitearse, **rotarlo** en Profit/DBA (cambiar la

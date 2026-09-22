@@ -5,6 +5,7 @@
 . "$PSScriptRoot\_worktree.ps1"
 
 $url = "http://localhost:$ApiPort/api/v1/health"
+Write-Host "Health: $url"
 $maxAttempts = 30
 $delaySeconds = 2
 
