@@ -1,3 +1,5 @@
+import './entorno/cargar-entorno';
+import { cargaEntorno } from './entorno/cargar-entorno';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -12,9 +14,14 @@ async function bootstrap() {
   app.use(cookieParser());
 
   const configService = app.get(ConfigService);
-  const port = configService.get<number>('PORT', 3001);
+  // Fuente única de puertos: raíz .env → API_PORT (preferido) / PORT (compat).
+  const port = Number(configService.get<string>('API_PORT') ?? configService.get<number>('PORT', 3001));
   const apiPrefix = configService.get<string>('API_PREFIX', 'api/v1');
-  const corsOrigins = configService.get<string>('CORS_ORIGINS', 'http://localhost:5173');
+  const corsOrigins = (configService.get<string>('CORS_ORIGINS', 'http://localhost:5173') ?? '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean)
+    .join(',') || 'http://localhost:5173';
 
   // Global prefix
   app.setGlobalPrefix(apiPrefix);
@@ -48,6 +55,7 @@ async function bootstrap() {
   SwaggerModule.setup('docs', app, document);
 
   await app.listen(port);
+  console.log(`Entorno cargado desde: ${cargaEntorno.archivo ?? '(solo variables del sistema)'}`);
   console.log(`Application is running on: http://localhost:${port}`);
   console.log(`Swagger docs: http://localhost:${port}/docs`);
 }

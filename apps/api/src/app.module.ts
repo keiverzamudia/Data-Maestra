@@ -24,7 +24,13 @@ import { PrismaModule } from './comun/prisma/prisma.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: [join(__dirname, '..', '.env.local'), join(__dirname, '..', '.env')],
+      // apps/api/.env tiene prioridad; root .env como fallback (dev dual 3001/3002).
+      envFilePath: [
+        join(__dirname, '..', '.env.local'),
+        join(__dirname, '..', '.env'),
+        join(__dirname, '..', '..', '.env.local'),
+        join(__dirname, '..', '..', '.env'),
+      ],
     }),
     PrismaModule,
     SaludModule,

@@ -2,7 +2,9 @@
 # Uso: .\scripts\api-start.ps1
 # Retorna inmediatamente. El proceso Node continua en background.
 
-$port = 3001
+. "$PSScriptRoot\_worktree.ps1"
+
+$port = $ApiPort
 $projectRoot = Split-Path $PSScriptRoot -Parent
 $apiDir = Join-Path $projectRoot "apps\api"
 $nodeExe = "node"
@@ -10,9 +12,19 @@ $mainJs = Join-Path $apiDir "dist\main.js"
 $logFile = Join-Path $apiDir "api.log"
 $errFile = Join-Path $apiDir "api.err.log"
 
+Write-Host "Perfil: API_PORT=$ApiPort WEB_PORT=$WebPort ($WorktreeEnvSource)"
+
 # Verificar que el build existe
 if (-not (Test-Path $mainJs)) {
     Write-Host "ERROR: $mainJs no existe. Ejecuta build primero."
+    exit 1
+}
+
+# Preflight: ¿ya hay una instancia de ESTE worktree en ejecución?
+# (aunque esté en otro puerto, p. ej. por un arranque con scripts viejos)
+$owned = Get-WorktreeApiProcess | Select-Object -First 1
+if ($owned) {
+    Write-Host "Ya hay una instancia de ESTE worktree en ejecución (PID $($owned.ProcessId)). Usa api-stop.ps1 primero."
     exit 1
 }
 
@@ -25,9 +37,14 @@ if ($existing) {
     exit 1
 }
 
-# Limpiar logs anteriores
-if (Test-Path $logFile) { Remove-Item $logFile -Force }
-if (Test-Path $errFile) { Remove-Item $errFile -Force }
+# Limpiar logs anteriores (tolerante: si una instancia anterior los mantiene
+# abiertos, se conservan y el nuevo proceso sigue agregando al existente).
+foreach ($f in @($logFile, $errFile)) {
+    if (Test-Path $f) {
+        try { Remove-Item $f -Force -ErrorAction Stop }
+        catch { Write-Host "AVISO: no se pudo limpiar $(Split-Path $f -Leaf) (archivo en uso). Se continuará agregando al existente." }
+    }
+}
 
 # Iniciar Node completamente desacoplado mediante WMI Win32_Process.Create.
 # RAZÓN: Start-Process hereda el stdin del shell que lo invoca (WinPS 5.1 no
