@@ -104,6 +104,7 @@ function Gate() {
               <Route path="/admin/roles" element={<RequirePermission permission="ADMIN.MANAGE"><AdministracionPage section="roles" /></RequirePermission>} />
               <Route path="/admin/catalogos" element={<RequirePermission permission="ADMIN.MANAGE"><AdministracionPage section="catalogos" /></RequirePermission>} />
               <Route path="/admin/empresas" element={<RequirePermission permission="ADMIN.MANAGE"><AdministracionPage section="empresas" /></RequirePermission>} />
+              <Route path="/admin/mantenimiento" element={<RequirePermission permission="ADMIN.MANAGE"><AdministracionPage section="mantenimiento" /></RequirePermission>} />
               <Route path="/admin/historico" element={<RequirePermission permission="ADMIN.MANAGE"><AdministracionPage section="historico" /></RequirePermission>} />
 
               {/* Legacy routes */}

@@ -461,6 +461,30 @@ const HELP: Record<string, HelpEntry> = {
     nextOwner: 'Almacén y Contabilidad.',
     flowStatus: 'CONTABILIDAD_APROBADA',
   },
+  mantenimiento: {
+    key: 'mantenimiento',
+    title: 'Ayuda — Mantenimiento',
+    subtitle: 'Borrado de datos de prueba.',
+    what: 'Esta zona permite borrar, en modo pruebas, las solicitudes y su rastro operativo (datos, workflow, aprobaciones, vínculos, notificaciones y auditoría). Se conserva el sistema, los catálogos Profit, el universo histórico, los master items y las importaciones.',
+    whyHere: 'Estás aquí con permiso de administración para limpiar datos de prueba cuando se acumula basura.',
+    steps: [
+      'Revisa la vista previa: muestra cuántos registros se borrarán por tabla.',
+      'Pulsa Borrar datos de prueba y escribe BORRAR TODO para confirmar.',
+      'Verifica el resumen del borrado y la nueva vista previa.',
+    ],
+    doNot: [
+      'No uses esta pantalla en producción: requiere el flag ALLOW_TEST_RESET.',
+      'No esperes recuperar lo borrado: la operación es irreversible.',
+      'Profit nunca se modifica desde aquí.',
+    ],
+    sources: [
+      { label: 'Vista previa', desc: 'conteos reales por tabla antes de borrar.' },
+      { label: 'Auditoría', desc: 'el borrado queda registrado como primer evento posterior.' },
+    ],
+    next: 'Tras el borrado puedes volver a crear solicitudes de prueba.',
+    nextOwner: 'Quien prueba.',
+    flowStatus: 'BORRADOR',
+  },
 };
 
 export function getHelp(key: string): HelpEntry | undefined {

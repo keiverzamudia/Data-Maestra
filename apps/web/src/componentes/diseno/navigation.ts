@@ -25,6 +25,7 @@ import {
   ScrollText,
   GitCompare,
   Factory,
+  Trash2,
 } from 'lucide-react';
 
 export type NavGroup = 'operacion' | 'trabajo' | 'administracion';
@@ -77,6 +78,7 @@ export const NAV: NavEntry[] = [
       { key: 'admin-roles', to: '/admin/roles', label: 'Roles y permisos', permission: 'ADMIN.MANAGE', icon: ShieldCheck },
       { key: 'admin-catalogos', to: '/admin/catalogos', label: 'Catálogos Profit', permission: 'ADMIN.MANAGE', icon: Database },
       { key: 'admin-empresas', to: '/admin/empresas', label: 'Empresas Profit', permission: 'ADMIN.MANAGE', icon: Factory },
+      { key: 'admin-mantenimiento', to: '/admin/mantenimiento', label: 'Mantenimiento', permission: 'ADMIN.MANAGE', icon: Trash2 },
       { key: 'admin-historico', to: '/admin/historico', label: 'Auditoría histórica', permission: 'ADMIN.MANAGE', icon: GitCompare },
       { key: 'audit', to: '/audit', label: 'Auditoría', permission: 'AUDIT.VIEW', icon: ScrollText },
     ],
