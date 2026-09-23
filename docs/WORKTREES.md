@@ -60,6 +60,8 @@ pnpm dev                          # API + Web del worktree actual
 .\scripts\api-stop.ps1
 .\scripts\api-health.ps1
 .\scripts\verify-local.ps1        # verifica API_PORT y WEB_PORT de este worktree
+.\scripts\tunnel-start.ps1        # expone el WEB de este worktree via Cloudflare
+.\scripts\tunnel-start.ps1 -Check # solo verifica (no lanza nada)
 ```
 
 `api-start/stop/health/restart` y `verify-local` leen `.env.local`, por lo que
@@ -94,6 +96,16 @@ cada worktree opera únicamente sobre sus propios puertos.
   de su propio worktree.
 - **`nest start --watch` / `pnpm dev`**: `api-stop` no los detiene (cerrarlos
   con Ctrl+C en su terminal); si no, el watcher relanza la API solo.
+- **`cloudflared` no se reconoce pero la ruta completa sí**: el PATH se escribió
+  en el registro **después** de que VS Code arrancó, y los procesos heredan su
+  ambiente al crearse (el `HKCU\Environment` solo lo leen procesos futuros).
+  Reinicia VS Code. Usa `.\scripts\tunnel-start.ps1`, que resuelve el binario
+  por comando, por `%LOCALAPPDATA%` y por registro, sin depender del PATH.
+- **Túnel devuelve 502 / "Unable to reach the origin"**: el web no está
+  corriendo. Levanta `pnpm dev` y vuelve a lanzar el túnel.
+- **"Blocked request. This host ... is not allowed"**: el `Host` no está en
+  `server.allowedHosts` (`vite.config.ts`). `.trycloudflare.com` ya está
+  incluido; para otro hostname, añádelo ahí.
 
 ## 6. Qué se versiona y qué no
 
@@ -123,3 +135,31 @@ cada worktree opera únicamente sobre sus propios puertos.
 
   Tras reescribir historial: `git push --force-with-lease` y avisar a quienes
   tengan clones.
+
+## 8. Túnel de Cloudflare (opcional)
+
+Para exponer el web de este worktree fuera de la red local:
+
+```powershell
+pnpm dev                     # 1) el web debe estar corriendo primero
+.\scripts\tunnel-start.ps1   # 2) imprime la URL https://....trycloudflare.com
+```
+
+- Lee `WEB_PORT` de `.env.local`, así que en el worktree B va contra **5174**.
+- Corre en **primer plano**: la URL se imprime en tu terminal. Ctrl+C la corta.
+- `-Check` resuelve el binario y hace el preflight **sin lanzar nada**.
+- Resuelve `cloudflared` en tres escalones (`Get-Command` → `%LOCALAPPDATA%` →
+  registro `HKCU`/`HKLM`), así funciona aunque la sesión no tenga el PATH nuevo.
+
+**Notas:**
+- El túnel rápido (anónimo) caduca al cerrar la terminal y la URL cambia en
+  cada arranque. Para dominio estable: `cloudflared login` + túnel con nombre
+  (requiere tu cuenta de Cloudflare).
+- Si el web no responde, avisa y sigue (Cloudflare devolverá 502).
+- **`Blocked request. This host (...) is not allowed`**: Vite 6 rechaza por
+  defecto cualquier `Host` que no sea `localhost`/IPv4 (protección anti
+  DNS-rebinding). Como la URL rápida cambia en cada arranque, no sirve
+  hardcodearla: `vite.config.ts` ya incluye
+  `server.allowedHosts: ['.trycloudflare.com']` (comodín de subdominio,
+  cubre todas las URLs rápidas). Si usas un túnel con nombre propio bajo tu
+  dominio, añade ese hostname a la lista.

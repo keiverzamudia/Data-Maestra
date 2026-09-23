@@ -44,10 +44,20 @@ export default defineConfig(() => {
       },
     },
     server: {
+      // Escucha en todas las interfaces: necesario para que cloudflared y la
+      // red local alcancen el dev server (el túnel sondea [::1], IPv6).
+      host: true,
       port: webPort,
       // Falla explícitamente si el puerto está ocupado en vez de saltar a otro
-      // (evita que dos worktrees colisionen silenciosamente).
+      // (evita que dos worktrees colisionen sin avisar).
       strictPort: true,
+      // Vite 6 bloquea por defecto cualquier Host que no sea localhost/IPv4
+      // (anti DNS-rebinding). Los túneles rápidos de Cloudflare usan
+      // `<aleatorio>.trycloudflare.com` y cambian en cada arranque, por lo que
+      // se permite el dominio con comodín (prefijo "."): cubre todas las URLs
+      // rápidas sin desactivar la verificación para el resto de hosts.
+      // Para un túnel con nombre propio, añade su hostname a esta lista.
+      allowedHosts: ['.trycloudflare.com'],
       proxy: {
         '/api': {
           target: apiTarget,
