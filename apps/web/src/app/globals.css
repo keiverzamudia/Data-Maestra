@@ -24,6 +24,14 @@ a{color:inherit;text-decoration:none}
 .nav{padding:var(--sp-2)}
 .nav-link{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--radius-sm);color:var(--sidebar-dim);font-size:var(--text-md);transition:background-color .18s ease,color .18s ease}
 .nav-link:hover{background:var(--sidebar-active);color:var(--white)}
+/* FASE counters — badges contextuales del menú (discretos, alineados a la derecha). */
+.nav-badge-slot{margin-left:auto;flex:none;display:inline-flex;align-items:center}
+.nav-badge{min-width:20px;padding:1px 6px;border-radius:var(--radius-pill);font-size:10px;font-weight:700;line-height:1.4;text-align:center;font-variant-numeric:tabular-nums}
+.nav-badge-zero{background:var(--border-soft);color:var(--muted)}
+.nav-badge-active{background:var(--warning-bg);color:var(--warning-text)}
+.nav-badge-loading{background:var(--border-soft);color:var(--muted);letter-spacing:1px}
+.nav-badge-error{background:var(--border-soft);color:var(--muted)}
+.sidebar-collapsed .nav-badge-slot{display:none}
 /* activo: ver .nav-active en ds.css (fondo + barra indicadora, sin duplicar) */
 .nav-icon{width:20px;flex:none;display:inline-flex;align-items:center;justify-content:center;color:inherit}
 .nav-icon svg{display:block}

@@ -14,11 +14,15 @@ vi.mock('../../servicios/api/api-notificacion-service', () => ({
 vi.mock('../../servicios/api/api-roles-service', () => ({
   apiRolesService: { miVista: vi.fn() },
 }));
+vi.mock('../../servicios/api/api-request-summary-service', () => ({
+  apiGetRequestContextSummary: vi.fn(),
+}));
 vi.mock('../../contextos/SessionContext', () => ({ useSession: vi.fn() }));
 vi.mock('../../contextos/CompanyContext', () => ({ useCompany: vi.fn() }));
 
 import { useSession } from '../../contextos/SessionContext';
 import { useCompany } from '../../contextos/CompanyContext';
+import { apiGetRequestContextSummary } from '../../servicios/api/api-request-summary-service';
 
 const miVistaMock = apiRolesService.miVista as any;
 
@@ -30,6 +34,10 @@ function mockCtx(permissions: string[]) {
   (useCompany as any).mockReturnValue({ companyId: 'c1', setCompanyId: vi.fn(), companies: [{ id: 'c1', name: 'E1' }] });
   (apiNotificacionService.getNotificaciones as any).mockResolvedValue([]);
   (apiNotificacionService.getUnreadCount as any).mockResolvedValue(0);
+  (apiGetRequestContextSummary as any).mockResolvedValue({
+    work: { total: 0, approvals: 0, warehouse: 0, warehouseApproval: 0, accounting: 0, accountingApproval: 0, accountingProfitRegistration: 0, managementApproval: 0 },
+    dashboard: { pending: 0, inApproval: 0, completed: 0, returned: 0 },
+  });
 }
 
 describe('FASE 20 — sidebar independiente de DASHBOARD.VIEW', () => {

@@ -50,6 +50,38 @@ export interface Request {
 export interface WorkflowStepDef { code: RequestStatus; name: string; order: number; slaHours?: number; }
 export interface WorkflowHistoryEntry { id: string; requestId: string; from: RequestStatus; to: RequestStatus; action: 'APPROVE'|'REJECT'|'RETURN'|'SUBMIT'; actorId: string; comment?: string; createdAt: string; }
 
+/**
+ * FASE — Resumen contextual de contadores (fuente única backend
+ * GET /requests/context-summary). Lo consumen menú, badges y Dashboard.
+ */
+export interface RequestContextSummaryWork {
+  /** Colas accionables únicas (estados disjuntos; suma sin doble conteo). */
+  total: number;
+  approvals: number;
+  warehouse: number;
+  warehouseApproval: number;
+  /** Total accionable de Contabilidad (aprobación + registro Profit). */
+  accounting: number;
+  accountingApproval: number;
+  accountingProfitRegistration: number;
+  /** Mismo universo que approvals en el sistema actual (cola de gerencia). */
+  managementApproval: number;
+}
+export interface RequestContextSummaryDashboard {
+  /** Trabajo pendiente: requieren acción del usuario autenticado. */
+  pending: number;
+  /** Etapas humanas de aprobación dentro del alcance del usuario. */
+  inApproval: number;
+  /** Finalización exitosa (INSERTADO_PROFIT) en su historial. */
+  completed: number;
+  /** DEVUELTO + RECHAZADO en su historial. */
+  returned: number;
+}
+export interface RequestContextSummary {
+  work: RequestContextSummaryWork;
+  dashboard: RequestContextSummaryDashboard;
+}
+
 // ── Master ──
 export type MasterStatus = 'PENDING_REVIEW' | 'ACTIVE' | 'INACTIVE' | 'MERGED' | 'REJECTED';
 export interface MasterItem {

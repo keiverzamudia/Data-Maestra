@@ -16,8 +16,14 @@ vi.mock('../../servicios/api/api-notificacion-service', () => ({
   },
 }));
 
+vi.mock('../../servicios/api/api-request-summary-service', () => ({
+  apiGetRequestContextSummary: vi.fn(),
+}));
+
 vi.mock('../../contextos/SessionContext', () => ({ useSession: vi.fn() }));
 vi.mock('../../contextos/CompanyContext', () => ({ useCompany: vi.fn() }));
+
+import { apiGetRequestContextSummary } from '../../servicios/api/api-request-summary-service';
 
 const listMock = apiNotificacionService.getNotificaciones as any;
 const countMock = apiNotificacionService.getUnreadCount as any;
@@ -36,6 +42,10 @@ function mockAll() {
   countMock.mockResolvedValue(1);
   readMock.mockResolvedValue(undefined);
   allMock.mockResolvedValue(undefined);
+  (apiGetRequestContextSummary as any).mockResolvedValue({
+    work: { total: 0, approvals: 0, warehouse: 0, warehouseApproval: 0, accounting: 0, accountingApproval: 0, accountingProfitRegistration: 0, managementApproval: 0 },
+    dashboard: { pending: 0, inApproval: 0, completed: 0, returned: 0 },
+  });
 }
 
 function renderShell() {

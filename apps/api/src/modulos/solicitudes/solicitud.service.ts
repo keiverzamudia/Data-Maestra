@@ -160,15 +160,31 @@ export class SolicitudesService {
   static readonly RECHAZADA = ['RECHAZADO'];
   static readonly PAGE_SIZES = [25, 50, 100];
 
+  /**
+   * FASE counters — Estados de éxito terminal para la tarjeta "Completadas".
+   * CONTABILIDAD_APROBADA NO es completada: aún no hay INSERT en Profit.
+   */
+  static readonly COMPLETADA_EXITOSA = ['INSERTADO_PROFIT'];
+  /** Estados no exitosos (devolución o rechazo) para "Devueltas". */
+  static readonly NO_EXITOSA = ['DEVUELTO', 'RECHAZADO'];
+  /** Etapas humanas de aprobación (tarjeta "En aprobación"). */
+  static readonly EN_APROBACION = [
+    'PENDIENTE_GERENTE',
+    'PENDIENTE_ALMACEN',
+    'ALMACEN_APROBADO',
+    'PENDIENTE_CONTABILIDAD',
+  ];
+
   /** Paso → permiso de acción que lo atiende (misma regla que notificaciones 11G/12F). */
-  private static readonly QUEUE_PERMISSION: Record<string, string> = {
+  static readonly QUEUE_PERMISSION: Record<string, string> = {
     PENDIENTE_ALMACEN: 'WAREHOUSE.CLASSIFY',
     // 15A — ALMACEN_APROBADO es la cola del Encargado de Almacén, no de Almacén.
     ALMACEN_APROBADO: 'WAREHOUSE_MANAGER.APPROVE',
     PENDIENTE_CONTABILIDAD: 'ACCOUNTING.APPROVE',
   };
 
-  private async getViewer(userId: string) {
+  /** FASE counters — alcance del visor (público para RequestCountersService). */
+  async getViewer(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user || !user.active) {
       throw new ForbiddenException('Usuario inactivo o inexistente.');
@@ -194,7 +210,7 @@ export class SolicitudesService {
     };
   }
 
-  private queueStepsFor(viewer: Awaited<ReturnType<SolicitudesService['getViewer']>>, companyId: string): string[] {
+  queueStepsFor(viewer: Awaited<ReturnType<SolicitudesService['getViewer']>>, companyId: string): string[] {
     const perms = viewer.permsByCompany.get(companyId) ?? [];
     const steps: string[] = [];
     for (const [step, perm] of Object.entries(SolicitudesService.QUEUE_PERMISSION)) {
@@ -210,7 +226,8 @@ export class SolicitudesService {
    * participación por clasificación se resuelve en dos pasos (ids vía
    * auditEvent + `id: { in }`). Un filtro de relación inexistente = 500.
    */
-  private async buildScopeWhere(
+  /** FASE counters — WHERE de visibilidad (público para RequestCountersService). */
+  async buildScopeWhere(
     viewer: Awaited<ReturnType<SolicitudesService['getViewer']>>,
     scope: 'activas' | 'historial',
   ): Promise<Record<string, unknown>> {
@@ -251,6 +268,18 @@ export class SolicitudesService {
       }
     }
     return { OR: clauses };
+  }
+
+  /** FASE counters — Empresas donde el visor tiene ALGÚN permiso de la lista. */
+  companiesWithAnyPermission(
+    viewer: Awaited<ReturnType<SolicitudesService['getViewer']>>,
+    permissions: string[],
+  ): string[] {
+    const out: string[] = [];
+    for (const [companyId, perms] of viewer.permsByCompany) {
+      if (permissions.some(p => perms.includes(p))) out.push(companyId);
+    }
+    return out;
   }
 
   private filtersWhere(filters: {

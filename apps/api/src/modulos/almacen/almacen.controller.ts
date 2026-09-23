@@ -1,5 +1,5 @@
-import { Controller, Get, Post, Param, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiParam } from '@nestjs/swagger';
+import { Controller, Get, Post, Param, Query, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { AlmacenService } from './almacen.service';
 import { AutenticacionService } from '../autenticacion/autenticacion.service';
 import { RbacGuard } from '../autenticacion/rbac.guard';
@@ -19,8 +19,9 @@ export class AlmacenController {
   @Get('pending')
   @RequirePermission('WAREHOUSE.VIEW')
   @ApiOperation({ summary: 'List requests pending warehouse classification' })
-  findPending() {
-    return this.warehouseService.findPendingClassification();
+  @ApiQuery({ name: 'companyId', required: false })
+  findPending(@Query('companyId') companyId?: string) {
+    return this.warehouseService.findPendingClassification(companyId || undefined);
   }
 
   @Get(':id')

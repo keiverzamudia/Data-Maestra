@@ -24,9 +24,9 @@ export class AlmacenService {
     private readonly requestsService: SolicitudesService,
   ) {}
 
-  async findPendingClassification() {
+  async findPendingClassification(companyId?: string) {
     const rows = await this.prisma.request.findMany({
-      where: { status: 'PENDIENTE_ALMACEN' },
+      where: { status: 'PENDIENTE_ALMACEN', ...(companyId ? { companyId } : {}) },
       include: REQUEST_INCLUDE,
       orderBy: { createdAt: 'asc' },
     });

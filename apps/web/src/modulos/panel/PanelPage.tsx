@@ -3,25 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { useSession } from '../../contextos/SessionContext';
 import { useCompany } from '../../contextos/CompanyContext';
 import { apiPanelService } from '../../servicios/api/api-panel-service';
-import { requestService, warehouseService, warehouseApprovalService, accountingService } from '../../servicios';
+import { useRequestContextSummary } from '../../hooks/useRequestContextSummary';
 import { Can } from '../../componentes/auth/Can';
 import { Page, EmptyState, ErrorState, Skeleton, StatCard, StatusBadge, Button, SectionCard } from '../../componentes/ui';
 import { HelpButton } from '../../componentes/ayuda';
-import type { Request } from '../../tipos';
-
-interface DashboardStats {
-  pendingRequests: number;
-  inApproval: number;
-  returnedRequests: number;
-  completedRequests: number;
-  totalRequests: number;
-  recentImports: number;
-  activeMasterItems: number;
-  pendingHomologation: number;
-  pendingSourceItems: number;
-  pendingMatches: number;
-  qualityIssues: number;
-}
 
 interface ActivityItem {
   id: string;
@@ -39,81 +24,74 @@ interface WorkRow {
   count: number;
 }
 
-/** 11E/14H — Dashboard como centro de resumen (no bandeja). */
+/** Filas de "Trabajo pendiente" solo para colas con permiso del usuario. */
+function workRowsFromSummary(
+  summary: { work: Record<string, number> } | null,
+  hasPermission: (p: string) => boolean,
+): WorkRow[] {
+  if (!summary) return [];
+  const rows: WorkRow[] = [];
+  if (hasPermission('WAREHOUSE.VIEW') || hasPermission('WAREHOUSE.CLASSIFY')) {
+    rows.push({ key: 'wh', label: 'Almacén', to: '/warehouse', count: summary.work.warehouse ?? 0 });
+  }
+  if (hasPermission('WAREHOUSE_MANAGER.VIEW') || hasPermission('WAREHOUSE_MANAGER.APPROVE')) {
+    rows.push({
+      key: 'wha',
+      label: 'Aprobación Almacén',
+      to: '/aprobacion-almacen',
+      count: summary.work.warehouseApproval ?? 0,
+    });
+  }
+  if (hasPermission('ACCOUNTING.VIEW') || hasPermission('ACCOUNTING.APPROVE')) {
+    rows.push({ key: 'ac', label: 'Contabilidad', to: '/accounting', count: summary.work.accounting ?? 0 });
+  }
+  if (hasPermission('MANAGER.APPROVE')) {
+    rows.push({
+      key: 'ge',
+      label: 'Aprobaciones',
+      to: '/approvals',
+      count: summary.work.approvals ?? 0,
+    });
+  }
+  return rows;
+}
+
+/**
+ * 11E/14H/FASE-counters — Dashboard con contadores contextuales reales.
+ * Tarjetas + sección "Trabajo pendiente" consumen el MISMO resumen
+ * (GET /requests/context-summary) que los badges del menú. Sin hardcodes.
+ */
 export const DashboardPage: React.FC = () => {
   const { user, hasPermission } = useSession();
   const { companyId } = useCompany();
   const navigate = useNavigate();
-  const [stats, setStats] = React.useState<DashboardStats | null>(null);
   const [activity, setActivity] = React.useState<ActivityItem[]>([]);
-  const [work, setWork] = React.useState<WorkRow[] | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const [activityLoading, setActivityLoading] = React.useState(true);
+  const [activityError, setActivityError] = React.useState<string | null>(null);
+  const {
+    summary,
+    loading: summaryLoading,
+    error: summaryError,
+    refresh: refreshSummary,
+  } = useRequestContextSummary();
 
-  const loadData = React.useCallback(() => {
-    setLoading(true);
-    setError(null);
-    Promise.all([
-      apiPanelService.getStats(companyId),
-      apiPanelService.getActivity(companyId),
-    ]).then(([s, a]) => {
-      setStats(s);
-      setActivity(a);
-      setLoading(false);
-    }).catch(() => {
-      setError('No pudimos cargar los datos del panel.');
-      setLoading(false);
-    });
+  const loadActivity = React.useCallback(() => {
+    setActivityLoading(true);
+    setActivityError(null);
+    apiPanelService.getActivity(companyId).then(
+      a => { setActivity(a); setActivityLoading(false); },
+      () => { setActivityError('No pudimos cargar la actividad.'); setActivityLoading(false); },
+    );
   }, [companyId]);
 
-  // Trabajo pendiente con conteos reales (solo bandejas permitidas; sin números falsos).
-  React.useEffect(() => {
-    let cancelled = false;
-    const jobs: Array<Promise<WorkRow | null>> = [];
-    if (hasPermission('WAREHOUSE.VIEW')) {
-      jobs.push(
-        warehouseService.getPendingRequests(companyId).then(
-          r => ({ key: 'wh', label: 'Almacén', to: '/warehouse', count: r.length }),
-          () => null,
-        ),
-      );
-    }
-    // 15A — contador de la cola del Encargado (sin KPIs nuevos).
-    if (hasPermission('WAREHOUSE_MANAGER.VIEW')) {
-      jobs.push(
-        warehouseApprovalService.getPendingApprovals(companyId).then(
-          r => ({ key: 'wha', label: 'Aprobación Almacén', to: '/aprobacion-almacen', count: r.length }),
-          () => null,
-        ),
-      );
-    }
-    if (hasPermission('ACCOUNTING.VIEW')) {
-      jobs.push(
-        accountingService.getPendingApprovals(companyId).then(
-          r => ({ key: 'ac', label: 'Contabilidad', to: '/accounting', count: r.length }),
-          () => null,
-        ),
-      );
-    }
-    if (hasPermission('MANAGER.APPROVE')) {
-      jobs.push(
-        requestService.list({ companyId: companyId || undefined, status: 'PENDIENTE_GERENTE' }).then(
-          r => ({ key: 'ge', label: 'Aprobaciones de gerencia', to: '/approvals', count: r.filteredTotal ?? r.total }),
-          () => null,
-        ),
-      );
-    }
-    if (jobs.length === 0) {
-      setWork([]);
-      return;
-    }
-    Promise.all(jobs).then(rows => {
-      if (!cancelled) setWork(rows.filter((r): r is WorkRow => r !== null));
-    });
-    return () => { cancelled = true; };
-  }, [companyId, hasPermission]);
+  React.useEffect(() => { loadActivity(); }, [loadActivity]);
 
-  React.useEffect(() => { loadData(); }, [loadData]);
+  const loading = summaryLoading && !summary && activityLoading;
+
+  const work = React.useMemo(
+    () => workRowsFromSummary(summary as never, hasPermission),
+    [summary, hasPermission],
+  );
 
   if (loading) {
     return (
@@ -126,15 +104,15 @@ export const DashboardPage: React.FC = () => {
     );
   }
 
-  if (error) {
+  if (!summary && summaryError) {
     return (
       <Page title="Dashboard Gerencial" desc={`Bienvenido, ${user?.displayName ?? ''}`}>
-        <ErrorState title="No pudimos cargar los datos del panel." onRetry={loadData} />
+        <ErrorState title="No pudimos cargar los contadores del panel." onRetry={refreshSummary} />
       </Page>
     );
   }
 
-  if (!stats) {
+  if (!summary) {
     return (
       <Page title="Dashboard Gerencial" desc={`Bienvenido, ${user?.displayName ?? ''}`}>
         <EmptyState title="Sin datos disponibles" desc="Aún no hay información operativa para mostrar." />
@@ -142,23 +120,42 @@ export const DashboardPage: React.FC = () => {
     );
   }
 
+  const d = summary.dashboard;
+
   return (
     <Page title="Dashboard Gerencial" desc="Resumen general de la operación de Data-Maestra." actions={<HelpButton helpKey="dashboard" />}>
       <section aria-label="Resumen">
         <h2 className="section-title">Resumen general</h2>
         <div className="stat-grid">
-          <StatCard label="Pendientes de atención" value={stats.pendingRequests} tone={stats.pendingRequests > 0 ? 'warn' : undefined} />
-          <StatCard label="En aprobación" value={stats.inApproval} tone="info" />
-          <StatCard label="Completadas" value={stats.completedRequests} tone="ok" />
-          <StatCard label="Devueltas" value={stats.returnedRequests} tone={stats.returnedRequests > 0 ? 'bad' : undefined} />
+          <StatCard
+            label="Trabajo pendiente"
+            value={d.pending}
+            sub="Solicitudes que requieren tu acción"
+            tone={d.pending > 0 ? 'warn' : undefined}
+          />
+          <StatCard
+            label="En aprobación"
+            value={d.inApproval}
+            sub="En flujo de aprobación en tu alcance"
+            tone="info"
+          />
+          <StatCard label="Completadas" value={d.completed} sub="Registradas en Profit" tone="ok" />
+          <StatCard
+            label="Devueltas"
+            value={d.returned}
+            sub="Devueltas o rechazadas"
+            tone={d.returned > 0 ? 'bad' : undefined}
+          />
         </div>
       </section>
 
-      <SectionCard title="Trabajo pendiente" desc="Bandejas que requieren tu acción.">
-        {work === null ? (
-          <div className="stack-sm" aria-label="Cargando trabajo pendiente">
-            <Skeleton height={36} /><Skeleton height={36} />
-          </div>
+      <SectionCard
+        title="Trabajo pendiente"
+        desc="Bandejas departamentales que requieren tu acción o revisión inmediata."
+        actions={summaryError ? <Button variant="secondary" size="sm" onClick={refreshSummary}>Reintentar</Button> : undefined}
+      >
+        {summaryError && work.length === 0 ? (
+          <ErrorState title="No pudimos cargar los contadores." onRetry={refreshSummary} />
         ) : work.length === 0 ? (
           <EmptyState title="Sin pendientes" desc="No tienes bandejas con trabajo asignado." />
         ) : (
@@ -209,9 +206,18 @@ export const DashboardPage: React.FC = () => {
 
         <section className="card p16" aria-label="Actividad reciente">
           <h2 className="section-title">Actividad reciente</h2>
-          {activity.length === 0 ? (
+          {activityLoading && (
+            <div className="stack-sm" aria-label="Cargando actividad">
+              <Skeleton height={36} /><Skeleton height={36} />
+            </div>
+          )}
+          {!activityLoading && activityError && (
+            <ErrorState title="No pudimos cargar la actividad." onRetry={loadActivity} />
+          )}
+          {!activityLoading && !activityError && activity.length === 0 && (
             <EmptyState title="Sin actividad reciente" desc="Las acciones aparecerán aquí" />
-          ) : (
+          )}
+          {!activityLoading && !activityError && activity.length > 0 && (
             <div className="stack-sm">
               {activity.slice(0, 6).map(a => (
                 <button

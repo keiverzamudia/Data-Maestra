@@ -80,6 +80,8 @@ export function useNotifications() {
           setNotifs(prev => mergeById(prev, [n]));
           setUnread(u => u + 1);
           flashToast(n);
+          // FASE counters — transición de workflow → refrescar badges/Dashboard.
+          window.dispatchEvent(new CustomEvent('dm:counters-refresh'));
         } catch {
           /* mensaje no JSON: ignorar */
         }

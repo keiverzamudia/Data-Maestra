@@ -29,6 +29,14 @@ import {
 
 export type NavGroup = 'operacion' | 'trabajo' | 'administracion';
 
+/** Claves de contador del resumen contextual (RequestContextSummary.work). */
+export type NavBadgeKey =
+  | 'approvals'
+  | 'warehouse'
+  | 'warehouseApproval'
+  | 'accounting'
+  | 'managementApproval';
+
 export const GROUP_LABEL: Record<NavGroup, string> = {
   operacion: 'Operación',
   trabajo: 'Trabajo',
@@ -42,6 +50,8 @@ export interface NavChild {
   permission: string;
   /** Icono propio; si se omite se usa el de la entrada padre. */
   icon?: LucideIcon;
+  /** Clave del contador contextual (badges del menú). */
+  badge?: NavBadgeKey;
 }
 
 export interface NavEntry {
@@ -53,6 +63,8 @@ export interface NavEntry {
   group: NavGroup;
   /** Rutas legacy que resuelven al mismo destino (breadcrumbs, sin mostrar). */
   aliases?: string[];
+  /** Clave del contador contextual (badges del menú). */
+  badge?: NavBadgeKey;
   children?: NavChild[];
 }
 
@@ -63,11 +75,11 @@ export const NAV: NavEntry[] = [
     group: 'operacion', aliases: ['/requester'],
     children: [{ key: 'new', to: '/requester/new', label: 'Crear solicitud', permission: 'REQUEST.CREATE', icon: FilePlus2 }],
   },
-  { key: 'approvals', to: '/approvals', label: 'Aprobaciones', icon: ClipboardCheck, permission: 'MANAGER.APPROVE', group: 'trabajo' },
-  { key: 'warehouse', to: '/warehouse', label: 'Almacén', icon: Warehouse, permission: 'WAREHOUSE.VIEW', group: 'trabajo' },
+  { key: 'approvals', to: '/approvals', label: 'Aprobaciones', icon: ClipboardCheck, permission: 'MANAGER.APPROVE', group: 'trabajo', badge: 'approvals' },
+  { key: 'warehouse', to: '/warehouse', label: 'Almacén', icon: Warehouse, permission: 'WAREHOUSE.VIEW', group: 'trabajo', badge: 'warehouse' },
   // 15A — cola del Encargado de Almacén (permiso propio, no duplica Almacén).
-  { key: 'warehouse-approval', to: '/aprobacion-almacen', label: 'Aprobación Almacén', icon: PackageCheck, permission: 'WAREHOUSE_MANAGER.VIEW', group: 'trabajo' },
-  { key: 'accounting', to: '/accounting', label: 'Contabilidad', icon: Calculator, permission: 'ACCOUNTING.VIEW', group: 'trabajo' },
+  { key: 'warehouse-approval', to: '/aprobacion-almacen', label: 'Aprobación Almacén', icon: PackageCheck, permission: 'WAREHOUSE_MANAGER.VIEW', group: 'trabajo', badge: 'warehouseApproval' },
+  { key: 'accounting', to: '/accounting', label: 'Contabilidad', icon: Calculator, permission: 'ACCOUNTING.VIEW', group: 'trabajo', badge: 'accounting' },
   { key: 'imports', to: '/imports', label: 'Importaciones', icon: Import, permission: 'IMPORT.VIEW', group: 'administracion' },
   {
     key: 'admin', label: 'Administración', icon: Settings, group: 'administracion',
@@ -98,6 +110,11 @@ export function visibleNav(has: (p: string) => boolean): NavEntry[] {
     }
   }
   return out;
+}
+
+/** ¿Tiene badge de contador contextual? (solo entradas de Trabajo visibles). */
+export function navBadgeKey(entry: NavEntry | NavChild): NavBadgeKey | undefined {
+  return entry.badge;
 }
 
 /** ¿El path pertenece a la entrada (ruta propia o alias legacy)? */

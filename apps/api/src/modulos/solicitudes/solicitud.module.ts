@@ -6,11 +6,12 @@ import { ProfitModule } from '../profit/profit.module';
 import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 import { SolicitudesController } from './solicitud.controller';
 import { SolicitudesService } from './solicitud.service';
+import { RequestCountersService } from './request-counters.service';
 
 @Module({
   imports: [PrismaModule, AutenticacionModule, CatalogosModule, ProfitModule, NotificacionesModule],
   controllers: [SolicitudesController],
-  providers: [SolicitudesService],
-  exports: [SolicitudesService],
+  providers: [SolicitudesService, RequestCountersService],
+  exports: [SolicitudesService, RequestCountersService],
 })
 export class SolicitudesModule {}

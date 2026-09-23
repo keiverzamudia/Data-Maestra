@@ -74,6 +74,30 @@ export function getPermissionLabel(code: string): string {
   return PERMISSIONS[code] ?? code;
 }
 
+/** Descripción corta de fila en la matriz de permisos (sin inventar códigos). */
+const PERMISSION_DESCRIPTIONS: Record<string, string> = {
+  'DASHBOARD.VIEW': 'Permite visualizar métricas generales, KPIs departamentales y gráficos de consolidación.',
+  'REQUEST.CREATE': 'Registra y envía nuevas solicitudes de artículos al workflow de aprobación.',
+  'REQUEST.VIEW': 'Consulta solicitudes propias y las visibles según el alcance del rol.',
+  'WAREHOUSE.CLASSIFY': 'Clasifica artículos (grupo, subgrupo, marca, tipo y unidad) en Almacén.',
+  'WAREHOUSE.VIEW': 'Consulta la bandeja de solicitudes pendientes de clasificación en Almacén.',
+  'WAREHOUSE_MANAGER.APPROVE': 'Aprueba clasificaciones de Almacén y las envía a Contabilidad.',
+  'WAREHOUSE_MANAGER.VIEW': 'Consulta la cola de aprobación del Encargado de Almacén.',
+  'ACCOUNTING.APPROVE': 'Aprueba la validación contable y habilita el Registro en Profit.',
+  'ACCOUNTING.VIEW': 'Consulta la bandeja de Contabilidad y las colas de Registro Profit.',
+  'MANAGER.APPROVE': 'Aprueba, devuelve o rechaza solicitudes del departamento asignado.',
+  'ADMIN.MANAGE': 'Administra usuarios, roles, permisos y configuración del sistema.',
+  'AUDIT.VIEW': 'Consulta el registro de auditoría de acciones del sistema.',
+  'IMPORT.RUN': 'Ejecuta procesos de importación de artículos maestros.',
+  'IMPORT.VIEW': 'Consulta ejecuciones e historial de importaciones.',
+  'PROFIT.WRITE': 'Crea y verifica artículos en Profit Plus (solo con flujo aprobado).',
+  'SOLICITUDES.VIEW_ALL': 'Consulta el universo global de solicitudes del ámbito autorizado.',
+};
+
+export function getPermissionDescription(code: string): string | null {
+  return PERMISSION_DESCRIPTIONS[code] ?? null;
+}
+
 /** Etapa/área responsable derivada del estado real (14G §30, sin inventar). */
 const ETAPA_POR_ESTADO: Record<string, string> = {
   BORRADOR: 'Solicitante',

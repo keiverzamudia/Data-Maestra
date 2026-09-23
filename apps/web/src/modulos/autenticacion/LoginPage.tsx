@@ -200,7 +200,7 @@ export const LoginPage: React.FC = () => {
                 {loading ? 'Verificando…' : 'Iniciar sesión'}
               </Button>
               {error && <Alert tone="danger">{error}</Alert>}
-              <p className="muted small">Acceso corporativo con tu contraseña de Profit.</p>
+              <p className="muted small">Acceso corporativo con tu contraseña de Profit Prueba.</p>
             </div>
         </div>
       </main>

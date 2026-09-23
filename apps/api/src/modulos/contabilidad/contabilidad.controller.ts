@@ -1,5 +1,5 @@
-import { Controller, Get, Post, Param, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiParam } from '@nestjs/swagger';
+import { Controller, Get, Post, Param, Query, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { ContabilidadService } from './contabilidad.service';
 import { AutenticacionService } from '../autenticacion/autenticacion.service';
 import { RbacGuard } from '../autenticacion/rbac.guard';
@@ -19,15 +19,17 @@ export class ContabilidadController {
   @Get('pending')
   @RequirePermission('ACCOUNTING.VIEW')
   @ApiOperation({ summary: 'List requests pending accounting approval' })
-  findPending() {
-    return this.accountingService.findPendingApproval();
+  @ApiQuery({ name: 'companyId', required: false })
+  findPending(@Query('companyId') companyId?: string) {
+    return this.accountingService.findPendingApproval(companyId || undefined);
   }
 
   @Get('pending-profit')
   @RequirePermission('ACCOUNTING.VIEW')
   @ApiOperation({ summary: 'List accounting-approved requests pending Profit registration' })
-  findPendingProfit() {
-    return this.accountingService.findPendingProfitRegistration();
+  @ApiQuery({ name: 'companyId', required: false })
+  findPendingProfit(@Query('companyId') companyId?: string) {
+    return this.accountingService.findPendingProfitRegistration(companyId || undefined);
   }
 
   @Get(':id')

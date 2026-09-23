@@ -3,8 +3,10 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useSession } from '../../contextos/SessionContext';
 import { useCompany } from '../../contextos/CompanyContext';
 import { useNotifications, timeAgo } from '../../hooks/useNotifications';
+import { useRequestContextSummary } from '../../hooks/useRequestContextSummary';
 import { getRoleLabel } from '../../utilidades/presentacion';
-import { visibleNav, NAV, GROUP_LABEL, navMatches } from './navigation';
+import { visibleNav, NAV, GROUP_LABEL, navMatches, type NavBadgeKey } from './navigation';
+import { MenuBadge } from './MenuBadge';
 
 /** 11B — Miga de pan derivada de la navegación (solo presentación). */
 const Breadcrumb: React.FC = () => {
@@ -161,6 +163,24 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
   const { logout, hasPermission } = useSession();
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  // FASE counters — una sola request de resumen para todos los badges del menú.
+  const { summary, loading: countersLoading, error: countersError } = useRequestContextSummary();
+
+  const badgeStatus = countersLoading ? 'loading' as const : countersError ? 'error' as const : 'ready' as const;
+
+  const badgeFor = (key?: NavBadgeKey): { value?: number; status: 'loading' | 'error' | 'ready' } | null => {
+    if (!key || !summary) {
+      if (!key) return null;
+      return { value: undefined, status: badgeStatus };
+    }
+    return { value: summary.work[key], status: 'ready' };
+  };
+
+  const renderBadge = (key?: NavBadgeKey, label?: string) => {
+    const b = badgeFor(key);
+    if (!b) return null;
+    return <MenuBadge value={b.value} status={b.status} label={label} />;
+  };
 
   // Al navegar en móvil, la navegación drawer se cierra sola.
   React.useEffect(() => { setMobileOpen(false); }, [pathname]);
@@ -178,6 +198,7 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
   // Antes, la ruta propia (p. ej. /solicitudes) nunca se renderizaba: con
   // solo REQUEST.VIEW la sección quedaba como encabezado vacío sin acceso
   // visible. Cada enlace sigue gobernado por su propio permiso.
+  // FASE counters — badges contextuales en entradas de Trabajo.
   const renderEntry = (n: (typeof nav)[number]) => n.children ? (
     <div key={n.key} className="nav-group">
       {!collapsed && <div className="nav-section">{n.label}</div>}
@@ -185,6 +206,7 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
         <NavLink key={n.to} to={n.to} title={n.label} className={({ isActive }) => `nav-link ${isActive ? 'nav-active' : ''}`}>
           <span className="nav-icon" aria-hidden="true"><n.icon size={18} strokeWidth={1.8} /></span>
           {!collapsed && <span>{n.label}</span>}
+          {n.badge && <span className="nav-badge-slot">{renderBadge(n.badge, n.label)}</span>}
         </NavLink>
       )}
       {n.children.map(c => {
@@ -193,6 +215,7 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
           <NavLink key={c.to} to={c.to} title={c.label} className={({ isActive }) => `nav-link ${isActive ? 'nav-active' : ''}`}>
             <span className="nav-icon" aria-hidden="true"><Icon size={18} strokeWidth={1.8} /></span>
             {!collapsed && <span>{c.label}</span>}
+            {c.badge && <span className="nav-badge-slot">{renderBadge(c.badge, c.label)}</span>}
           </NavLink>
         );
       })}
@@ -201,6 +224,7 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
     <NavLink key={n.to} to={n.to!} end={n.to === '/'} title={n.label} className={({ isActive }) => `nav-link ${isActive ? 'nav-active' : ''}`}>
       <span className="nav-icon" aria-hidden="true"><n.icon size={18} strokeWidth={1.8} /></span>
       {!collapsed && <span>{n.label}</span>}
+      {n.badge && <span className="nav-badge-slot">{renderBadge(n.badge, n.label)}</span>}
     </NavLink>
   );
 

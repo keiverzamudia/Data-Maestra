@@ -33,9 +33,9 @@ export class ContabilidadService {
     private readonly profit: ProfitAdapterService,
   ) {}
 
-  async findPendingApproval() {
+  async findPendingApproval(companyId?: string) {
     const rows = await this.prisma.request.findMany({
-      where: { status: 'PENDIENTE_CONTABILIDAD' },
+      where: { status: 'PENDIENTE_CONTABILIDAD', ...(companyId ? { companyId } : {}) },
       include: REQUEST_INCLUDE,
       orderBy: { createdAt: 'asc' },
     });
@@ -49,9 +49,12 @@ export class ContabilidadService {
    * de revisión/aprobación contable. Una solicitud CONTABILIDAD_APROBADA
    * permanece visible aquí hasta que exista un profit_code real.
    */
-  async findPendingProfitRegistration() {
+  async findPendingProfitRegistration(companyId?: string) {
     const rows = await this.prisma.request.findMany({
-      where: { status: { in: PROFIT_REGISTRATION_STATUSES } },
+      where: {
+        status: { in: PROFIT_REGISTRATION_STATUSES },
+        ...(companyId ? { companyId } : {}),
+      },
       include: REQUEST_INCLUDE,
       orderBy: { updatedAt: 'asc' },
     });

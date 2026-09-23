@@ -17,6 +17,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiQuery, ApiConsumes } from '@nestjs/swagger';
 import { join } from 'path';
 import { SolicitudesService } from './solicitud.service';
+import { RequestCountersService } from './request-counters.service';
 import { AutenticacionService } from '../autenticacion/autenticacion.service';
 import { RbacGuard } from '../autenticacion/rbac.guard';
 import { JwtGuard } from '../autenticacion/jwt.guard';
@@ -36,6 +37,7 @@ export class SolicitudesController {
   constructor(
     private readonly requestsService: SolicitudesService,
     private readonly authService: AutenticacionService,
+    private readonly countersService: RequestCountersService,
   ) {}
 
   @Post()
@@ -114,6 +116,17 @@ export class SolicitudesController {
   @ApiOperation({ summary: 'Scoped counters (server-side)' })
   resumen(@CurrentUser() user: RequestUser) {
     return this.requestsService.resumen(user.id);
+  }
+
+  /**
+   * FASE — Resumen contextual ÚNICO para Dashboard + menú + badges.
+   * Sin RequirePermission: cualquier sesión autenticada recibe SOLO su
+   * alcance calculado en backend (userId nunca llega del frontend).
+   */
+  @Get('context-summary')
+  @ApiOperation({ summary: 'Contextual request counters for menu and dashboard (auth-scoped)' })
+  contextSummary(@CurrentUser() user: RequestUser) {
+    return this.countersService.getContextSummary(user.id);
   }
 
   @Get('todas')
