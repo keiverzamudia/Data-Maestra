@@ -6,6 +6,93 @@ export const Button:React.FC<React.ButtonHTMLAttributes<HTMLButtonElement>&{vari
 };
 export const Input:React.FC<React.InputHTMLAttributes<HTMLInputElement>> = (p)=><input className="input" {...p}/>;
 export const Select:React.FC<React.SelectHTMLAttributes<HTMLSelectElement>> = (p)=><select className="input" {...p}/>;
+
+/** Normaliza para búsqueda: minúsculas + sin tildes. */
+export function normalizeSearchText(v: string): string {
+  return (v ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+export interface ComboboxOption { value: string; label: string; }
+/**
+ * Combobox: se ve como un select pero permite escribir para filtrar por
+ * coincidencia de código o descripción. Selección estricta: solo valores de
+ * la lista; si el texto no coincide, al salir se revierte al seleccionado.
+ */
+export const Combobox:React.FC<{
+  options: ComboboxOption[]; value: string; onChange:(value:string)=>void;
+  placeholder?: string; disabled?: boolean; ariaLabel?: string; id?: string;
+  noResultsText?: string;
+}> = ({options,value,onChange,placeholder,disabled,ariaLabel,id,noResultsText='Sin coincidencias'})=>{
+  const wrapRef = React.useRef<HTMLDivElement>(null);
+  const [open, setOpen] = React.useState(false);
+  const [text, setText] = React.useState('');
+  const [highlight, setHighlight] = React.useState(0);
+  const selected = options.find(o => o.value === value) ?? null;
+  const shown = selected ? selected.label : '';
+  // Sincroniza el texto visible con el valor externo (prefill, reseteo).
+  React.useEffect(() => { setText(shown); }, [shown]);
+  const query = normalizeSearchText(text);
+  const filtered = query
+    ? options.filter(o => normalizeSearchText(o.label).includes(query) || normalizeSearchText(o.value).includes(query))
+    : options;
+  React.useEffect(() => { setHighlight(0); }, [text]);
+
+  const commit = (v: string) => {
+    const opt = options.find(o => o.value === v) ?? null;
+    setText(opt ? opt.label : '');
+    setOpen(false);
+    if (v !== value) onChange(v);
+  };
+  const revert = () => { setText(shown); setOpen(false); };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!open) { setOpen(true); return; }
+      const n = filtered.length;
+      if (n === 0) return;
+      setHighlight(h => (h + (e.key === 'ArrowDown' ? 1 : -1) + n) % n);
+    } else if (e.key === 'Enter') {
+      if (open && filtered[highlight]) { e.preventDefault(); commit(filtered[highlight]!.value); }
+    } else if (e.key === 'Escape') {
+      revert();
+    }
+  };
+
+  return (
+    <div
+      className="combobox" ref={wrapRef}
+      onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) revert(); }}
+    >
+      <input
+        className="input" role="combobox"
+        id={id} aria-label={ariaLabel} aria-expanded={open}
+        aria-autocomplete="list" aria-controls={id ? `${id}-listbox` : undefined}
+        aria-activedescendant={open && filtered[highlight] && id ? `${id}-opt-${highlight}` : undefined}
+        autoComplete="off" placeholder={placeholder} value={text} disabled={disabled}
+        onFocus={() => { if (!disabled) setOpen(true); }}
+        onChange={e => { setText(e.target.value); setOpen(true); }}
+        onKeyDown={onKeyDown}
+      />
+      {open && !disabled && (
+        <ul className="combobox-list" role="listbox" id={id ? `${id}-listbox` : undefined} aria-label={ariaLabel}>
+          {filtered.length === 0 && <li className="combobox-empty" role="option" aria-selected="false">{noResultsText}</li>}
+          {filtered.map((o, i) => (
+            <li
+              key={o.value} role="option" id={id ? `${id}-opt-${i}` : undefined}
+              aria-selected={o.value === value}
+              className={`combobox-option${i === highlight ? ' combobox-option-active' : ''}${o.value === value ? ' combobox-option-selected' : ''}`}
+              onMouseDown={e => { e.preventDefault(); commit(o.value); }}
+              onMouseEnter={() => setHighlight(i)}
+            >
+              {o.label}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};
 export const Textarea:React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement>> = (p)=><textarea className="input" rows={3} {...p}/>;
 export const Badge:React.FC<{children:React.ReactNode; tone?:'gray'|'green'|'yellow'|'red'|'blue'}> = ({children,tone='gray'})=><span className={`badge badge-${tone}`}>{children}</span>;
 export const StatusBadge:React.FC<{status:string}> = ({status})=>{

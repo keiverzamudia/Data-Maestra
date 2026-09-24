@@ -11,6 +11,9 @@ function createPrismaMock() {
     requestAccountingCode: {
       createMany: vi.fn(),
     },
+    requestData: {
+      update: vi.fn(async () => ({})),
+    },
     catalogGroup: {
       findUnique: vi.fn(async () => ({ id: 'g1', code: 'FER', sourceCode: 'FER' })),
     },
@@ -35,17 +38,25 @@ function createProfitMock(configured = true) {
   };
 }
 
+function createCatalogosMock() {
+  return {
+    checkTaxType: vi.fn(async () => undefined),
+  };
+}
+
 describe('ContabilidadService', () => {
   let service: ContabilidadService;
   let prisma: ReturnType<typeof createPrismaMock>;
   let SolicitudesService: ReturnType<typeof createSolicitudesServiceMock>;
   let profit: ReturnType<typeof createProfitMock>;
+  let catalogos: ReturnType<typeof createCatalogosMock>;
 
   beforeEach(() => {
     prisma = createPrismaMock();
     SolicitudesService = createSolicitudesServiceMock();
     profit = createProfitMock();
-    service = new ContabilidadService(prisma as any, SolicitudesService as any, profit as any);
+    catalogos = createCatalogosMock();
+    service = new ContabilidadService(prisma as any, SolicitudesService as any, profit as any, catalogos as any);
   });
 
   describe('findPendingApproval', () => {
@@ -125,6 +136,7 @@ describe('ContabilidadService', () => {
       const result = await service.approve(
         'req-1',
         [{ code: '5010-01', description: 'Repuestos' }],
+        '1',
         'user-1',
         'c1',
       );
@@ -132,6 +144,11 @@ describe('ContabilidadService', () => {
       expect(prisma.requestAccountingCode.createMany).toHaveBeenCalledWith({
         data: [{ requestId: 'req-1', code: '5010-01', description: 'Repuestos', position: null }],
       });
+      expect(prisma.requestData.update).toHaveBeenCalledWith({
+        where: { requestId: 'req-1' },
+        data: { taxType: '1' },
+      });
+      expect(catalogos.checkTaxType).toHaveBeenCalledWith('1', 'c1');
       expect(SolicitudesService.approve).toHaveBeenCalledWith(
         'req-1',
         { action: 'APPROVE', comment: 'Accounting approved' },
@@ -149,7 +166,7 @@ describe('ContabilidadService', () => {
         accountingCodes: [],
       });
 
-      await expect(service.approve('req-1', [], 'user-1', 'c1')).rejects.toThrow(/mínimo 1/);
+      await expect(service.approve('req-1', [], '1', 'user-1', 'c1')).rejects.toThrow(/mínimo 1/);
       expect(prisma.requestAccountingCode.createMany).not.toHaveBeenCalled();
     });
 
@@ -160,10 +177,10 @@ describe('ContabilidadService', () => {
         requestData: { groupId: 'g1' },
         accountingCodes: [],
       });
-      service = new ContabilidadService(prisma as any, SolicitudesService as any, createProfitMock(false) as any);
+      service = new ContabilidadService(prisma as any, SolicitudesService as any, createProfitMock(false) as any, catalogos as any);
 
       await expect(
-        service.approve('req-1', [{ code: '1.1.04.03.01.006', description: 'Inventario' }], 'user-1', 'c1'),
+        service.approve('req-1', [{ code: '1.1.04.03.01.006', description: 'Inventario' }], '1', 'user-1', 'c1'),
       ).rejects.toThrow(/no tiene información contable configurada en Profit/);
       expect(SolicitudesService.approve).not.toHaveBeenCalled();
     });
@@ -176,10 +193,10 @@ describe('ContabilidadService', () => {
         accountingCodes: [],
       });
       const failing = { getGroupAccountingStandard: vi.fn(async () => { throw new Error('timeout'); }) };
-      service = new ContabilidadService(prisma as any, SolicitudesService as any, failing as any);
+      service = new ContabilidadService(prisma as any, SolicitudesService as any, failing as any, catalogos as any);
 
       await expect(
-        service.approve('req-1', [{ code: '1.1.04.03.01.006', description: 'Inventario' }], 'user-1', 'c1'),
+        service.approve('req-1', [{ code: '1.1.04.03.01.006', description: 'Inventario' }], '1', 'user-1', 'c1'),
       ).rejects.toThrow(/No se pudo consultar Profit/);
     });
 
@@ -192,7 +209,7 @@ describe('ContabilidadService', () => {
       });
 
       await expect(
-        service.approve('req-1', [{ code: '5010-01', description: 'Test' }], 'user-1', 'c1'),
+        service.approve('req-1', [{ code: '5010-01', description: 'Test' }], '1', 'user-1', 'c1'),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -209,6 +226,7 @@ describe('ContabilidadService', () => {
       await service.approve(
         'req-1',
         [{ code: '5010-01', description: 'Repuestos' }],
+        '1',
         'user-1',
         'c1',
         'Revisado contra estándar FER',
@@ -238,6 +256,7 @@ describe('ContabilidadService', () => {
           { code: '1.2.05.02.06.001', description: 'Costo mobiliario', position: 'c1' },
           { code: '1.1.04.01.01.001', description: 'Mercancías en tránsito', position: 'c7' },
         ],
+        '6',
         'user-1',
         'c1',
       );
@@ -265,6 +284,7 @@ describe('ContabilidadService', () => {
             { code: 'a', description: 'A', position: 'c1' },
             { code: 'b', description: 'B', position: 'c1' },
           ],
+          '1',
           'user-1',
           'c1',
         ),
@@ -280,8 +300,57 @@ describe('ContabilidadService', () => {
       });
 
       await expect(
-        service.approve('req-1', [{ code: 'a', description: 'A', position: 'c11' }], 'user-1', 'c1'),
+        service.approve('req-1', [{ code: 'a', description: 'A', position: 'c11' }], '1', 'user-1', 'c1'),
       ).rejects.toThrow(/c1\.\.c10/);
+    });
+
+    it('impuesto: obligatorio, con dominio y persistido antes de avanzar', async () => {
+      prisma.request.findUnique.mockResolvedValue({
+        id: 'req-1',
+        status: 'PENDIENTE_CONTABILIDAD',
+        requestData: { groupId: 'g1' },
+        accountingCodes: [],
+      });
+      prisma.requestAccountingCode.createMany.mockResolvedValue({ count: 1 });
+      SolicitudesService.approve.mockResolvedValue({ id: 'req-1', status: 'CONTABILIDAD_APROBADA' });
+
+      await expect(
+        service.approve('req-1', [{ code: '5010-01', description: 'X' }], undefined, 'user-1', 'c1'),
+      ).rejects.toThrow(/Falta el impuesto/);
+      await expect(
+        service.approve('req-1', [{ code: '5010-01', description: 'X' }], '  ', 'user-1', 'c1'),
+      ).rejects.toThrow(/Falta el impuesto/);
+      await expect(
+        service.approve('req-1', [{ code: '5010-01', description: 'X' }], '0', 'user-1', 'c1'),
+      ).rejects.toThrow(/inválido/);
+      await expect(
+        service.approve('req-1', [{ code: '5010-01', description: 'X' }], '10', 'user-1', 'c1'),
+      ).rejects.toThrow(/inválido/);
+      expect(SolicitudesService.approve).not.toHaveBeenCalled();
+
+      await service.approve('req-1', [{ code: '5010-01', description: 'X' }], '6', 'user-1', 'c1');
+      expect(catalogos.checkTaxType).toHaveBeenCalledWith('6', 'c1');
+      expect(prisma.requestData.update).toHaveBeenCalledWith({
+        where: { requestId: 'req-1' },
+        data: { taxType: '6' },
+      });
+      expect(SolicitudesService.approve).toHaveBeenCalledTimes(1);
+    });
+
+    it('impuesto: inexistente en Profit bloquea sin avanzar', async () => {
+      prisma.request.findUnique.mockResolvedValue({
+        id: 'req-1',
+        status: 'PENDIENTE_CONTABILIDAD',
+        requestData: { groupId: 'g1' },
+        accountingCodes: [],
+      });
+      catalogos.checkTaxType.mockRejectedValueOnce(new Error('El impuesto 9 no existe en Profit.'));
+
+      await expect(
+        service.approve('req-1', [{ code: '5010-01', description: 'X' }], '9', 'user-1', 'c1'),
+      ).rejects.toThrow(/no existe en Profit/);
+      expect(prisma.requestData.update).not.toHaveBeenCalled();
+      expect(SolicitudesService.approve).not.toHaveBeenCalled();
     });
   });
 

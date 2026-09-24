@@ -162,8 +162,12 @@ export const AprobacionAlmacenPage: React.FC = () => {
   if (selected) {
     const requester = usuarios.find(u => u.id === selected.requesterId)?.displayName || '—';
     const dept = departamentos.find(d => d.id === selected.departmentId)?.name || '—';
-    const groupName = grupos.find(g => g.id === selected.groupId)?.name || selected.groupId || '—';
-    const subName = subgrupos.find(s => s.id === selected.subgroupId)?.name || selected.subgroupId || '—';
+    const groupItem = grupos.find(g => g.id === selected.groupId);
+    const subItem = subgrupos.find(s => s.id === selected.subgroupId);
+    const groupName = groupItem?.name || selected.groupId || '—';
+    const subName = subItem?.name || selected.subgroupId || '—';
+    const groupLabel = groupItem && groupItem.code?.trim() ? `${groupItem.name} (${groupItem.code.trim()})` : groupName;
+    const subLabel = subItem && subItem.code?.trim() ? `${subItem.name} (${subItem.code.trim()})` : subName;
     const approvals = [...(selected.approvals ?? [])].sort(
       (a, b) => +new Date(a.createdAt) - +new Date(b.createdAt),
     );
@@ -229,7 +233,7 @@ export const AprobacionAlmacenPage: React.FC = () => {
         <ConfirmDialog
           open={confirmApprove}
           title="Aprobar clasificación"
-          desc={`¿Aprobar la solicitud #${selected.requestNumber} para continuar a Contabilidad? Grupo: ${groupName}. Subgrupo: ${subName}. Código Master: ${selected.masterCode || '—'}.`}
+          desc={`¿Aprobar la solicitud #${selected.requestNumber} para continuar a Contabilidad? Grupo: ${groupLabel}. Subgrupo: ${subLabel}. Código Master: ${selected.masterCode || '—'}.`}
           confirmLabel="Aprobar"
           busy={saving}
           onCancel={() => setConfirmApprove(false)}

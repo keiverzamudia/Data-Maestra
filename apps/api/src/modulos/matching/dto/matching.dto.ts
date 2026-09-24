@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsOptional, IsString, IsIn, IsInt, Min, Max } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, IsIn, IsInt, Min, Max, MinLength, MaxLength } from 'class-validator';
 import { Type } from 'class-transformer';
 import type { MatchDecisionKind } from '../domain/matching-contracts';
 
@@ -155,6 +155,10 @@ export class AnalyzeDraftDto {
 
   @IsOptional()
   @IsString({ message: DEBE_SER_TEXTO })
+  model?: string;
+
+  @IsOptional()
+  @IsString({ message: DEBE_SER_TEXTO })
   partNumber?: string;
 
   @IsOptional()
@@ -165,10 +169,44 @@ export class AnalyzeDraftDto {
   @IsString({ message: DEBE_SER_TEXTO })
   companyCode?: string;
 
+  /**
+   * FASE P2 — búsqueda en dos tiempos:
+   * - INICIAL: solo texto libre (descripción/propósito). Es la búsqueda
+   *   automática mientras se llena el formulario.
+   * - COMPLETA: todos los campos del borrador. Solo el usuario la dispara
+   *   con "Validar artículo" cuando la clasificación está completa.
+   * Ausente = COMPLETA (compatibilidad con clientes existentes).
+   */
+  @IsOptional()
+  @IsIn(['INICIAL', 'COMPLETA'] as const, { message: 'La fase de búsqueda no es válida.' })
+  phase?: 'INICIAL' | 'COMPLETA';
+
   @IsOptional()
   @Type(() => Number)
   @IsInt({ message: 'El límite debe ser un número entero.' })
   @Min(1, { message: 'El límite mínimo es 1.' })
   @Max(20, { message: 'El límite máximo es 20.' })
+  limit?: number;
+}
+
+/**
+ * FASE P3 — Búsqueda manual de un artículo en Profit desde el Analizador.
+ * Solo consulta (REQUEST.VIEW): no decide ni escribe en Profit.
+ */
+export class SearchArticleDto {
+  @IsString({ message: 'El identificador de solicitud debe ser un texto.' })
+  @IsNotEmpty({ message: 'El identificador de solicitud es requerido.' })
+  requestId!: string;
+
+  @IsString({ message: 'La búsqueda debe ser un texto.' })
+  @MinLength(2, { message: 'Escribe al menos 2 caracteres para buscar el artículo.' })
+  @MaxLength(60, { message: 'El texto de búsqueda no puede superar los 60 caracteres.' })
+  term!: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'El límite debe ser un número entero.' })
+  @Min(1, { message: 'El límite mínimo es 1.' })
+  @Max(50, { message: 'El límite máximo es 50.' })
   limit?: number;
 }

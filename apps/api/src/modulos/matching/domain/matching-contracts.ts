@@ -54,8 +54,15 @@ export type MatchConflictKind =
   | 'MODEL_CONFLICT'
   | 'PART_NUMBER_CONFLICT'
   | 'CATEGORY_CONFLICT'
+  // FASE P1 — antes solo existía SUBCATEGORY_MATCH: una diferencia de
+  // subgrupo era "silenciosa" (ni evidencia ni conflicto). Mismo criterio
+  // que categoría: ambos lados con dato y distintos → conflicto.
+  | 'SUBCATEGORY_CONFLICT'
   | 'UNIT_CONFLICT'
-  | 'APPLICATION_CONFLICT';
+  | 'APPLICATION_CONFLICT'
+  // FASE P1 — el propósito solo sumaba (+5) pero nunca generaba conflicto,
+  // aunque el motor lo declare como señal bidireccional.
+  | 'PURPOSE_CONFLICT';
 
 export type MatchCandidateClassification = 'HIGH' | 'MEDIUM' | 'LOW' | 'REVIEW';
 

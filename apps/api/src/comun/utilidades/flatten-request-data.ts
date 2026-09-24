@@ -15,6 +15,7 @@ export function flattenRequestData(raw: any) {
     partNumber: requestData.partNumber,
     application: requestData.application,
     masterCode: requestData.masterCode,
+    adjustedDescription: (requestData as { adjustedDescription?: string }).adjustedDescription ?? undefined,
     articleType: requestData.articleType,
     articleTypeManual: requestData.articleTypeManual,
     taxType: requestData.taxType,

@@ -94,10 +94,21 @@ export const apiMatchingService = {
     return api.post<CandidatesResult>('/api/v1/matching/candidatos', { requestId, companyCode });
   },
 
-  async analizar(requestId: string, draft: AnalyzerDraft, opts?: { limit?: number; companyCode?: string }): Promise<AnalyzerResult> {
+  /**
+   * FASE P2 — `phase` gobierna la búsqueda en dos tiempos:
+   * INICIAL (automática, solo descripción) / COMPLETA (botón
+   * "Validar artículo", todos los campos). Si no se envía, el backend
+   * interpreta COMPLETA.
+   */
+  async analizar(
+    requestId: string,
+    draft: AnalyzerDraft,
+    opts?: { limit?: number; companyCode?: string; phase?: AnalyzerPhase },
+  ): Promise<AnalyzerResult> {
     return api.post<AnalyzerResult>('/api/v1/matching/analizar', {
       requestId,
       ...draft,
+      phase: opts?.phase,
       limit: opts?.limit,
       companyCode: opts?.companyCode,
     });
@@ -113,6 +124,19 @@ export const apiMatchingService = {
       profitArticleCode: article.profitArticleCode,
       decision,
     });
+  },
+
+  /**
+   * FASE P3 — Búsqueda manual de un artículo en Profit.
+   * El backend busca primero en el universo local y, si no lo encuentra,
+   * consulta Profit en vivo. Solo consulta: no modifica el análisis.
+   */
+  async buscarArticulo(
+    requestId: string,
+    term: string,
+    limit?: number,
+  ): Promise<ProfitSearchResult> {
+    return api.post<ProfitSearchResult>('/api/v1/matching/buscar', { requestId, term, limit });
   },
 };
 
@@ -151,7 +175,11 @@ export interface CandidatesResult {
   engineVersion: string;
 }
 
-/** FASE 23.1 — Borrador del formulario de Almacén (datos aún no guardados). */
+/**
+ * FASE 23.1 — Borrador del formulario de Almacén (datos aún no guardados).
+ * `model` se sumó en FASE P1: el formulario de Almacén lo recoge desde la
+ * FASE 24.2 pero hasta ahora se perdía antes de llegar al motor.
+ */
 export interface AnalyzerDraft {
   description?: string;
   purpose?: string;
@@ -161,34 +189,47 @@ export interface AnalyzerDraft {
   brandCode?: string;
   unitCode?: string;
   taxType?: string;
+  model?: string;
   partNumber?: string;
   application?: string;
 }
+
+/**
+ * FASE P1 — trazabilidad del universo consultado. `poolTruncated=true`
+ * significa que el tope de perfiles silenció parte del universo de la empresa
+ * (la UI lo avisa; el resultado sigue siendo el mismo análisis).
+ */
+/** FASE P2 — fase de la búsqueda (eco de lo que el backend ejecutó). */
+export type AnalyzerPhase = 'INICIAL' | 'COMPLETA';
 
 export interface AnalyzerResult {
   input: Record<string, unknown>;
   candidates: EngineCandidate[];
   insufficient: boolean;
   engineVersion: string;
+  /** FASE P2 — qué fase produjo estos resultados (INICIAL = solo descripción). */
+  phase?: AnalyzerPhase;
+  poolTotal?: number | null;
+  poolLimit?: number;
+  poolTruncated?: boolean;
 }
 
-/** FASE 23.1 — Borrador del formulario de Almacén (datos aún no guardados). */
-export interface AnalyzerDraft {
-  description?: string;
-  purpose?: string;
-  groupCode?: string;
-  subgroupCode?: string;
-  categoryCode?: string;
-  brandCode?: string;
-  unitCode?: string;
-  taxType?: string;
-  partNumber?: string;
-  application?: string;
+/** FASE P3 — origen de los resultados de la búsqueda manual. */
+export type ProfitSearchSource = 'LOCAL' | 'PROFIT';
+
+/** FASE P3 — coincidencia devuelta por la búsqueda manual. */
+export interface ProfitSearchHit {
+  companyCode: string;
+  profitArticleCode: string;
+  description: string;
+  brand?: string;
+  model?: string;
 }
 
-export interface AnalyzerResult {
-  input: Record<string, unknown>;
-  candidates: EngineCandidate[];
-  insufficient: boolean;
-  engineVersion: string;
+/** FASE P3 — resultado de la búsqueda manual de un artículo en Profit. */
+export interface ProfitSearchResult {
+  companyCode: string;
+  term: string;
+  source: ProfitSearchSource;
+  results: ProfitSearchHit[];
 }

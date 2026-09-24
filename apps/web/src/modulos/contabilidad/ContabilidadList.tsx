@@ -4,7 +4,7 @@ import { useCompany } from '../../contextos/CompanyContext';
 import { accountingService } from '../../servicios';
 import { useCatalogos } from '../../hooks/useCatalogos';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
-import { Button, SearchInput, StatusBadge, EmptyState, Modal, Textarea, Alert, ConfirmDialog, ErrorState, Skeleton, Tabs, DataTable, Pagination, type DataColumn } from '../../componentes/ui';
+import { Button, SearchInput, StatusBadge, EmptyState, Modal, Textarea, Alert, ConfirmDialog, ErrorState, Skeleton, Tabs, DataTable, Pagination, Field, Combobox, type DataColumn } from '../../componentes/ui';
 import { Page } from '../../componentes/ui';
 import { HelpButton } from '../../componentes/ayuda';
 import { WorkflowStepper, ProfitRegistrationPanel } from '../../componentes/workflow';
@@ -13,6 +13,7 @@ import {
   type ContabilidadEntry, type CheckEvidence, type CheckStatus,
 } from '../../componentes/contabilidad';
 import { apiProfitService, type ProfitGroupStandard } from '../../servicios/api/api-profit-service';
+import { apiCatalogEffectiveService } from '../../servicios/api/api-catalog-effective-service';
 import type { Request } from '../../tipos';
 
 function findName(list: { id: string; name: string }[], id?: string) {
@@ -58,6 +59,11 @@ export const AccountingList: React.FC = () => {
   const [profitQueue, setProfitQueue] = React.useState<Request[]>([]);
   const [profitLoading, setProfitLoading] = React.useState(true);
   const [profitError, setProfitError] = React.useState<string | null>(null);
+  // Impuesto (tipo_imp): lo define Contabilidad, no Almacén.
+  const [taxOptions, setTaxOptions] = React.useState<Array<{ code: string; description: string }>>([]);
+  const [taxLoading, setTaxLoading] = React.useState(false);
+  const [taxError, setTaxError] = React.useState<string | null>(null);
+  const [taxType, setTaxType] = React.useState('');
 
   const loadList = React.useCallback(() => {
     setLoading(true);
@@ -126,22 +132,45 @@ export const AccountingList: React.FC = () => {
     }
   }, [grupos]);
 
+  // Tasas del tabulado Profit para el selector de impuesto.
+  const loadTaxOptions = React.useCallback(async () => {
+    setTaxLoading(true);
+    setTaxError(null);
+    try {
+      const env = await apiCatalogEffectiveService.taxTypes(companyId || undefined);
+      setTaxOptions(
+        env.items
+          .map(i => ({ code: (i.code ?? '').trim(), description: (i.description ?? '').trim() }))
+          .filter(t => t.code),
+      );
+    } catch (err: any) {
+      setTaxOptions([]);
+      setTaxError(err?.message || 'No se pudieron cargar las tasas de Profit.');
+    } finally {
+      setTaxLoading(false);
+    }
+  }, [companyId]);
+
   const openDetail = (r: Request, initialTab = 0) => {
     setSelected(r);
     setError(null);
     setNotes('');
     setTab(initialTab);
+    setTaxType(r.taxType ?? '');
     setDetailLoading(true);
     // Detalle con aprobaciones (trazabilidad real); si falla, se usa la fila.
     accountingService.getAccountingDetail(r.id).then(
       d => {
         setSelected(d);
+        setTaxType(d.taxType ?? r.taxType ?? '');
         setDetailLoading(false);
         void loadStandard(d);
+        void loadTaxOptions();
       },
       () => {
         setDetailLoading(false);
         void loadStandard(r);
+        void loadTaxOptions();
       },
     );
   };
@@ -191,7 +220,7 @@ export const AccountingList: React.FC = () => {
 
   const reloadDetail = React.useCallback((id: string, fallback: Request) => {
     accountingService.getAccountingDetail(id).then(
-      d => setSelected(d),
+      d => { setSelected(d); setTaxType(d.taxType ?? fallback.taxType ?? ''); },
       () => setSelected(fallback),
     );
   }, []);
@@ -204,6 +233,7 @@ export const AccountingList: React.FC = () => {
       await accountingService.approveAccounting(
         selected.id,
         entries.map(e => ({ code: e.code, description: e.description, position: e.position })),
+        taxType || undefined,
         notes.trim() || undefined,
       );
       // 16A — Contabilidad aprobada: permanecer en el workspace, recargar y
@@ -250,6 +280,15 @@ export const AccountingList: React.FC = () => {
     const masterCode = selected.masterCode || (selected.groupId && selected.subgroupId
       ? `${grupos.find(g => g.id === selected.groupId)?.code || ''}${subgrupos.find(s => s.id === selected.subgroupId)?.code || ''}000001`
       : '—');
+    // Impuesto: etiqueta con nombre de la tasa + sugerencia 14B (C/V→1, S→6).
+    const taxLabelOf = (code: string): string => {
+      const found = taxOptions.find(t => t.code === code);
+      return found ? `${code} — ${found.description}` : code;
+    };
+    const suggestedTax = selected.articleType === 'S' ? '6' : selected.articleType ? '1' : '';
+    const taxCoherenceWarning = taxType && suggestedTax && taxType !== suggestedTax
+      ? `El tipo ${selected.articleType} suele usar tasa ${suggestedTax}; se indicó ${taxType} (excepción válida en Profit, verificar).`
+      : null;
     const checks: CheckEvidence[] = [
       {
         label: 'Grupo', status: selected.groupId ? 'ok' : 'missing',
@@ -287,6 +326,13 @@ export const AccountingList: React.FC = () => {
         verification: 'Se encontró al menos una posición contable válida en el estándar del grupo.',
         origin: 'Profit',
         result: entries.length >= 1 ? `${entries.length} posiciones encontradas` : undefined,
+      },
+      {
+        label: 'Impuesto (tipo_imp)', status: taxType ? 'ok' : 'missing',
+        value: taxType ? taxLabelOf(taxType) : 'Sin seleccionar',
+        verification: 'Contabilidad define la tasa del impuesto para el registro en Profit.',
+        origin: 'Profit · tabulado',
+        result: taxType ? 'Validación correcta' : 'Faltante',
       },
     ];
     const missing = checks.filter(c => c.status !== 'ok').length;
@@ -379,6 +425,28 @@ export const AccountingList: React.FC = () => {
           </div>
 
           <div className="stack">
+            <section className="card p16" aria-label="Impuesto">
+              <h3 className="subsection-title">Impuesto (tipo_imp)</h3>
+              {taxLoading && <p className="muted small">Cargando tasas de Profit…</p>}
+              {taxError && <Alert tone="danger">{taxError}</Alert>}
+              {!taxLoading && !taxError && (
+                <Field label="Tasa del impuesto" required helper="La define Contabilidad; Almacén ya no la selecciona.">
+                  <Combobox
+                    options={taxOptions.map(t => ({ value: t.code, label: `${t.code} — ${t.description}` }))}
+                    value={taxType}
+                    onChange={setTaxType}
+                    placeholder="Seleccionar tasa"
+                    disabled={saving || selected.status !== 'PENDIENTE_CONTABILIDAD'}
+                  />
+                </Field>
+              )}
+              {suggestedTax && !taxType && selected.status === 'PENDIENTE_CONTABILIDAD' && (
+                <p className="muted small" style={{ marginTop: 8 }}>Sugerencia por tipo {selected.articleType}: tasa {suggestedTax}.</p>
+              )}
+              {taxCoherenceWarning && (
+                <p className="muted small field-note">{taxCoherenceWarning}</p>
+              )}
+            </section>
             <ValidationChecklist checks={checks} ready={ready} missing={missing} loading={stdLoading} />
             {selected.status === 'PENDIENTE_CONTABILIDAD' ? (
               <DecisionPanel

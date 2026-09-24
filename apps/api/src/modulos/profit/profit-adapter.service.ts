@@ -15,6 +15,14 @@ export interface ProfitArticle {
   co_color: string;
   uni_venta: string;
   stock_act: number;
+  // FASE P1 — art.modelo/art.ref (char 20). Son los únicos campos
+  // identificadores que `dbo.art` expone además de co_art; se leen para que
+  // el motor tenga una señal MODEL real. `ref` se lee igualmente pero NO se
+  // mapea a partNumber: en Data-Maestra "Part Number" y "Referencia" son
+  // campos distintos del formulario y confundirlos generaría conflictos
+  // falsos.
+  modelo?: string;
+  ref?: string;
 }
 
 export interface ProfitGroup {
@@ -254,7 +262,8 @@ export class ProfitAdapterService {
 
     const mssql: any = await profitDriver();
     const rows = await this.query<ProfitArticle>(
-      `SELECT TOP 1 co_art, art_des, co_lin, co_subl, co_cat, co_color, uni_venta, stock_act
+      `SELECT TOP 1 co_art, art_des, co_lin, co_subl, co_cat, co_color, uni_venta, stock_act,
+              LTRIM(RTRIM(modelo)) AS modelo, LTRIM(RTRIM(ref)) AS ref
        FROM dbo.art WHERE LTRIM(RTRIM(co_art)) = LTRIM(RTRIM(@co_art))`,
       { co_art: { type: mssql.VarChar(30), value: co_art } },
     );
@@ -263,7 +272,8 @@ export class ProfitAdapterService {
 
   async getArticles(limit = 20, search?: string, co_lin?: string): Promise<ProfitArticle[]> {
     const mssql: any = await profitDriver();
-    let sql = `SELECT TOP (@limit) co_art, art_des, co_lin, co_subl, co_cat, co_color, uni_venta, stock_act FROM dbo.art`;
+    let sql = `SELECT TOP (@limit) co_art, art_des, co_lin, co_subl, co_cat, co_color, uni_venta, stock_act,
+               LTRIM(RTRIM(modelo)) AS modelo, LTRIM(RTRIM(ref)) AS ref FROM dbo.art`;
     const params: any = { limit: { type: mssql.Int, value: limit } };
     const conditions: string[] = [];
     if (search) {

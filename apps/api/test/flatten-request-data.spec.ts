@@ -155,4 +155,20 @@ describe('flattenRequestData', () => {
     expect(result.workflowInstance).toEqual({ id: 'wf-1', currentStepCode: 'PENDIENTE_GERENTE' });
     expect(result.groupId).toBe('g1');
   });
+
+  it('expone adjustedDescription cuando existe', () => {
+    const raw = {
+      id: 'req-9',
+      requestData: { groupId: 'g1', adjustedDescription: 'TORNILLO HEX 1/2' },
+    };
+    expect(flattenRequestData(raw).adjustedDescription).toBe('TORNILLO HEX 1/2');
+  });
+
+  it('adjustedDescription es undefined cuando es null', () => {
+    const raw = {
+      id: 'req-10',
+      requestData: { groupId: 'g1', adjustedDescription: null },
+    };
+    expect(flattenRequestData(raw).adjustedDescription).toBeUndefined();
+  });
 });

@@ -137,6 +137,7 @@ Definition of Done:
 - tests;
 - documentación;
 - migración si aplica;
+- si cambia `schema.prisma`: `db:generate` + migración versionada + rebuild/restart de la API antes de probar (el cliente generado y el build deben incluir el cambio);
 - logs;
 - manejo de errores;
 - revisión de seguridad;

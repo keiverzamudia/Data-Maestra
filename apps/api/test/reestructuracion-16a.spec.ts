@@ -21,6 +21,7 @@ function accountingPrisma() {
   return {
     request: { findUnique: vi.fn() },
     requestAccountingCode: { createMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    requestData: { update: vi.fn().mockResolvedValue({}) },
     catalogGroup: { findUnique: vi.fn().mockResolvedValue({ id: 'g1', code: 'FER' }) },
   };
 }
@@ -34,7 +35,8 @@ describe('16A — Contabilidad aprueba/devuelve/rechaza sin etapas posteriores',
     prisma = accountingPrisma();
     requests = { approve: vi.fn() };
     const profit = { getGroupAccountingStandard: vi.fn(async () => ({ configured: true })) };
-    service = new ContabilidadService(prisma as any, requests as any, profit as any);
+    const catalogos = { checkTaxType: vi.fn(async () => undefined) };
+    service = new ContabilidadService(prisma as any, requests as any, profit as any, catalogos as any);
   });
 
   it('1-2. aprueba PENDIENTE_CONTABILIDAD → CONTABILIDAD_APROBADA', async () => {
@@ -43,7 +45,7 @@ describe('16A — Contabilidad aprueba/devuelve/rechaza sin etapas posteriores',
       requestData: { groupId: 'g1' }, accountingCodes: [],
     });
     requests.approve.mockResolvedValue({ id: 'req-1', status: 'CONTABILIDAD_APROBADA' });
-    const r = await service.approve('req-1', [{ code: '1', description: 'Inv' }], 'u4', 'c1');
+    const r = await service.approve('req-1', [{ code: '1', description: 'Inv' }], '1', 'u4', 'c1');
     expect(requests.approve).toHaveBeenCalledWith(
       'req-1', { action: 'APPROVE', comment: 'Accounting approved' }, 'u4', 'c1',
     );

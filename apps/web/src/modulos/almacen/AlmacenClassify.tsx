@@ -7,11 +7,10 @@ import { warehouseService, auditService } from '../../servicios';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
 import { useCatalogos } from '../../hooks/useCatalogos';
 import { useProfitCatalogos } from '../../hooks/useProfitCatalogos';
-import { analyzerProposals } from '../../mock/source-items';
-import { Button, Select, Textarea, Modal, ImageLightbox, Alert, ConfirmDialog, Field, StatusBadge, Skeleton, SectionCard } from '../../componentes/ui';
+import { Button, Combobox, Textarea, Modal, ImageLightbox, Alert, ConfirmDialog, Field, StatusBadge, Skeleton, SectionCard } from '../../componentes/ui';
 import { Page } from '../../componentes/ui';
 import { HelpButton, HelpFieldInfo } from '../../componentes/ayuda';
-import { WorkflowStepper, WorkflowStatusInfo, AnalyzerPanel, MasterCodePreview } from '../../componentes/workflow';
+import { WorkflowStepper, WorkflowStatusInfo, MasterCodePreview } from '../../componentes/workflow';
 import { Analizador } from './Analizador';
 import type { AnalyzerDraft } from '../../servicios/api/api-matching-service';
 import type { Request } from '../../tipos';
@@ -38,14 +37,12 @@ export const WarehouseClassify: React.FC = () => {
   const [legacyCategoryId, setLegacyCategoryId] = React.useState('');
   const [legacyBrandId, setLegacyBrandId] = React.useState('');
   const [unitId, setUnitId] = React.useState('');
-  // FASE 14C-FORM: tipo (Profit, nunca manual), impuesto (tipo_imp, no co_imp),
-  // unidad Profit (valida trigger TrigI_art). articleTypeManual = override de
-  // Warehouse sobre el default sugerido de la línea (§18).
+  // FASE 14C-FORM: tipo (Profit, nunca manual) y unidad Profit (valida
+  // trigger TrigI_art). El impuesto (tipo_imp) lo define Contabilidad.
+  // articleTypeManual = override de Warehouse sobre el default de línea (§18).
   const [articleType, setArticleType] = React.useState('');
   const [articleTypeManual, setArticleTypeManual] = React.useState(false);
   const [groupDefaultType, setGroupDefaultType] = React.useState<string | null>(null);
-  const [taxType, setTaxType] = React.useState('');
-  const [taxTouched, setTaxTouched] = React.useState(false);
   const [unitCode, setUnitCode] = React.useState('');
   // FASE 23.1 — Analizador: disparo manual desde "Validar artículo".
   const [analyzerRun, setAnalyzerRun] = React.useState(0);
@@ -59,11 +56,15 @@ export const WarehouseClassify: React.FC = () => {
   const manualRef = React.useRef(false);
   const {
     grupos: pGrupos, subgrupos: pSubgrupos, categorias: pCategorias, marcas: pMarcas,
-    tipos: pTipos, tasas: pTasas, unidadesProfit: pUnidades, defaultType: lineDefaultType,
+    tipos: pTipos, unidadesProfit: pUnidades, defaultType: lineDefaultType,
     loading: loadingProfit, error: profitError,
   } = useProfitCatalogos(groupCode || undefined, companyId || undefined);
   const [partNumber, setPartNumber] = React.useState('');
   const [application, setApplication] = React.useState('');
+  // Descripción ajustada por Almacén (máx. 100): si difiere de la original,
+  // sustituye a requestedDescription como art_des en Profit y se muestra
+  // al solicitante en su seguimiento. Se prellena con la original.
+  const [adjustedDescription, setAdjustedDescription] = React.useState('');
   // FASE 24.2 — modelo/referencia opcionales (Profit art.modelo/art.ref).
   const [model, setModel] = React.useState('');
   const [ref, setRef] = React.useState('');
@@ -79,17 +80,20 @@ export const WarehouseClassify: React.FC = () => {
 
   // FASE 23.1 — Borrador del Analizador: descripción y finalidad de la
   // solicitud + códigos del formulario (datos aún no guardados).
+  // FASE P1 — `model` viaja ahora al motor: era la única señal
+  // identificadora del formulario que se descartaba antes de comparar.
   const draft: AnalyzerDraft = React.useMemo(() => ({
-    description: request?.requestedDescription,
+    description: adjustedDescription.trim() || request?.requestedDescription,
     purpose: (request as { purpose?: string } | null)?.purpose,
     groupCode: groupCode || undefined,
     subgroupCode: subgroupCode || undefined,
     categoryCode: categoryCode || undefined,
     brandCode: brandCode || undefined,
     unitCode: unitCode || undefined,
+    model: model || undefined,
     partNumber: partNumber || undefined,
     application: application || undefined,
-  }), [request, groupCode, subgroupCode, categoryCode, brandCode, unitCode, partNumber, application]);
+  }), [request, adjustedDescription, groupCode, subgroupCode, categoryCode, brandCode, unitCode, model, partNumber, application]);
 
   // Prefill: traduce IDs locales guardados a códigos Profit (el catálogo local
   // cubre los códigos Profit, verificado en FASE 8F).
@@ -135,12 +139,13 @@ export const WarehouseClassify: React.FC = () => {
           if (r.unitId) setUnitId(r.unitId);
           // 14C-FORM: prefill de clasificación Profit guardada (nunca pisa al usuario).
           if (r.articleType) { setArticleType(r.articleType); setArticleTypeManual(!!r.articleTypeManual); manualRef.current = !!r.articleTypeManual; }
-          if (r.taxType) { setTaxType(r.taxType); setTaxTouched(true); }
           if (r.unitCode) setUnitCode(r.unitCode);
           if (r.partNumber) setPartNumber(r.partNumber);
           if (r.application) setApplication(r.application);
           if (r.model) setModel(r.model);
           if (r.ref) setRef(r.ref);
+          // Descripción ajustada: la guardada si existe, si no la original para editar.
+          setAdjustedDescription((r.adjustedDescription ?? r.requestedDescription ?? '').slice(0, 100));
         }
       });
     }
@@ -162,17 +167,11 @@ export const WarehouseClassify: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [request?.id]);
 
-  const analyzerProposal = id ? analyzerProposals[id] : null;
+  // FASE P1 — el panel de "análisis automático" era un mock de catálogo que
+  // jamás se renderizaba en flujo real (las claves eran ids de demo). Se
+  // eliminó: el único análisis visible es el del motor (componente Analizador).
   // El backend ya filtra subgrupos por grupo (co_lin); la lista es del grupo.
   const filteredSubgroups = pSubgrupos;
-
-  // Tasa derivada por regla confirmada 14B (C/V→1, S→6). Sugerencia con
-  // excepciones reales: desviarse muestra advertencia, no bloquea.
-  const derivedTax = articleType === 'S' ? '6' : articleType ? '1' : '';
-  const effectiveTax = taxType || derivedTax;
-  const taxWarning = effectiveTax && derivedTax && effectiveTax !== derivedTax
-    ? `El tipo ${articleType} suele usar tasa ${derivedTax}; se indicó ${effectiveTax} (excepción válida en Profit, verificar).`
-    : null;
 
   // Default de tipo por línea (§6-§7: sugerido, nunca obligatorio).
   // lineDefaultType llega con los catálogos ya filtrados por grupo.
@@ -194,8 +193,6 @@ export const WarehouseClassify: React.FC = () => {
     const manual = !!code && code !== groupDefaultType;
     manualRef.current = manual;
     setArticleTypeManual(manual);
-    // §19: el impuesto sigue al tipo salvo edición manual previa.
-    if (!taxTouched) setTaxType('');
   };
 
   const buildPayload = () => ({
@@ -208,10 +205,16 @@ export const WarehouseClassify: React.FC = () => {
     categoryId: !categoryCode && legacyCategoryId ? legacyCategoryId : undefined,
     brandId: !brandCode && legacyBrandId ? legacyBrandId : undefined,
     unitId: unitId || undefined,
-    // 14C-FORM: clasificación Profit del artículo.
+    // Descripción ajustada: solo se envía si difiere de la original; vacío
+    // limpia un ajuste previo (el backend lo guarda como NULL).
+    adjustedDescription: (() => {
+      const adj = adjustedDescription.trim().slice(0, 100);
+      const orig = (request?.requestedDescription ?? '').trim().slice(0, 100);
+      return adj === orig ? '' : adj;
+    })(),
+    // 14C-FORM: clasificación Profit del artículo (sin impuesto: lo define Contabilidad).
     articleType: articleType || undefined,
     articleTypeManual,
-    taxType: effectiveTax || undefined,
     unitCode: unitCode || undefined,
     partNumber: partNumber || undefined, application: application || undefined,
     // FASE 24.2 — modelo/referencia opcionales (Profit art.modelo/art.ref).
@@ -297,6 +300,10 @@ export const WarehouseClassify: React.FC = () => {
           draft={draft}
           onChanged={() => { void reloadRequest(); }}
           onBusyChange={setAnalyzerBusy}
+          // FASE P2 — la clasificación completa habilita la búsqueda COMPLETA
+          // al pulsar "Validar artículo"; si no, solo hay búsqueda por
+          // descripción y el componente explica qué falta.
+          clasificacionCompleta={canApprove}
         />
       )}
 
@@ -392,17 +399,6 @@ export const WarehouseClassify: React.FC = () => {
         </div>
       </div>
 
-      {analyzerProposal && (
-        <AnalyzerPanel
-          groupCode={analyzerProposal.groupCode}
-          subgroupCode={analyzerProposal.subgroupCode}
-          brand={analyzerProposal.brand}
-          application={analyzerProposal.application}
-          confidence={analyzerProposal.confidence}
-          evidence={analyzerProposal.evidence}
-        />
-      )}
-
       <SectionCard
         title="Clasificación"
             desc={canEditClassification
@@ -423,13 +419,26 @@ export const WarehouseClassify: React.FC = () => {
             )}
 
             <div className="form-grid">
+              <Field label="Descripción ajustada (opcional)" helper="Si se informa y difiere de la original, sustituye a requestedDescription como art_des en Profit y se muestra al solicitante en su seguimiento.">
+                <input
+                  className="input"
+                  value={adjustedDescription}
+                  onChange={e => setAdjustedDescription(e.target.value)}
+                  placeholder={request.requestedDescription}
+                  maxLength={100}
+                  disabled={!canEditClassification}
+                  aria-label="Descripción ajustada"
+                />
+              </Field>
+
               <Field label="Tipo de artículo (Profit)" required>
-                <Select value={articleType} onChange={e => handleTypeChange(e.target.value.trim())} disabled={!canEditClassification}>
-                  <option value="">Seleccionar tipo</option>
-                  {pTipos.map(t => (
-                    <option key={t.code.trim()} value={t.code.trim()}>{t.code.trim()} — {t.label}</option>
-                  ))}
-                </Select>
+                <Combobox
+                  options={pTipos.map(t => ({ value: t.code.trim(), label: `${t.code.trim()} — ${t.label}` }))}
+                  value={articleType}
+                  onChange={handleTypeChange}
+                  placeholder="Seleccionar tipo"
+                  disabled={!canEditClassification}
+                />
                 {groupDefaultType && !articleTypeManual && articleType && (
                   <span className="muted small field-note">Sugerido por la línea {groupCode}.</span>
                 )}
@@ -439,10 +448,13 @@ export const WarehouseClassify: React.FC = () => {
               </Field>
 
               <Field label="Grupo (Profit)" required>
-                <Select value={groupCode} onChange={e => handleGroupChange(e.target.value.trim())} disabled={!canEditClassification}>
-                  <option value="">Seleccionar grupo</option>
-                  {pGrupos.map(g => <option key={g.co_lin.trim()} value={g.co_lin.trim()}>{g.co_lin.trim()} — {g.lin_des.trim()}</option>)}
-                </Select>
+                <Combobox
+                  options={pGrupos.map(g => ({ value: g.co_lin.trim(), label: `${g.co_lin.trim()} — ${g.lin_des.trim()}` }))}
+                  value={groupCode}
+                  onChange={handleGroupChange}
+                  placeholder="Seleccionar grupo"
+                  disabled={!canEditClassification}
+                />
                 <HelpFieldInfo
                   label="Grupo (Profit)"
                   what="Define la clasificación principal del artículo dentro del catálogo de Profit. El subgrupo disponible depende del grupo que elijas."
@@ -452,73 +464,58 @@ export const WarehouseClassify: React.FC = () => {
               </Field>
 
               <Field label="Subgrupo (del grupo seleccionado)" required>
-                <Select value={subgroupCode} onChange={e => setSubgroupCode(e.target.value.trim())} disabled={!groupCode || !canEditClassification}>
-                  <option value="">Seleccionar subgrupo</option>
-                  {filteredSubgroups.map(s => <option key={`${s.co_lin.trim()}/${s.co_subl.trim()}`} value={s.co_subl.trim()}>{s.co_subl.trim()} — {s.subl_des.trim()}</option>)}
-                </Select>
+                <Combobox
+                  options={filteredSubgroups.map(s => ({ value: s.co_subl.trim(), label: `${s.co_subl.trim()} — ${s.subl_des.trim()}` }))}
+                  value={subgroupCode}
+                  onChange={setSubgroupCode}
+                  placeholder="Seleccionar subgrupo"
+                  disabled={!groupCode || !canEditClassification}
+                />
               </Field>
 
               <label>
                 <span className="muted small">Categoría (Profit, independiente — 01 = NO APLICA)</span>
-                <Select
+                <Combobox
+                  options={pCategorias.map(c => ({ value: c.co_cat.trim(), label: `${c.co_cat.trim()} — ${c.cat_des.trim()}` }))}
                   value={categoryCode}
                   disabled={!canEditClassification}
-                  onChange={e => {
-                    const code = e.target.value.trim();
+                  placeholder="Seleccionar categoría"
+                  onChange={code => {
                     const found = pCategorias.find(c => c.co_cat.trim() === code);
                     setCategoryCode(code);
                     setCategoryName(found ? found.cat_des.trim() : '');
                     setLegacyCategoryId('');
                   }}
-                >
-                  <option value="">Seleccionar categoría</option>
-                  {pCategorias.map(c => <option key={c.co_cat.trim()} value={c.co_cat.trim()}>{c.co_cat.trim()} — {c.cat_des.trim()}</option>)}
-                </Select>
+                />
               </label>
 
               <label>
                 <span className="muted small">Marca (Profit colores, independiente)</span>
-                <Select
+                <Combobox
+                  options={pMarcas.map(m => ({ value: m.co_col.trim(), label: `${m.co_col.trim()} — ${m.des_col.trim()}` }))}
                   value={brandCode}
                   disabled={!canEditClassification}
-                  onChange={e => {
-                    const code = e.target.value.trim();
+                  placeholder="Seleccionar marca"
+                  onChange={code => {
                     const found = pMarcas.find(m => m.co_col.trim() === code);
                     setBrandCode(code);
                     setBrandName(found ? found.des_col.trim() : '');
                     setLegacyBrandId('');
                   }}
-                >
-                  <option value="">Seleccionar marca</option>
-                  {pMarcas.map(m => <option key={m.co_col.trim()} value={m.co_col.trim()}>{m.co_col.trim()} — {m.des_col.trim()}</option>)}
-                </Select>
+                />
                 {!brandCode && legacyBrandId && brandName && (
                   <span className="muted small field-note">Marca guardada: {brandName} (catálogo anterior)</span>
                 )}
               </label>
 
               <Field label="Unidad de venta (Profit)" required>
-                <Select value={unitCode} onChange={e => setUnitCode(e.target.value.trim())} disabled={!canEditClassification}>
-                  <option value="">Seleccionar unidad</option>
-                  {pUnidades.map(u => <option key={u.co_uni.trim()} value={u.co_uni.trim()}>{u.co_uni.trim()} — {u.des_uni.trim()}</option>)}
-                </Select>
-              </Field>
-
-              <Field label="Impuesto (tipo_imp Profit)">
-                <Select
-                  value={effectiveTax}
+                <Combobox
+                  options={pUnidades.map(u => ({ value: u.co_uni.trim(), label: `${u.co_uni.trim()} — ${u.des_uni.trim()}` }))}
+                  value={unitCode}
+                  onChange={setUnitCode}
+                  placeholder="Seleccionar unidad"
                   disabled={!canEditClassification}
-                  onChange={e => { setTaxType(e.target.value.trim()); setTaxTouched(true); }}
-                >
-                  <option value="">Seleccionar tasa</option>
-                  {pTasas.map(t => <option key={t.tipo.trim()} value={t.tipo.trim()}>{t.tipo.trim()} — {t.descripcio}</option>)}
-                </Select>
-                {taxWarning && (
-                  <span className="muted small field-note">{taxWarning}</span>
-                )}
-                {!taxWarning && derivedTax && (
-                  <span className="muted small field-note">Valor que utilizará Profit: tasa {effectiveTax}.</span>
-                )}
+                />
               </Field>
 
               <label>

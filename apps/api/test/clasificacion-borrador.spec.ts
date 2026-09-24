@@ -163,4 +163,23 @@ describe('Borrador de Almacén', () => {
     ctx.store.request.status = 'ALMACEN_APROBADO';
     await expect(ctx.svc.classify('req-1', { brandId: 'b1' }, 'w1', 'c1')).rejects.toThrow(BadRequestException);
   });
+
+  it('descripción ajustada se persiste recortada y se audita con anterior', async () => {
+    await ctx.svc.classify('req-1', { groupId: 'g1', subgroupId: 'sg1', adjustedDescription: '  TORNILLO HEX 1/2 PULGADA  ' }, 'w1', 'c1');
+    expect(ctx.store.requestData.adjustedDescription).toBe('TORNILLO HEX 1/2 PULGADA');
+    const audit = ctx.tx.auditEvent.create.mock.calls[0][0].data;
+    expect(audit.action).toBe('CLASSIFIED');
+    expect(JSON.parse(audit.afterData).adjustedDescription).toBe('TORNILLO HEX 1/2 PULGADA');
+    expect(JSON.parse(audit.afterData).adjustedDescriptionPrevious).toBeNull();
+  });
+
+  it('descripción ajustada vacía limpia el ajuste previo (NULL)', async () => {
+    await ctx.svc.classify('req-1', { groupId: 'g1', subgroupId: 'sg1', adjustedDescription: 'TORNILLO CORTO' }, 'w1', 'c1');
+    expect(ctx.store.requestData.adjustedDescription).toBe('TORNILLO CORTO');
+    await ctx.svc.classify('req-1', { adjustedDescription: '   ' }, 'w1', 'c1');
+    expect(ctx.store.requestData.adjustedDescription).toBeNull();
+    const audit = ctx.tx.auditEvent.create.mock.calls[1][0].data;
+    expect(JSON.parse(audit.afterData).adjustedDescription).toBeNull();
+    expect(JSON.parse(audit.afterData).adjustedDescriptionPrevious).toBe('TORNILLO CORTO');
+  });
 });

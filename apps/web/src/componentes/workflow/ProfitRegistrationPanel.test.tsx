@@ -100,8 +100,9 @@ describe('ProfitRegistrationPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Registrar en Profit' }));
     const dialog = await screen.findByRole('alertdialog');
     expect(dialog.textContent).toContain('creará el artículo en Profit');
-    fireEvent.change(within(dialog).getByPlaceholderText('REGISTRAR EN PROFIT'), { target: { value: 'REGISTRAR EN PROFIT' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar registro' }));
+    expect(dialog.textContent).toContain('a punto de subir este artículo a Profit');
+    expect(within(dialog).queryByRole('textbox')).toBeNull();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Sí, subir a Profit' }));
     await waitFor(() => expect(apiProfitRegistrationService.create).toHaveBeenCalledWith('r1'));
     await screen.findByText('Creado y verificado');
     expect(onChanged).toHaveBeenCalled();
@@ -145,8 +146,7 @@ describe('ProfitRegistrationPanel', () => {
     expect(screen.queryByText(/Servidor|autenticación|Dry-run/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Registrar en Profit' }));
     const dialog = await screen.findByRole('alertdialog');
-    fireEvent.change(within(dialog).getByPlaceholderText('REGISTRAR EN PROFIT'), { target: { value: 'REGISTRAR EN PROFIT' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar registro' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Sí, subir a Profit' }));
     await screen.findByText('✓ Registrado en Profit');
     expect(screen.queryByText('DM-PROFIT-20260913-000055')).toBeNull();
   });
@@ -162,8 +162,7 @@ describe('ProfitRegistrationPanel', () => {
     await waitFor(() => expect(screen.getAllByText('ACTEQT0001').length).toBeGreaterThan(0));
     fireEvent.click(screen.getByRole('button', { name: 'Registrar en Profit' }));
     const dialog = await screen.findByRole('alertdialog');
-    fireEvent.change(within(dialog).getByPlaceholderText('REGISTRAR EN PROFIT'), { target: { value: 'REGISTRAR EN PROFIT' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar registro' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Sí, subir a Profit' }));
     await screen.findByText('No fue posible registrar el artículo en Profit.');
     expect(screen.getByText(/Acción recomendada/)).toBeDefined();
   });
@@ -178,22 +177,22 @@ describe('ProfitRegistrationPanel', () => {
     await waitFor(() => expect(screen.getAllByText('ACTEQT0001').length).toBeGreaterThan(0));
     fireEvent.click(screen.getByRole('button', { name: 'Registrar en Profit' }));
     const dialog = await screen.findByRole('alertdialog');
-    fireEvent.change(within(dialog).getByPlaceholderText('REGISTRAR EN PROFIT'), { target: { value: 'REGISTRAR EN PROFIT' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar registro' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Sí, subir a Profit' }));
     await screen.findByText('No se pudo confirmar el resultado del registro.');
   });
 
-  it('confirmación exige texto exacto', async () => {
+  it('la confirmación es una sola alerta sin texto que escribir', async () => {
     render(<MemoryRouter><ProfitRegistrationPanel request={REQ} /></MemoryRouter>);
     fireEvent.click(screen.getByRole('button', { name: 'Preparar registro' }));
     await waitFor(() => expect(screen.getAllByText('ACTEQT0001').length).toBeGreaterThan(0));
+    expect(screen.queryByText(/escriba REGISTRAR EN PROFIT/i)).toBeNull();
+    expect(screen.queryByPlaceholderText('REGISTRAR EN PROFIT')).toBeNull();
+
     fireEvent.click(screen.getByRole('button', { name: 'Registrar en Profit' }));
     const dialog = await screen.findByRole('alertdialog');
-    expect((within(dialog).getByRole('button', { name: 'Confirmar registro' }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(within(dialog).getByPlaceholderText('REGISTRAR EN PROFIT'), { target: { value: 'REGISTRAR' } });
-    expect((within(dialog).getByRole('button', { name: 'Confirmar registro' }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(within(dialog).getByPlaceholderText('REGISTRAR EN PROFIT'), { target: { value: 'REGISTRAR EN PROFIT' } });
-    expect((within(dialog).getByRole('button', { name: 'Confirmar registro' }) as HTMLButtonElement).disabled).toBe(false);
+    expect(dialog.textContent).toContain('a punto de subir este artículo a Profit');
+    expect(within(dialog).queryByRole('textbox')).toBeNull();
+    expect((within(dialog).getByRole('button', { name: 'Sí, subir a Profit' }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('historial muestra intentos previos sin reescribir', async () => {

@@ -25,11 +25,15 @@ export const mockAccountingService: AccountingService = {
     if (!r) throw new Error('No encontrada');
     return r;
   },
-  async approveAccounting(id, codes) {
+  async approveAccounting(id, codes, taxType?, comment?) {
     await delay();
-    const r = requests.find(x => x.id === id);
+    const r = requests.find(x => x.id === id) as (typeof requests[number] & { taxType?: string }) | undefined;
     // 16A — Contabilidad es la última aprobación humana.
-    if (r) { r.status = 'CONTABILIDAD_APROBADA'; r.updatedAt = new Date().toISOString(); }
+    if (r) {
+      r.status = 'CONTABILIDAD_APROBADA';
+      if (taxType) r.taxType = taxType;
+      r.updatedAt = new Date().toISOString();
+    }
   },
   async rejectAccounting(id, comment) {
     await delay();

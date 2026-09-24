@@ -97,12 +97,12 @@ export class AlmacenService {
       throw new BadRequestException('No se puede enviar a Contabilidad: la clasificación de Almacén está incompleta. Faltan grupo, subgrupo o código master.');
     }
     // FASE 14C-FORM §23: la futura escritura no debe descubrir faltantes
-    // después de la aprobación. Tipo, unidad Profit e impuesto son obligatorios.
-    const rd = requestData as { articleType?: string | null; unitCode?: string | null; taxType?: string | null };
+    // después de la aprobación. Tipo y unidad Profit son obligatorios;
+    // el impuesto (tipo_imp) lo define Contabilidad al aprobar.
+    const rd = requestData as { articleType?: string | null; unitCode?: string | null };
     const missing: string[] = [];
     if (!rd.articleType) missing.push('tipo de artículo');
     if (!rd.unitCode) missing.push('unidad Profit');
-    if (!rd.taxType) missing.push('impuesto (tipo_imp)');
     if (missing.length > 0) {
       throw new BadRequestException(`No se puede enviar a Contabilidad: faltan datos para Profit: ${missing.join(', ')}.`);
     }

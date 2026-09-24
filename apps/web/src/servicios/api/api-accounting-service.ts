@@ -21,8 +21,8 @@ export const apiAccountingService: AccountingService = {
     return api.get<Request>(`/api/v1/accounting/${encodeURIComponent(id)}`);
   },
 
-  async approveAccounting(id, codes: AccountingCode[], comment?: string) {
-    await api.post(`/api/v1/accounting/${id}/approve`, { accountingCodes: codes, comment });
+  async approveAccounting(id, codes: AccountingCode[], taxType?: string, comment?: string) {
+    await api.post(`/api/v1/accounting/${id}/approve`, { accountingCodes: codes, taxType, comment });
   },
 
   async rejectAccounting(id, comment) {

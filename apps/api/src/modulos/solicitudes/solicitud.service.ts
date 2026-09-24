@@ -894,6 +894,10 @@ export class SolicitudesService {
       // FASE 24.2 — modelo/referencia opcionales (Profit art.modelo/art.ref).
       if (dto.model !== undefined) patch.model = dto.model.trim().slice(0, 20) || undefined;
       if (dto.ref !== undefined) patch.ref = dto.ref.trim().slice(0, 20) || undefined;
+      // Descripción ajustada por Almacén (máx. 100): vacío/blanco = sin ajuste (NULL).
+      if (dto.adjustedDescription !== undefined) {
+        patch.adjustedDescription = dto.adjustedDescription.trim().slice(0, 100) || null;
+      }
       if (masterCode) patch.masterCode = masterCode;
 
       const requestData = existing
@@ -928,6 +932,11 @@ export class SolicitudesService {
             provisioned,
             masterCode,
             draft: true,
+            // Trazabilidad del ajuste de descripción (visible al solicitante).
+            adjustedDescription: dto.adjustedDescription !== undefined
+              ? dto.adjustedDescription.trim().slice(0, 100) || null
+              : undefined,
+            adjustedDescriptionPrevious: (existing as { adjustedDescription?: string | null } | null)?.adjustedDescription ?? null,
           }),
         },
       });
@@ -968,13 +977,18 @@ export class SolicitudesService {
     const push = (key: string, label: string, status: CheckStatus, detail?: string) =>
       checks.push({ key, label, status, detail });
 
-    // 1. Validación local: estado + descripción.
+    // 1. Validación local: estado + descripción efectiva (la ajustada en el
+    // borrador sustituye a la original, igual que en el payload Profit).
     if (request.status !== 'PENDIENTE_ALMACEN' && request.status !== 'ALMACEN_APROBADO') {
       push('estado', 'Estado clasificable', 'ERROR', `Estado actual: ${request.status}`);
     } else {
       push('estado', 'Estado clasificable', 'COMPLETO', request.status);
     }
-    const desc = this.normalizeDescription((request as { requestedDescription?: string }).requestedDescription);
+    const desc = this.normalizeDescription(
+      dto.adjustedDescription?.trim()
+        ? dto.adjustedDescription.trim()
+        : (request as { requestedDescription?: string }).requestedDescription,
+    );
     if (desc.length >= 3) push('descripcion', 'Descripción', 'COMPLETO', `${desc.length} caracteres normalizados`);
     else push('descripcion', 'Descripción', 'ERROR', 'Vacía o menor a 3 caracteres');
 
@@ -1127,7 +1141,9 @@ export class SolicitudesService {
       disCen = '';
     }
     const input: ProfitArticleInput = {
-      description: (request as any).requestedDescription ?? '',
+      // Descripción efectiva: la ajustada por Almacén sustituye a la original.
+      description: (rd.adjustedDescription?.trim() ? rd.adjustedDescription.trim() : undefined)
+        ?? (request as any).requestedDescription ?? '',
       articleType: rd.articleType,
       groupCode: (group as any).code,
       subgroupCode: (subgroup as any).code,

@@ -24,6 +24,8 @@ export interface ApprovalRef { id: string; stepCode: string; actorId: string; ac
 export interface Request {
   id: string; requestNumber: number; companyId: string; departmentId: string; requesterId: string;
   requestedDescription: string; purpose: string; referencePhotoUri?: string;
+  /** Descripción ajustada por Almacén al clasificar (sustituye a la original en Profit y seguimiento). */
+  adjustedDescription?: string;
   suggestedMasterItemId?: string; status: RequestStatus; priority: Priority;
   groupId?: string; subgroupId?: string; categoryId?: string; unitId?: string; brandId?: string;
   manufacturer?: string; model?: string; partNumber?: string; application?: string;
@@ -104,7 +106,8 @@ export type MatchEvidenceKind =
   | 'PHOTO_SIMILARITY' | 'UNIT_MATCH';
 export type MatchConflictKind =
   | 'BRAND_CONFLICT' | 'MODEL_CONFLICT' | 'PART_NUMBER_CONFLICT'
-  | 'CATEGORY_CONFLICT' | 'UNIT_CONFLICT' | 'APPLICATION_CONFLICT';
+  | 'CATEGORY_CONFLICT' | 'SUBCATEGORY_CONFLICT'
+  | 'UNIT_CONFLICT' | 'APPLICATION_CONFLICT' | 'PURPOSE_CONFLICT';
 export type MatchCandidateClassification = 'HIGH' | 'MEDIUM' | 'LOW' | 'REVIEW';
 export interface ArticleMatchCandidate {
   article: ProfitArticleRef;

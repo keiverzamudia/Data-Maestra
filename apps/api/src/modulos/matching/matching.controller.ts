@@ -5,7 +5,7 @@ import { RbacGuard } from '../autenticacion/rbac.guard';
 import { JwtGuard } from '../autenticacion/jwt.guard';
 import { CurrentUser, RequestUser } from '../autenticacion/current-user.decorator';
 import { RequirePermission } from '../autenticacion/require-permission.decorator';
-import { NormalizeArticleDto, UpsertProfileDto, RegisterDecisionDto, CandidatesForRequestDto, LinkRequestDto, AnalyzeDraftDto } from './dto/matching.dto';
+import { NormalizeArticleDto, UpsertProfileDto, RegisterDecisionDto, CandidatesForRequestDto, LinkRequestDto, AnalyzeDraftDto, SearchArticleDto } from './dto/matching.dto';
 
 /**
  * FASE 18 — Endpoints base del dominio matching (controller delgado).
@@ -71,17 +71,37 @@ export class MatchingController {
   @HttpCode(HttpStatus.OK)
   @RequirePermission('REQUEST.VIEW')
   @ApiOperation({ summary: 'Candidatos del motor para una solicitud (asistencia, no decide)' })
-  candidatos(@Body() dto: CandidatesForRequestDto) {
-    return this.matching.findCandidatesForRequest(dto.requestId, dto.companyCode);
+  candidatos(@CurrentUser() user: RequestUser, @Body() dto: CandidatesForRequestDto) {
+    return this.matching.findCandidatesForRequest(dto.requestId, dto.companyCode, user.id);
   }
 
   @Post('analizar')
   @HttpCode(HttpStatus.OK)
   @RequirePermission('REQUEST.VIEW')
-  @ApiOperation({ summary: 'Analizador de Almacén: solicitud + borrador contra universo AD_TRANS (asistencia, no decide)' })
-  analizar(@Body() dto: AnalyzeDraftDto) {
-    const { requestId, limit, companyCode, ...draft } = dto;
-    return this.matching.analyzeDraft(requestId, draft, { universeCompanyCode: companyCode, limit });
+  @ApiOperation({ summary: 'Analizador de Almacén: solicitud + borrador contra el universo de su empresa (asistencia, no decide)' })
+  analizar(@CurrentUser() user: RequestUser, @Body() dto: AnalyzeDraftDto) {
+    const { requestId, limit, companyCode, phase, ...draft } = dto;
+    return this.matching.analyzeDraft(requestId, draft, {
+      universeCompanyCode: companyCode,
+      limit,
+      phase,
+      actorId: user.id,
+    });
+  }
+
+  /**
+   * FASE P3 — Búsqueda manual de un artículo en Profit (escape hatch humano).
+   * Solo consulta: universo local primero y Profit en vivo como respaldo.
+   */
+  @Post('buscar')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('REQUEST.VIEW')
+  @ApiOperation({ summary: 'Busca manualmente un artículo en Profit por palabras (universo local, respaldo en Profit)' })
+  buscar(@CurrentUser() user: RequestUser, @Body() dto: SearchArticleDto) {
+    return this.matching.searchManualArticle(dto.requestId, dto.term, {
+      limit: dto.limit,
+      actorId: user.id,
+    });
   }
 
   @Post('solicitudes/:id/vincular')

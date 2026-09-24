@@ -166,3 +166,63 @@ describe('motor v1 — determinismo, orden y preservación', () => {
     expect(input).toEqual(beforeInput);
   });
 });
+
+// FASE P1 — coherencia de señales: lo que antes era "solo suma" ahora también
+// puede vetar, y lo que se compara se compara normalizado (no crudo).
+describe('motor v1 — FASE P1: conflictos y comparación normalizada', () => {
+  it('subgrupo distinto → SUBCATEGORY_CONFLICT (antes era silencioso)', async () => {
+    const r = await engineWith([snap({ subCategory: 'ROD', partNumber: 'OTRO5' })]).findCandidates(input);
+    expect(r[0]!.conflicts).toContain('SUBCATEGORY_CONFLICT');
+    expect(r[0]!.classification).toBe('REVIEW');
+  });
+
+  it('subgrupo ausente en un lado NO es conflicto', async () => {
+    const r = await engineWith([snap({ subCategory: undefined, partNumber: 'OTRO6' })]).findCandidates(input);
+    expect(r[0]!.conflicts).not.toContain('SUBCATEGORY_CONFLICT');
+  });
+
+  it('propósito distinto → PURPOSE_CONFLICT (antes solo sumaba +5)', async () => {
+    const r = await engineWith([snap({ purpose: 'REPARACION', partNumber: 'OTRO7' })]).findCandidates(input);
+    expect(r[0]!.conflicts).toContain('PURPOSE_CONFLICT');
+    expect(r[0]!.classification).toBe('REVIEW');
+  });
+
+  it('campos estructurados se comparan normalizados: "DT466" vs "dt-466" coincide', async () => {
+    const r = await engineWith([
+      snap({ model: 'dt-466', brand: 'international', partNumber: undefined, category: undefined, subCategory: undefined, unit: undefined, application: undefined, purpose: undefined }),
+    ]).findCandidates({ ...input, partNumber: undefined, model: 'DT466' });
+    expect(r[0]!.evidence).toContain('MODEL_MATCH');
+    expect(r[0]!.conflicts).not.toContain('MODEL_CONFLICT');
+    expect(r[0]!.conflicts).not.toContain('BRAND_CONFLICT');
+  });
+
+  it('espacios en códigos no generan falso conflicto: "7J 178" vs "7J178"', async () => {
+    const r = await engineWith([
+      snap({ partNumber: '7J 178', brand: undefined, model: undefined, category: undefined, subCategory: undefined, unit: undefined, application: undefined, purpose: undefined }),
+    ]).findCandidates({ ...input, partNumber: '7J178', model: undefined });
+    expect(r[0]!.evidence).toContain('PART_NUMBER_MATCH');
+    expect(r[0]!.conflicts).toEqual([]);
+  });
+
+  it('explicación honesta: con puntaje 0 no se dice "relación textual débil"', async () => {
+    const r = await engineWith([
+      snap({
+        description: 'PINTURA LATEX BLANCA',
+        brand: undefined, model: undefined, partNumber: undefined,
+        category: undefined, subCategory: undefined, unit: undefined,
+        application: undefined, purpose: undefined,
+      }),
+    ]).findCandidates({
+      companyCode: 'AD_TRANS',
+      description: 'TORNILLO HEXAGONAL M8',
+    });
+    expect(r[0]!.score).toBe(0);
+    expect(r[0]!.explanation).toContain('No se encontró ninguna coincidencia demostrable');
+    expect(r[0]!.explanation).not.toContain('relación textual débil');
+  });
+
+  it('explicación honesta: con evidencia sigue explicando el por qué', async () => {
+    const r = await engineWith([snap()]).findCandidates(input);
+    expect(r[0]!.explanation).toContain('Se muestra porque');
+  });
+});

@@ -598,6 +598,10 @@ model RequestData {
   // Código Profit de marca/color tal como lo eligió Warehouse (14E: el espejo
   // Brand solo guarda nombre; el código se necesita para co_color).
   brandCode         String?  @map("brand_code")
+  // Descripción ajustada por Almacén al clasificar (máx. 100). Si existe,
+  // sustituye a requestedDescription como art_des en Profit y se muestra
+  // al solicitante en su seguimiento. NULL = sin ajuste.
+  adjustedDescription String? @map("adjusted_description")
 
   request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
 

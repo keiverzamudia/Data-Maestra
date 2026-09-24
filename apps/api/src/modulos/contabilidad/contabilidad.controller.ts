@@ -41,15 +41,15 @@ export class ContabilidadController {
   @Post(':id/approve')
   @HttpCode(HttpStatus.OK)
   @RequirePermission('ACCOUNTING.APPROVE')
-  @ApiOperation({ summary: 'Approve with accounting codes' })
+  @ApiOperation({ summary: 'Approve with accounting codes and tax type' })
   @ApiParam({ name: 'id', description: 'Request ID' })
   async approve(
     @CurrentUser() user: RequestUser,
     @Param('id') id: string,
-    @Body() body: { accountingCodes?: Array<{ code: string; description: string; position?: string }>; comment?: string },
+    @Body() body: { accountingCodes?: Array<{ code: string; description: string; position?: string }>; taxType?: string; comment?: string },
   ) {
     const companyId = await this.authService.resolveCompanyContext(user.id);
-    return this.accountingService.approve(id, body.accountingCodes ?? [], user.id, companyId, body.comment);
+    return this.accountingService.approve(id, body.accountingCodes ?? [], body.taxType, user.id, companyId, body.comment);
   }
 
   @Post(':id/reject')

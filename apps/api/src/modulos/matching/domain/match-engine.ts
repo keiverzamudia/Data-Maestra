@@ -57,10 +57,23 @@ interface SignalComparison {
 
 const clean = (v: unknown): string => String(v ?? '').trim();
 
+/**
+ * FASE P1 — comparación de campos estructurados (marca, modelo, grupo, …).
+ * Antes se comparaba el texto crudo: "7J 178" vs "7J-178" o "dt466" vs
+ * "DT466" producían un CONFLICTO falso y anulaban la clasificación. Ahora se
+ * compara normalizado (v2) y, si no coincide, sin espacios (mismo criterio
+ * de "código de artículo"). Solo campos presentes en ambos lados llegan aquí.
+ */
 function equals(a: unknown, b: unknown): boolean {
   const x = clean(a);
   const y = clean(b);
-  return x !== '' && x === y;
+  if (x === '' || y === '') return false;
+  if (x === y) return true;
+  const nx = normalizeTextV2(x);
+  const ny = normalizeTextV2(y);
+  if (nx && nx === ny) return true;
+  const compact = (s: string) => s.replace(/\s+/g, '');
+  return nx !== '' && ny !== '' && compact(nx) === compact(ny);
 }
 
 function bothPresent(a: unknown, b: unknown): boolean {
@@ -127,9 +140,15 @@ function compareSignals(input: ArticleMatchingInput, snap: ArticleSnapshot): Sig
       conflicts.push('CATEGORY_CONFLICT');
     }
   }
-  if (bothPresent(input.subCategory, snap.subCategory) && equals(input.subCategory, snap.subCategory)) {
-    evidence.push('SUBCATEGORY_MATCH');
-    score += 6;
+  if (bothPresent(input.subCategory, snap.subCategory)) {
+    if (equals(input.subCategory, snap.subCategory)) {
+      evidence.push('SUBCATEGORY_MATCH');
+      score += 6;
+    } else {
+      // FASE P1 — paridad con categoría: un subgrupo distinto es un
+      // conflicto explícito, no una ausencia de evidencia.
+      conflicts.push('SUBCATEGORY_CONFLICT');
+    }
   }
   if (bothPresent(input.unit, snap.unit)) {
     const a = canonicalUnit(input.unit);
@@ -149,9 +168,15 @@ function compareSignals(input: ArticleMatchingInput, snap: ArticleSnapshot): Sig
       conflicts.push('APPLICATION_CONFLICT');
     }
   }
-  if (bothPresent(input.purpose, snap.purpose) && equals(input.purpose, snap.purpose)) {
-    evidence.push('PURPOSE_MATCH');
-    score += 5;
+  if (bothPresent(input.purpose, snap.purpose)) {
+    if (equals(input.purpose, snap.purpose)) {
+      evidence.push('PURPOSE_MATCH');
+      score += 5;
+    } else {
+      // FASE P1 — el propósito era una señal "solo suma": ahora también
+      // puede vetar, igual que el resto de señales bidireccionales.
+      conflicts.push('PURPOSE_CONFLICT');
+    }
   }
 
   const sim = jaccard(tokenSet(input.description), tokenSet(snap.description));
@@ -190,21 +215,31 @@ const CONFLICT_ES: Record<MatchConflictKind, string> = {
   MODEL_CONFLICT: 'el modelo difiere',
   PART_NUMBER_CONFLICT: 'el número de parte difiere',
   CATEGORY_CONFLICT: 'la categoría difiere',
+  SUBCATEGORY_CONFLICT: 'la subcategoría difiere',
   UNIT_CONFLICT: 'la unidad difiere',
   APPLICATION_CONFLICT: 'la aplicación difiere',
+  PURPOSE_CONFLICT: 'el propósito difiere',
 };
 
-/** Explicación humana en español (la técnica queda en evidence/conflicts). */
+/**
+ * Explicación humana en español (la técnica queda en evidence/conflicts).
+ * FASE P1 — honestidad: con score 0 no hay "relación textual débil", hay
+ * ausencia de relación demostrable. `score` es opcional para no romper los
+ * llamadores existentes.
+ */
 export function explainCandidate(
   evidence: MatchEvidenceKind[],
   conflicts: MatchConflictKind[],
   missing: string[],
+  score?: number,
 ): string {
   const parts: string[] = [];
   if (evidence.length > 0) {
     parts.push(`Se muestra porque ${evidence.map((e) => EVIDENCE_ES[e]).join(', ')}.`);
+  } else if (score === 0) {
+    parts.push('No se encontró ninguna coincidencia demostrable con este artículo; se lista como referencia de búsqueda.');
   } else {
-    parts.push('Se muestra por relación textual débil; conviene revisar con cuidado.');
+    parts.push('Solo hay proximidad textual, sin señales coincidentes; conviene revisar con cuidado.');
   }
   if (conflicts.length > 0) {
     parts.push(`Requiere revisión porque ${conflicts.map((c) => CONFLICT_ES[c]).join(', ')}.`);
@@ -294,7 +329,7 @@ export function comparePair(
     evidence,
     conflicts,
     score,
-    explanation: explainCandidate(evidence, conflicts, missingSignals(input, snap)),
+    explanation: explainCandidate(evidence, conflicts, missingSignals(input, snap), score),
     engineVersion: version,
   };
 }

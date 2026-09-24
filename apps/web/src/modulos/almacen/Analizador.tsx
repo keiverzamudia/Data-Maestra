@@ -1,16 +1,24 @@
 import * as React from 'react';
-import { apiMatchingService, type AnalyzerDraft, type AnalyzerResult, type EngineCandidate } from '../../servicios/api/api-matching-service';
+import { apiMatchingService, type AnalyzerDraft, type AnalyzerPhase, type AnalyzerResult, type EngineCandidate, type ProfitSearchResult } from '../../servicios/api/api-matching-service';
 import {
   getMatchClassificationLabel,
   getMatchDecisionLabel,
   getMatchEvidenceLabel,
   getMatchConflictLabel,
 } from '../../utilidades/presentacion';
-import { Button, Modal, ConfirmDialog, Alert, Skeleton, SectionCard, Badge, Select } from '../../componentes/ui';
+import { Button, Modal, ConfirmDialog, Alert, Skeleton, SectionCard, Badge, Select, Input } from '../../componentes/ui';
 
 type Estado = 'idle' | 'loading' | 'success' | 'empty' | 'insufficient' | 'error';
 
 const COUNT_OPTIONS = [3, 5, 10, 20];
+
+/**
+ * FASE P1 — umbral mínimo para presentar un artículo como "posible
+ * coincidencia". Debe reflejar el umbral LOW del motor v1 (match-engine:
+ * ≥65 HIGH, ≥35 MEDIUM, ≥12 LOW). Por debajo, el motor no considera que
+ * exista relación demostrable.
+ */
+const MATCH_MIN_SCORE = 12;
 
 interface Props {
   requestId: string;
@@ -27,6 +35,13 @@ interface Props {
   onChanged?: () => void;
   /** FASE 23.2 — notifica análisis en curso para deshabilitar Validar artículo. */
   onBusyChange?: (busy: boolean) => void;
+  /**
+   * FASE P2 — indica si los select de clasificación (grupo, subgrupo, tipo y
+   * unidad) están completos. Solo entonces "Validar artículo" dispara la
+   * búsqueda COMPLETA; con clasificación incompleta se explica el motivo.
+   * Por defecto true para no romper usos aislados del componente.
+   */
+  clasificacionCompleta?: boolean;
 }
 
 const candidateKey = (c: EngineCandidate): string =>
@@ -75,7 +90,7 @@ function hasMinimumData(draft: AnalyzerDraft | null): boolean {
  * ejecución manual inmediata, guardia contra respuestas tardías y contra
  * ejecuciones simultáneas.
  */
-export const Analizador: React.FC<Props> = ({ requestId, canDecide, draft, manualRun, photoUri, debounceMs = 500, onChanged, onBusyChange }) => {
+export const Analizador: React.FC<Props> = ({ requestId, canDecide, draft, manualRun, photoUri, debounceMs = 500, onChanged, onBusyChange, clasificacionCompleta = true }) => {
   const [estado, setEstado] = React.useState<Estado>('idle');
   const [result, setResult] = React.useState<AnalyzerResult | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -101,21 +116,34 @@ export const Analizador: React.FC<Props> = ({ requestId, canDecide, draft, manua
   const [downloadError, setDownloadError] = React.useState<string | null>(null);
   const [visibleCount, setVisibleCount] = React.useState(5);
   const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
+  // FASE P2 — fase de la última búsqueda y aviso cuando no se puede completar.
+  const [fase, setFase] = React.useState<AnalyzerPhase>('INICIAL');
+  const [avisoFase, setAvisoFase] = React.useState<string | null>(null);
   const reqRef = React.useRef(0);
   const runningRef = React.useRef(false);
   const lastManualRun = React.useRef(manualRun);
+  const faseRef = React.useRef<AnalyzerPhase>('INICIAL');
+  const clasifRef = React.useRef(clasificacionCompleta);
+  clasifRef.current = clasificacionCompleta;
   const draftKey = JSON.stringify(draft ?? null);
 
-  const ejecutar = React.useCallback(async () => {
+  /**
+   * FASE P2 — ejecuta una búsqueda de la fase indicada.
+   * INICIAL: solo descripción/propósito (automática, con debounce).
+   * COMPLETA: todos los campos (solo a petición del usuario).
+   */
+  const ejecutar = React.useCallback(async (phase: AnalyzerPhase = 'INICIAL') => {
     if (runningRef.current) return;
     runningRef.current = true;
     const n = ++reqRef.current;
     setEstado('loading');
     setError(null);
     setSavedMsg(null);
+    faseRef.current = phase;
+    setFase(phase);
     onBusyChange?.(true);
     try {
-      const r = await apiMatchingService.analizar(requestId, draft ?? {}, { limit: visibleCount });
+      const r = await apiMatchingService.analizar(requestId, draft ?? {}, { limit: visibleCount, phase });
       if (reqRef.current !== n) return;
       setResult(r);
       // Nuevo análisis = nuevo conjunto navegable (conserva orden del motor).
@@ -138,6 +166,35 @@ export const Analizador: React.FC<Props> = ({ requestId, canDecide, draft, manua
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestId, draftKey, visibleCount]);
 
+  // FASE P3 — búsqueda manual en Profit (escape hatch del usuario).
+  const [buscaTexto, setBuscaTexto] = React.useState('');
+  const [buscaCargando, setBuscaCargando] = React.useState(false);
+  const [buscaRes, setBuscaRes] = React.useState<ProfitSearchResult | null>(null);
+  const [buscaError, setBuscaError] = React.useState<string | null>(null);
+
+  /**
+   * FASE P3 — consulta dirigida: primero universo local, luego Profit en vivo.
+   * Solo informa si el artículo existe o no; no toca el análisis ni decide.
+   */
+  const buscarManual = async () => {
+    const term = buscaTexto.trim();
+    if (term.length < 2) {
+      setBuscaError('Escribe al menos 2 caracteres para buscar el artículo.');
+      setBuscaRes(null);
+      return;
+    }
+    setBuscaCargando(true);
+    setBuscaError(null);
+    setBuscaRes(null);
+    try {
+      setBuscaRes(await apiMatchingService.buscarArticulo(requestId, term));
+    } catch {
+      setBuscaError('No pudimos consultar Profit con ese texto. Inténtalo de nuevo.');
+    } finally {
+      setBuscaCargando(false);
+    }
+  };
+
   React.useEffect(() => {
     setResult(null);
     setDetail(null);
@@ -154,7 +211,18 @@ export const Analizador: React.FC<Props> = ({ requestId, canDecide, draft, manua
   React.useEffect(() => {
     if (manualRun !== lastManualRun.current) {
       lastManualRun.current = manualRun;
-      void ejecutar();
+      // FASE P2 — "Validar artículo" solo dispara la búsqueda COMPLETA cuando
+      // los select de clasificación están completos; si no, se explica por qué
+      // en lugar de lanzar una comparación a medio llenar.
+      if (clasifRef.current) {
+        setAvisoFase(null);
+        void ejecutar('COMPLETA');
+      } else {
+        setAvisoFase(
+          'Completa grupo, subgrupo, tipo de artículo y unidad Profit para comparar todos los campos. '
+          + 'Por ahora solo comparamos la descripción.',
+        );
+      }
       return;
     }
     if (!hasMinimumData(draft)) {
@@ -312,6 +380,80 @@ export const Analizador: React.FC<Props> = ({ requestId, canDecide, draft, manua
         </Select>
       </div>
 
+      {result?.poolTruncated && (
+        <Alert tone="warning">
+          Este análisis comparó los primeros {result.poolLimit ?? 500} artículos del universo de la empresa
+          {typeof result.poolTotal === 'number' ? ` (hay ${result.poolTotal} en total)` : ''}. Si no ves el
+          artículo que buscas, usa "Validar artículo" con más datos del formulario o revisa el universo.
+        </Alert>
+      )}
+
+      {/* FASE P2 — aviso de la búsqueda en dos tiempos. */}
+      {avisoFase && <Alert tone="warning">{avisoFase}</Alert>}
+      <p className="muted small" role="status">
+        {fase === 'COMPLETA'
+          ? 'Búsqueda completa: se comparan descripción, clasificación y demás campos del artículo.'
+          : 'Búsqueda inicial por descripción. Pulsa "Validar artículo" con la clasificación completa para comparar todos los campos.'}
+      </p>
+
+      {/* FASE P3 — búsqueda manual en Profit (solo consulta informativa). */}
+      <div className="stack-sm" aria-label="Búsqueda manual en Profit">
+        <form
+          className="toolbar"
+          onSubmit={(e) => { e.preventDefault(); void buscarManual(); }}
+        >
+          <label className="muted small" htmlFor="busqueda-profit">
+            ¿Ya existe? Busca un artículo en Profit (por palabras)
+          </label>
+          <Input
+            id="busqueda-profit"
+            value={buscaTexto}
+            onChange={(e) => setBuscaTexto(e.target.value)}
+            placeholder="Código o palabras clave (mínimo 2 caracteres)"
+            maxLength={60}
+            disabled={buscaCargando}
+          />
+          <Button type="submit" variant="secondary" size="sm" disabled={buscaCargando}>
+            {buscaCargando ? 'Buscando...' : 'Buscar en Profit'}
+          </Button>
+        </form>
+
+        {buscaError && <Alert tone="danger">{buscaError}</Alert>}
+
+        {buscaRes && buscaRes.results.length === 0 && (
+          <Alert tone="warning">
+            {buscaRes.source === 'PROFIT'
+              ? <>No existe "{buscaRes.term}" en {buscaRes.companyCode}: la consulta directa a Profit no devolvió artículos que contengan todas esas palabras.</>
+              : <>"{buscaRes.term}" no está en el universo local de {buscaRes.companyCode} (ningún artículo con todas esas palabras) y no se pudo consultar Profit directamente.</>}
+          </Alert>
+        )}
+
+        {buscaRes && buscaRes.results.length > 0 && (
+          <>
+            <Alert tone="success">
+              Sí existe: {buscaRes.results.length} resultado{buscaRes.results.length === 1 ? '' : 's'} en{' '}
+              {buscaRes.companyCode}
+              {buscaRes.source === 'LOCAL' ? ' (universo local)' : ' (consulta directa a Profit)'}.
+            </Alert>
+            <ul className="stack-sm">
+              {buscaRes.results.map((r) => (
+                <li key={`${r.companyCode}:${r.profitArticleCode}`}>
+                  <strong>{r.profitArticleCode}</strong> — {r.description}
+                  {(r.brand || r.model) ? (
+                    <span className="muted small"> {[r.brand, r.model].filter(Boolean).join(' · ')}</span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+
+        <p className="muted small">
+          Solo consulta informativa: no modifica el análisis ni decide nada. Coinciden todos los
+          textos que escribas (en cualquier orden): no hace falta escribir la frase exacta.
+        </p>
+      </div>
+
       {estado === 'idle' || estado === 'loading' ? (
         <div className="stack-sm" aria-label="Analizando artículos existentes">
           <p className="muted small" role="status">Analizando artículos existentes...</p>
@@ -323,7 +465,7 @@ export const Analizador: React.FC<Props> = ({ requestId, canDecide, draft, manua
         <div className="stack-sm">
           <Alert tone="danger">No pudimos completar el análisis.</Alert>
           <div>
-            <Button variant="secondary" size="sm" onClick={() => void ejecutar()}>Reintentar</Button>
+            <Button variant="secondary" size="sm" onClick={() => void ejecutar(faseRef.current)}>Reintentar</Button>
           </div>
           <p className="muted small">Puedes continuar con el proceso normal.</p>
         </div>
@@ -453,7 +595,7 @@ export const Analizador: React.FC<Props> = ({ requestId, canDecide, draft, manua
             <p className="muted small">Este candidato fue descartado en la revisión, pero sigue disponible.</p>
             {trayOpen.description && <p>{trayOpen.description}</p>}
             {typeof trayOpen.score === 'number' && (
-              <p><span className="muted small">Coincidencia: </span><strong>{trayOpen.score}%</strong></p>
+              <p><span className="muted small">Puntaje: </span><strong>{trayOpen.score}/100</strong></p>
             )}
           </div>
         )}
@@ -577,7 +719,17 @@ const CarouselCard: React.FC<{
         )?.click();
       }}
     >
-      <p className="muted small">🔎 Posible coincidencia</p>
+      {/*
+        FASE P1 — etiqueta honesta: antes decía "🔎 Posible coincidencia"
+        incluso con puntaje 0. El umbral 12 es el del motor v1 (≥12 = LOW);
+        por debajo el artículo sigue visible (para que el humano pueda
+        descartarlo) pero sin presentarse como coincidencia.
+      */}
+      <p className="muted small">
+        {typeof c.score === 'number' && c.score >= MATCH_MIN_SCORE
+          ? '🔎 Posible coincidencia'
+          : 'Sin coincidencia demostrada (solo se lista para descartar)'}
+      </p>
       <p className="muted small">Código Profit</p>
       <p><strong className="mono">{c.article.profitArticleCode}</strong></p>
       {c.description && <p>{c.description}</p>}
@@ -611,8 +763,8 @@ const CarouselCard: React.FC<{
         )}
       </div>
       <p>
-        <span className="muted small">Coincidencia: </span>
-        <strong>{typeof c.score === 'number' ? `${c.score}%` : getMatchClassificationLabel(c.classification)}</strong>
+        <span className="muted small">Puntaje: </span>
+        <strong>{typeof c.score === 'number' ? `${c.score}/100` : getMatchClassificationLabel(c.classification)}</strong>
       </p>
       <p><Badge tone={c.classification === 'HIGH' ? 'green' : c.classification === 'REVIEW' ? 'yellow' : 'gray'}>
         {getMatchClassificationLabel(c.classification)}
@@ -738,8 +890,9 @@ interface CompareField {
 /**
  * Comparador de coincidencia: Mi solicitud vs Artículo en Profit +
  * ¿Por qué coinciden? (evidencias del motor, sin recalcular).
- * Modelo y referencia de la solicitud no viajan en el borrador actual:
- * esas filas muestran "—" en ese lado (limitación documentada, sin inventar).
+ * Referencia (art.ref) no se compara: en Data-Maestra "Referencia" y
+ * "Part Number" son campos distintos del formulario (limitación
+ * documentada, sin inventar equivalencias).
  */
 const Comparador: React.FC<{
   candidate: EngineCandidate;
@@ -767,11 +920,13 @@ const Comparador: React.FC<{
   const fields: CompareField[] = [
     { key: 'descripcion', label: 'Descripción', sol: trim(draft.description), pro: trim(d?.originalDescription) ?? trim(c.description), evKind: 'DESCRIPTION_SIMILARITY' },
     { key: 'partNumber', label: 'Part Number', sol: trim(draft.partNumber), pro: trim(d?.partNumber), evKind: 'PART_NUMBER_MATCH', confKind: 'PART_NUMBER_CONFLICT' },
-    { key: 'modelo', label: 'Modelo', sol: undefined, pro: trim(d?.model), evKind: 'MODEL_MATCH', confKind: 'MODEL_CONFLICT' },
+    // FASE P1 — el lado "Mi solicitud" ahora trae el Modelo del borrador
+    // (viaja al motor desde la FASE P1); antes mostraba "—" fijo.
+    { key: 'modelo', label: 'Modelo', sol: trim(draft.model), pro: trim(d?.model), evKind: 'MODEL_MATCH', confKind: 'MODEL_CONFLICT' },
     { key: 'marca', label: 'Marca', sol: trim(draft.brandCode), pro: trim(d?.brand), evKind: 'BRAND_MATCH', confKind: 'BRAND_CONFLICT' },
     { key: 'aplicacion', label: 'Aplicación', sol: trim(draft.application), pro: trim(d?.application), evKind: 'APPLICATION_MATCH', confKind: 'APPLICATION_CONFLICT' },
     { key: 'grupo', label: 'Grupo', sol: trim(draft.groupCode), pro: trim(d?.category), evKind: 'CATEGORY_MATCH', confKind: 'CATEGORY_CONFLICT' },
-    { key: 'subgrupo', label: 'Subgrupo', sol: trim(draft.subgroupCode), pro: trim(d?.subCategory), evKind: 'SUBCATEGORY_MATCH' },
+    { key: 'subgrupo', label: 'Subgrupo', sol: trim(draft.subgroupCode), pro: trim(d?.subCategory), evKind: 'SUBCATEGORY_MATCH', confKind: 'SUBCATEGORY_CONFLICT' },
     { key: 'unidad', label: 'Unidad', sol: trim(draft.unitCode), pro: trim(d?.unit), evKind: 'UNIT_MATCH', confKind: 'UNIT_CONFLICT' },
   ];
   const shown = fields.filter((f) => f.sol || f.pro);
@@ -791,7 +946,7 @@ const Comparador: React.FC<{
           Coincidencia {total > 0 ? position : 0} de {total}
         </p>
         {typeof c.score === 'number' && (
-          <p><span className="compare-score">{c.score}%</span> <span className="muted small">de coincidencia (referencial, no es una decisión).</span></p>
+          <p><span className="compare-score">{c.score}/100</span> <span className="muted small">puntaje del motor (referencial, no es una decisión).</span></p>
         )}
         <p>
           <Badge tone={c.classification === 'HIGH' ? 'green' : c.classification === 'REVIEW' ? 'yellow' : 'gray'}>
@@ -837,7 +992,7 @@ const Comparador: React.FC<{
 
         <section className="compare-panel" aria-label="Artículo existente en Profit">
           <h4>Artículo existente en Profit</h4>
-          <p className="muted small">Artículo encontrado en AD_TRANS</p>
+          <p className="muted small">Artículo encontrado en {c.article.companyCode}</p>
           <div className="compare-photo" aria-label="Foto del artículo existente">
             {proPhotoUrl ? (
               <img

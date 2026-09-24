@@ -81,6 +81,8 @@ export interface ClassificationData {
   taxType?: string;
   /** Unidad Profit co_uni (uni_venta=suni_venta; valida trigger TrigI_art). */
   unitCode?: string;
+  /** Descripción ajustada por Almacén (máx. 100). Si se informa, sustituye a la original. */
+  adjustedDescription?: string;
 }
 
 // ── Warehouse Approval Service (15A: Encargado de Almacén) ──
@@ -97,7 +99,7 @@ export interface AccountingService {
   getPendingApprovals(companyId?: string): Promise<Request[]>;
   getPendingProfitRegistration(companyId?: string): Promise<Request[]>;
   getAccountingDetail(id: string): Promise<Request>;
-  approveAccounting(id: string, codes: AccountingCode[], comment?: string): Promise<void>;
+  approveAccounting(id: string, codes: AccountingCode[], taxType?: string, comment?: string): Promise<void>;
   rejectAccounting(id: string, comment: string): Promise<void>;
 }
 

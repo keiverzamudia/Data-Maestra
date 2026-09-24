@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../comun/prisma/prisma.service';
+import { splitSearchTokens, tokenVariants } from '../domain/search-tokens';
 
 /**
  * FASE 18 — Acceso a persistencia del dominio matching (capa infrastructure).
@@ -55,6 +57,56 @@ export class MatchingRepository {
       where: code ? { companyCode: code } : {},
       orderBy: [{ companyCode: 'asc' }, { profitArticleCode: 'asc' }],
       take: Math.max(1, Math.min(limit, 500)),
+    });
+  }
+
+  /**
+   * FASE P3 — búsqueda manual de un artículo en el universo local.
+   * FASE P5 — coincide POR PALABRAS (AND de tokens en cualquier orden) y no
+   * por frase exacta: "SENSOR DE POSICIÓN HALL" encuentra
+   * "SENSOR DE POSICIÓN DE EFECTO HALL", que antes devolvía 0.
+   * LIKE parametrizado por Prisma (nunca concatena SQL), orden
+   * determinístico y tope.
+   */
+  searchProfiles(companyCode: string, term: string, limit: number) {
+    const code = (companyCode ?? '').trim().toUpperCase();
+    const q = (term ?? '').trim();
+    if (!code || !q) return Promise.resolve([]);
+    const inField = (value: string) => [
+      { profitArticleCode: { contains: value } },
+      { originalDescription: { contains: value } },
+      { normalizedDescription: { contains: value } },
+      { model: { contains: value } },
+    ];
+    const tokens = splitSearchTokens(q);
+    // Sin tokens utilizables ("A B") → frase completa, como antes de P5.
+    const where: Prisma.ArticleNormalizationProfileWhereInput = {
+      companyCode: code,
+      ...(tokens.length === 0
+        ? { OR: inField(q) }
+        : {
+            AND: tokens.map((token) => {
+              const clauses = tokenVariants(token).flatMap(inField);
+              return clauses.length === 1 ? clauses[0]! : { OR: clauses };
+            }),
+          }),
+    };
+    return this.prisma.articleNormalizationProfile.findMany({
+      where,
+      orderBy: [{ profitArticleCode: 'asc' }],
+      take: Math.max(1, Math.min(limit, 50)),
+    });
+  }
+
+  /**
+   * FASE P1 — total real de perfiles del universo. Sirve únicamente para
+   * avisar cuando el tope de 500 silencia parte del universo; nunca modifica
+   * el resultado del análisis.
+   */
+  countProfiles(companyCode?: string): Promise<number> {
+    const code = (companyCode ?? '').trim().toUpperCase();
+    return this.prisma.articleNormalizationProfile.count({
+      where: code ? { companyCode: code } : {},
     });
   }
 

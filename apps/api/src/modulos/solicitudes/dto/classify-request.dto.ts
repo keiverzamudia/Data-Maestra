@@ -100,4 +100,10 @@ export class ClassifyRequestDto {
   @IsOptional()
   @MaxLength(20, { message: 'La referencia admite máximo 20 caracteres.' })
   ref?: string;
+
+  @ApiPropertyOptional({ example: 'TORNILLO HEXAGONAL 1/2"', description: 'Descripción ajustada por Almacén al clasificar (máx. 100). Si se informa, sustituye a la original como art_des en Profit y se muestra al solicitante. Vacío = sin ajuste.' })
+  @IsString()
+  @IsOptional()
+  @MaxLength(100, { message: 'La descripción ajustada admite máximo 100 caracteres.' })
+  adjustedDescription?: string;
 }

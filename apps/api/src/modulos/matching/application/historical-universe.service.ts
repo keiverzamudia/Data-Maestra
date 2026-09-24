@@ -8,6 +8,7 @@ import { profitDriver } from '../../profit/profit-driver';
 import { DeterministicNormalizerV2 } from '../domain/matching-contracts';
 import { assessCoverage, buildFingerprint, type CoverageLevel } from '../domain/historical-coverage';
 import { NORMALIZATION_VERSION_V2 } from '../domain/text-normalizer';
+import { escapeLike, splitSearchTokens, tokenVariants } from '../domain/search-tokens';
 import { MatchingRepository } from '../infrastructure/matching.repository';
 
 export const HISTORICAL_ORIGIN = 'HISTORICO';
@@ -22,11 +23,24 @@ interface HistoricalRow {
   co_cat: string;
   co_color: string;
   uni_venta: string;
+  // FASE P1 — art.modelo/art.ref (char 20). `modelo` alimenta
+  // profile.model (señal MODEL real); `ref` se lee y se descarta: en
+  // Data-Maestra "Referencia" y "Part Number" son campos distintos.
+  modelo?: string | null;
+  ref?: string | null;
   // FASE 23.2 — referencias fotográficas de dbo.art (picture: image binario,
   // hoy siempre NULL; imagen1/imagen2: varchar(60), hoy espacios). Se
   // conservan tal cual cuando traen contenido real; si no, null.
   imagen1?: string | null;
   imagen2?: string | null;
+}
+
+/** FASE P3 — fila de la búsqueda manual en vivo sobre Profit. */
+export interface ProfitSearchRow {
+  co_art: string;
+  art_des: string;
+  co_color?: string | null;
+  modelo?: string | null;
 }
 
 export interface IngestResult {
@@ -94,12 +108,69 @@ export class HistoricalUniverseService {
         LTRIM(RTRIM(co_lin)) AS co_lin, LTRIM(RTRIM(co_subl)) AS co_subl,
         LTRIM(RTRIM(co_cat)) AS co_cat, LTRIM(RTRIM(co_color)) AS co_color,
         LTRIM(RTRIM(uni_venta)) AS uni_venta,
+        LTRIM(RTRIM(modelo)) AS modelo, LTRIM(RTRIM(ref)) AS ref,
         CAST(imagen1 AS VARCHAR(60)) AS imagen1, CAST(imagen2 AS VARCHAR(60)) AS imagen2
        FROM [${db}].dbo.art ORDER BY co_art OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY`,
       {
         skip: { type: mssql.Int, value: skip },
         take: { type: mssql.Int, value: take },
       },
+    );
+  }
+
+  /**
+   * FASE P3 — consulta en vivo a Profit para la búsqueda manual.
+   * Solo SELECT parametrizado sobre la empresa pedida (safeDb + isListed);
+   * nunca concatena el término: viaja por request.input con los comodines
+   * LIKE escapados. Orden determinístico y tope pequeño: es una búsqueda
+   * dirigida, no una ingesta.
+   *
+   * FASE P5 — igual que el universo local: coincide POR PALABRAS (AND de
+   * tokens en cualquier orden) usando la misma tokenización
+   * (`search-tokens`), para que local y Profit respondan lo mismo.
+   */
+  async searchArticles(companyCode: string, term: string, limit: number): Promise<ProfitSearchRow[]> {
+    const db = HistoricalUniverseService.safeDb(companyCode);
+    const listed = await this.companies.isListed(db).catch(() => null);
+    if (!listed) throw new NotFoundException(`Empresa Profit desconocida: ${db}.`);
+    const q = (term ?? '').trim();
+    if (q.length < 2) return [];
+    const mssql: any = await this.types();
+    const take = Math.max(1, Math.min(limit, 50));
+    const params: Record<string, { type: any; value: any }> = {
+      take: { type: mssql.Int, value: take },
+    };
+    const like = (value: string) => `%${escapeLike(value)}%`;
+    const tokens = splitSearchTokens(q);
+    let where: string;
+    if (tokens.length === 0) {
+      // Sin tokens utilizables → frase completa (comportamiento previo).
+      params.pattern = { type: mssql.VarChar(120), value: like(q) };
+      where =
+        '(LTRIM(RTRIM(co_art)) LIKE @pattern OR LTRIM(RTRIM(art_des)) LIKE @pattern OR LTRIM(RTRIM(modelo)) LIKE @pattern)';
+    } else {
+      where = tokens
+        .map((token, i) => {
+          const clauses = tokenVariants(token).map((variant, j) => {
+            const name = `t${i}_${j}`;
+            params[name] = { type: mssql.VarChar(120), value: like(variant) };
+            return (
+              `LTRIM(RTRIM(co_art)) LIKE @${name} ` +
+              `OR LTRIM(RTRIM(art_des)) LIKE @${name} ` +
+              `OR LTRIM(RTRIM(modelo)) LIKE @${name}`
+            );
+          });
+          return `(${clauses.join(' OR ')})`;
+        })
+        .join(' AND ');
+    }
+    return this.profitAdapter.rawQuery<ProfitSearchRow>(
+      `SELECT TOP (@take) LTRIM(RTRIM(co_art)) AS co_art, LTRIM(RTRIM(art_des)) AS art_des,
+        LTRIM(RTRIM(co_color)) AS co_color, LTRIM(RTRIM(modelo)) AS modelo
+       FROM [${db}].dbo.art
+       WHERE ${where}
+       ORDER BY co_art`,
+      params,
     );
   }
 
@@ -172,9 +243,12 @@ export class HistoricalUniverseService {
         category: row.co_lin?.trim() ? row.co_lin : undefined,
         subCategory: row.co_subl?.trim() ? row.co_subl : undefined,
         unit: row.uni_venta?.trim() ? row.uni_venta : undefined,
+        // FASE P1 — modelo real de Profit (art.modelo), no inferido del texto.
+        model: row.modelo?.trim() ? row.modelo : undefined,
       },
       brandNames,
     );
+    const model = row.modelo?.trim() ? row.modelo : null;
     const coverage = assessCoverage({
       normalizedDescription: v2.normalizedDescription,
       tokens: v2.tokens,
@@ -201,6 +275,7 @@ export class HistoricalUniverseService {
       current.normalizationVersion === NORMALIZATION_VERSION_V2 &&
       (current as { coverage?: string | null }).coverage === coverage &&
       (current as { fingerprint?: string | null }).fingerprint === fingerprint &&
+      (current as { model?: string | null }).model === model &&
       (current as { photoReference?: string | null }).photoReference === photoReference
     ) {
       return 'skipped';
@@ -223,6 +298,7 @@ export class HistoricalUniverseService {
       coverage,
       fingerprint,
       brand: row.co_color?.trim() ? row.co_color : null,
+      model,
       category: row.co_lin?.trim() ? row.co_lin : null,
       subCategory: row.co_subl?.trim() ? row.co_subl : null,
       unit: row.uni_venta?.trim() ? row.uni_venta : null,

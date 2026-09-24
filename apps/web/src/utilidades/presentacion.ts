@@ -164,8 +164,10 @@ const MATCH_CONFLICTS: Record<string, string> = {
   MODEL_CONFLICT: 'Conflicto de modelo',
   PART_NUMBER_CONFLICT: 'Conflicto de número de parte',
   CATEGORY_CONFLICT: 'Conflicto de categoría',
+  SUBCATEGORY_CONFLICT: 'Conflicto de subcategoría',
   UNIT_CONFLICT: 'Conflicto de unidad',
   APPLICATION_CONFLICT: 'Conflicto de aplicación',
+  PURPOSE_CONFLICT: 'Conflicto de propósito',
 };
 
 const MATCH_ENGINE_STATUS: Record<string, string> = {

@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSession } from '../../contextos/SessionContext';
 import {
-  SectionCard, Button, Alert, ConfirmDialog, Badge, SearchInput, Code, Input,
+  SectionCard, Button, Alert, ConfirmDialog, Badge, SearchInput, Code,
 } from '../ui';
 import {
   apiProfitRegistrationService,
@@ -24,6 +24,13 @@ import type { Request } from '../../tipos';
 const VISIBLE_STATES = ['CONTABILIDAD_APROBADA', 'PROCESANDO_PROFIT', 'INSERTADO_PROFIT', 'ERROR_PROFIT'];
 
 /**
+ * FASE 17 — selección de empresas destino, oculta temporalmente por pedido del
+ * usuario. Se conserva la lógica (el registro solo se hace en la estándar) y
+ * basta con ponerlo en `true` para volver a mostrar los checkboxes.
+ */
+const SHOW_EXTRA_COMPANIES: boolean = false;
+
+/**
  * Registro en Profit (14F/14J/14R, solo presentación).
  * 14R — experiencia corporativa: el usuario ve estado, códigos y acciones.
  * Nada de infraestructura (servidor, base, auth, usuarios técnicos),
@@ -42,7 +49,6 @@ export const ProfitRegistrationPanel: React.FC<{ request: Request; onChanged?: (
   const [verifyResult, setVerifyResult] = React.useState<ProfitVerifyResult | null>(null);
   const [busy, setBusy] = React.useState<'plan' | 'create' | 'verify' | 'retry' | null>(null);
   const [confirmOpen, setConfirmOpen] = React.useState(false);
-  const [confirmText, setConfirmText] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
   const [attempts, setAttempts] = React.useState<ProfitAttemptRecord[]>([]);
   const [retryNote, setRetryNote] = React.useState<string | null>(null);
@@ -73,7 +79,6 @@ export const ProfitRegistrationPanel: React.FC<{ request: Request; onChanged?: (
     setVerifyResult(null);
     setError(null);
     setRetryNote(null);
-    setConfirmText('');
     setCorpSelected(new Set());
   }, [request.id, request.status]);
 
@@ -112,7 +117,6 @@ export const ProfitRegistrationPanel: React.FC<{ request: Request; onChanged?: (
 
   const runCreate = async () => {
     setConfirmOpen(false);
-    setConfirmText('');
     setBusy('create');
     setError(null);
     try {
@@ -277,7 +281,7 @@ export const ProfitRegistrationPanel: React.FC<{ request: Request; onChanged?: (
           <p><strong>✓ LISTO PARA REGISTRAR EN PROFIT</strong></p>
           <p className="muted small">Este artículo de Data-Maestra está listo para convertirse en este código de Profit.</p>
           {plan.warnings.map((w, i) => <Alert key={i} tone="info">{w}</Alert>)}
-          {canWrite && corpCompanies.length > 0 && (
+          {SHOW_EXTRA_COMPANIES && canWrite && corpCompanies.length > 0 && (
             <fieldset>
               <legend className="muted small">Empresas adicionales (el estándar siempre se incluye)</legend>
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -446,24 +450,21 @@ export const ProfitRegistrationPanel: React.FC<{ request: Request; onChanged?: (
 
       {error && <Alert tone="danger">{error}</Alert>}
 
-      {/* Confirmación textual (no sustituye los gates del backend). */}
+      {/* Advertencia previa al envío (no sustituye los gates del backend). */}
       <ConfirmDialog
         open={confirmOpen}
         title="Registrar artículo en Profit"
-        desc={plan ? `Está a punto de registrar este artículo en Profit. Solicitud: ${request.requestNumber}. Código Profit: ${plan.candidate}.${corpSelected.size > 0 ? ` Mismo código en ${corpSelected.size + 1} empresas, en una sola operación (si alguna falla, no se escribe en ninguna).` : ''} Esta operación creará el artículo en Profit. Para confirmar, escriba REGISTRAR EN PROFIT.` : undefined}
-        confirmLabel="Confirmar registro"
+        desc={plan ? `Solicitud: ${request.requestNumber}. Código Profit: ${plan.candidate}. Esta operación creará el artículo en Profit.` : undefined}
+        confirmLabel="Sí, subir a Profit"
         busy={busy === 'create'}
-        confirmDisabled={confirmText.trim() !== 'REGISTRAR EN PROFIT'}
-        onCancel={() => { setConfirmOpen(false); setConfirmText(''); }}
+        onCancel={() => setConfirmOpen(false)}
         onConfirm={runCreate}
       >
-        <Input
-          value={confirmText}
-          onChange={e => setConfirmText(e.target.value)}
-          placeholder="REGISTRAR EN PROFIT"
-          aria-label="Confirmación textual"
-          autoComplete="off"
-        />
+        <Alert tone="warning">
+          <strong>Atención:</strong> a punto de subir este artículo a Profit.
+          La operación creará el artículo en Profit y no puede deshacerse desde
+          esta pantalla.
+        </Alert>
       </ConfirmDialog>
     </SectionCard>
   );

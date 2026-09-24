@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { AccountingList } from './ContabilidadList';
 import { useSession } from '../../contextos/SessionContext';
@@ -33,6 +33,17 @@ vi.mock('../../hooks/useOrganizacion', () => ({
 }));
 vi.mock('../../servicios/api/api-profit-service', () => ({
   apiProfitService: { getAccounts: vi.fn(), getGroupStandard: vi.fn() },
+}));
+vi.mock('../../servicios/api/api-catalog-effective-service', () => ({
+  apiCatalogEffectiveService: {
+    taxTypes: vi.fn().mockResolvedValue({
+      items: [
+        { code: '1', description: 'TASA GENERAL', parentCode: '', visible: true, availableInProfit: true, isNew: false, synchronizedAt: null },
+        { code: '6', description: 'EXENTOS', parentCode: '', visible: true, availableInProfit: true, isNew: false, synchronizedAt: null },
+      ],
+      total: 2, mode: 'ALL', source: 'PROFIT_LIVE', synchronizedAt: null,
+    }),
+  },
 }));
 vi.mock('../../servicios/api/api-profit-registration-service', () => ({
   apiProfitRegistrationService: {
@@ -139,9 +150,9 @@ describe('ContabilidadList 11C', () => {
     profitWriteStatusMock.mockResolvedValue({ enabled: false, configured: true, auth: 'sql', connected: true });
     profitAttemptsMock.mockResolvedValue({ requestId: 'r1', attempts: [], verifications: [] });
     detailMock
-      .mockResolvedValueOnce(structuredClone({ ...REQ, masterCode: 'FERMIS-00001', approvals: APPROVALS }))
+      .mockResolvedValueOnce(structuredClone({ ...REQ, masterCode: 'FERMIS-00001', taxType: '1', approvals: APPROVALS }))
       .mockResolvedValue(structuredClone({
-        ...REQ, status: 'CONTABILIDAD_APROBADA', masterCode: 'FERMIS-00001', approvals: APPROVALS,
+        ...REQ, status: 'CONTABILIDAD_APROBADA', masterCode: 'FERMIS-00001', taxType: '1', approvals: APPROVALS,
       }));
     stdMock.mockResolvedValue({
       groupCode: 'FER', configured: true,
@@ -200,7 +211,7 @@ describe('ContabilidadList 12C — estándar de grupo', () => {
   };
 
   it('autocarga posiciones del estándar y habilita aprobar', async () => {
-    detailMock.mockResolvedValue(structuredClone({ ...REQ, masterCode: 'FERMIS-00001', approvals: APPROVALS }));
+    detailMock.mockResolvedValue(structuredClone({ ...REQ, masterCode: 'FERMIS-00001', taxType: '1', approvals: APPROVALS }));
     stdMock.mockResolvedValue(structuredClone(STD));
     render(<MemoryRouter><AccountingList /></MemoryRouter>);
     await openContabilidadTab();
@@ -210,8 +221,9 @@ describe('ContabilidadList 12C — estándar de grupo', () => {
     expect(screen.getByText(/Última verificación:/)).toBeTruthy();
     expect(stdMock).toHaveBeenCalledWith('FER');
     expect(screen.getByText('1.1.04.03.01.006')).toBeTruthy();
-    // Sin selector de posiciones ni edición manual (el workspace sí tiene tablist propia)
-    expect(screen.queryByRole('combobox')).toBeNull();
+    // Sin selector de posiciones ni edición manual (el único combobox es el de impuesto)
+    expect(screen.getAllByRole('combobox')).toHaveLength(1);
+    expect(screen.getByRole('combobox', { name: /Tasa del impuesto/i })).toBeTruthy();
     expect(screen.queryByText(/Puede cambiarla/)).toBeNull();
     expect(screen.queryByText('Quitar cuenta')).toBeNull();
     const btn = screen.getAllByText(/Aprobar Solicitud/)[0] as HTMLButtonElement;
@@ -257,7 +269,7 @@ describe('ContabilidadList 12E — checklist y trazabilidad', () => {
   };
 
   it('checklist completo permite aprobar y muestra trazabilidad de Almacén', async () => {
-    detailMock.mockResolvedValue(structuredClone({ ...REQ, masterCode: 'FERMIS-00001', approvals: APPROVALS }));
+    detailMock.mockResolvedValue(structuredClone({ ...REQ, masterCode: 'FERMIS-00001', taxType: '1', approvals: APPROVALS }));
     stdMock.mockResolvedValue(structuredClone(STD3));
     render(<MemoryRouter><AccountingList /></MemoryRouter>);
     await openContabilidadTab();
@@ -272,6 +284,7 @@ describe('ContabilidadList 12E — checklist y trazabilidad', () => {
   });
 
   it('checklist incompleto bloquea aprobar (sin código master)', async () => {
+    detailMock.mockResolvedValueOnce(structuredClone({ ...REQ, taxType: '1', approvals: APPROVALS }));
     stdMock.mockResolvedValue(structuredClone(STD3));
     render(<MemoryRouter><AccountingList /></MemoryRouter>);
     await openContabilidadTab();
@@ -281,8 +294,50 @@ describe('ContabilidadList 12E — checklist y trazabilidad', () => {
     expect(btn.disabled).toBe(true);
   });
 
-  it('cada requisito muestra valor y expande verificación/origen', async () => {
+  it('impuesto obligatorio: sin tasa bloquea y al elegirla habilita', async () => {
     detailMock.mockResolvedValue(structuredClone({ ...REQ, masterCode: 'FERMIS-00001', approvals: APPROVALS }));
+    stdMock.mockResolvedValue(structuredClone(STD3));
+    render(<MemoryRouter><AccountingList /></MemoryRouter>);
+    await openContabilidadTab();
+    await screen.findByText('Checklist de Validación');
+    // Impuesto en falta bloquea aprobar.
+    expect(screen.getByText('Sin seleccionar')).toBeTruthy();
+    const btn = screen.getAllByText(/Aprobar Solicitud/)[0] as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    // Sugerencia visible por tipo (el fixture no trae articleType: sin sugerencia).
+    // Elegir tasa 1 mediante el buscador.
+    const taxInput = screen.getByRole('combobox', { name: /Tasa del impuesto/i }) as HTMLInputElement;
+    fireEvent.focus(taxInput);
+    fireEvent.change(taxInput, { target: { value: '' } });
+    const opt = screen.getAllByRole('option').find(o => (o.textContent ?? '').startsWith('1 '))!;
+    fireEvent.mouseDown(opt);
+    expect(taxInput.value).toContain('1 —');
+    await waitFor(() => expect(
+      (screen.getAllByText(/Aprobar Solicitud/)[0] as HTMLButtonElement).disabled,
+    ).toBe(false));
+    // Aprobar envía la tasa elegida.
+    approveMock.mockResolvedValue({});
+    fireEvent.click(screen.getAllByText(/Aprobar Solicitud/)[0]!);
+    expect(await screen.findByText(/No se registrará en Profit automáticamente/)).toBeTruthy();
+    const confirms = screen.getAllByText('Aprobar');
+    fireEvent.click(confirms[confirms.length - 1]!);
+    await waitFor(() => expect(approveMock).toHaveBeenCalledTimes(1));
+    expect(approveMock.mock.calls[0]![2]).toBe('1');
+  });
+
+  it('muestra sugerencia de tasa según el tipo del artículo', async () => {
+    detailMock.mockResolvedValue(structuredClone({
+      ...REQ, masterCode: 'FERMIS-00001', articleType: 'S', approvals: APPROVALS,
+    }));
+    stdMock.mockResolvedValue(structuredClone(STD3));
+    render(<MemoryRouter><AccountingList /></MemoryRouter>);
+    await openContabilidadTab();
+    await screen.findByText('Checklist de Validación');
+    expect(await screen.findByText(/Sugerencia por tipo S: tasa 6/)).toBeTruthy();
+  });
+
+  it('cada requisito muestra valor y expande verificación/origen', async () => {
+    detailMock.mockResolvedValue(structuredClone({ ...REQ, masterCode: 'FERMIS-00001', taxType: '1', approvals: APPROVALS }));
     stdMock.mockResolvedValue(structuredClone(STD3));
     render(<MemoryRouter><AccountingList /></MemoryRouter>);
     await openContabilidadTab();

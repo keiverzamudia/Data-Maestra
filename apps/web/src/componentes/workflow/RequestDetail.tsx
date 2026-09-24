@@ -2,11 +2,19 @@ import * as React from 'react';
 import type { Request } from '../../tipos';
 import { useCatalogos } from '../../hooks/useCatalogos';
 import { useOrganizacion } from '../../hooks/useOrganizacion';
+import { apiCatalogEffectiveService } from '../../servicios/api/api-catalog-effective-service';
 import { WorkflowTimeline } from './WorkflowTimeline';
 import { ImageLightbox } from '../ui';
 
 function findName(list: { id: string; name: string }[], id?: string) {
   return list.find(x => x.id === id)?.name || '—';
+}
+
+/** Nombre (código) para grupo/subgrupo del catálogo local. */
+function nameWithCode(item: { name: string; code: string } | undefined): string {
+  if (!item) return '—';
+  const code = (item.code ?? '').trim();
+  return code ? `${item.name} (${code})` : item.name;
 }
 
 export const RequestDetail: React.FC<{ request: Request; showWorkflow?: boolean }> = ({ request, showWorkflow = true }) => {
@@ -20,6 +28,41 @@ export const RequestDetail: React.FC<{ request: Request; showWorkflow?: boolean 
   const manager = managerId ? usuarios.find(u => u.id === managerId) : null;
 
   const [lightboxOpen, setLightboxOpen] = React.useState(false);
+  // Nombres Profit para tipo, unidad e impuesto (una sola ráfaga en paralelo;
+  // cada consulta tolera fallo individual). Si un nombre no se resuelve, el
+  // campo muestra el código crudo, salvo Impuesto que se oculta.
+  const [profitNames, setProfitNames] = React.useState<{ tax: string | null; type: string | null; unit: string | null }>({
+    tax: null, type: null, unit: null,
+  });
+  React.useEffect(() => {
+    const wantTax = (request.taxType ?? '').trim();
+    const wantType = (request.articleType ?? '').trim();
+    const wantUnit = (request.unitCode ?? '').trim();
+    if (!wantTax && !wantType && !wantUnit) {
+      setProfitNames({ tax: null, type: null, unit: null });
+      return;
+    }
+    let cancelled = false;
+    const findNameIn = (
+      loader: () => Promise<{ items: Array<{ code?: string; description?: string }> }>,
+      code: string,
+    ): Promise<string | null> => loader().then(
+      env => {
+        const found = env.items.find(i => (i.code ?? '').trim() === code);
+        const name = (found?.description ?? '').trim();
+        return name || null;
+      },
+      () => null,
+    );
+    void Promise.all([
+      wantTax ? findNameIn(() => apiCatalogEffectiveService.taxTypes(), wantTax) : Promise.resolve(null),
+      wantType ? findNameIn(() => apiCatalogEffectiveService.articleTypes(), wantType) : Promise.resolve(null),
+      wantUnit ? findNameIn(() => apiCatalogEffectiveService.units(), wantUnit) : Promise.resolve(null),
+    ]).then(([tax, type, unit]) => {
+      if (!cancelled) setProfitNames({ tax, type, unit });
+    });
+    return () => { cancelled = true; };
+  }, [request.taxType, request.articleType, request.unitCode]);
 
   return (
     <div className="stack">
@@ -48,6 +91,16 @@ export const RequestDetail: React.FC<{ request: Request; showWorkflow?: boolean 
             <br />
             <strong>{request.requestedDescription}</strong>
           </div>
+          {request.adjustedDescription && request.adjustedDescription.trim()
+            && request.adjustedDescription.trim() !== (request.requestedDescription ?? '').trim() && (
+            <div>
+              <span className="muted small">Descripción ajustada por Almacén</span>
+              <br />
+              <strong>{request.adjustedDescription}</strong>
+              <br />
+              <span className="muted small">La descripción original fue modificada durante la clasificación.</span>
+            </div>
+          )}
           {request.purpose && (
             <div>
               <span className="muted small">Propósito</span>
@@ -85,18 +138,18 @@ export const RequestDetail: React.FC<{ request: Request; showWorkflow?: boolean 
               <div>
                 <span className="muted small">Tipo (Profit)</span>
                 <br />
-                <strong>{request.articleType}{request.articleTypeManual ? ' (manual)' : ''}</strong>
+                <strong>{profitNames.type ? `${profitNames.type} (${request.articleType.trim()})` : request.articleType.trim()}{request.articleTypeManual ? ' (manual)' : ''}</strong>
               </div>
             )}
             <div>
               <span className="muted small">Grupo</span>
               <br />
-              <strong>{findName(grupos, request.groupId)}</strong>
+              <strong>{nameWithCode(grupos.find(g => g.id === request.groupId))}</strong>
             </div>
             <div>
               <span className="muted small">Subgrupo</span>
               <br />
-              <strong>{findName(subgrupos, request.subgroupId)}</strong>
+              <strong>{nameWithCode(subgrupos.find(s => s.id === request.subgroupId))}</strong>
             </div>
             <div>
               <span className="muted small">Categoría</span>
@@ -111,13 +164,13 @@ export const RequestDetail: React.FC<{ request: Request; showWorkflow?: boolean 
             <div>
               <span className="muted small">Unidad</span>
               <br />
-              <strong>{request.unitCode || findName(unidades, request.unitId)}</strong>
+              <strong>{request.unitCode ? (profitNames.unit ? `${profitNames.unit} (${request.unitCode.trim()})` : request.unitCode.trim()) : findName(unidades, request.unitId)}</strong>
             </div>
-            {request.taxType && (
+            {request.taxType && profitNames.tax && (
               <div>
                 <span className="muted small">Impuesto (tipo_imp)</span>
                 <br />
-                <strong>{request.taxType}</strong>
+                <strong>{profitNames.tax} ({request.taxType.trim()})</strong>
               </div>
             )}
             {request.manufacturer && (

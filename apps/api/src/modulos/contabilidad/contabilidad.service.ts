@@ -1,7 +1,9 @@
 import { Injectable, NotFoundException, BadRequestException, ServiceUnavailableException } from '@nestjs/common';
 import { PrismaService } from '../../comun/prisma/prisma.service';
 import { SolicitudesService } from '../solicitudes/solicitud.service';
+import { CatalogosService } from '../catalogos/catalogos.service';
 import { ProfitAdapterService } from '../profit/profit-adapter.service';
+import { isTaxTypeCode } from '../profit/article-taxonomy';
 import { flattenRequestData } from '../../comun/utilidades/flatten-request-data';
 
 const REQUEST_INCLUDE = {
@@ -31,6 +33,7 @@ export class ContabilidadService {
     private readonly prisma: PrismaService,
     private readonly requestsService: SolicitudesService,
     private readonly profit: ProfitAdapterService,
+    private readonly catalogos: CatalogosService,
   ) {}
 
   async findPendingApproval() {
@@ -74,6 +77,7 @@ export class ContabilidadService {
   async approve(
     id: string,
     accountingCodes: Array<{ code: string; description: string; position?: string }>,
+    taxType: string | undefined,
     userId: string,
     companyId: string,
     // 12G — observaciones opcionales de la decisión; van como comentario del approval.
@@ -92,6 +96,10 @@ export class ContabilidadService {
     // mínimo 1 posición, máximo c1..c10.
     await this.requireGroupStandard(request.groupId);
 
+    // El impuesto (tipo_imp) lo define Contabilidad, no Almacén: es obligatorio
+    // aquí y se persiste en RequestData antes de avanzar (lo exige el payload Profit).
+    await this.requireAndSaveTaxType(id, taxType, companyId);
+
     if (accountingCodes.length > 0) {
       await this.prisma.requestAccountingCode.createMany({
         data: accountingCodes.map((ac) => ({
@@ -104,6 +112,22 @@ export class ContabilidadService {
     }
 
     return this.requestsService.approve(id, { action: 'APPROVE', comment: comment?.trim() || 'Accounting approved' }, userId, companyId);
+  }
+
+  /**
+   * El impuesto lo define Contabilidad: dominio tabulado 1-9, existencia y
+   * visibilidad en Profit, y persistencia en RequestData antes de avanzar.
+   */
+  private async requireAndSaveTaxType(id: string, taxType: string | undefined, companyId: string) {
+    const tax = (taxType ?? '').trim();
+    if (!tax) {
+      throw new BadRequestException('Falta el impuesto (tipo_imp): Contabilidad debe seleccionar la tasa.');
+    }
+    if (!isTaxTypeCode(tax)) {
+      throw new BadRequestException(`taxType inválido: ${tax} (tabulado 1-9; no usar co_imp)`);
+    }
+    await this.catalogos.checkTaxType(tax, companyId);
+    await this.prisma.requestData.update({ where: { requestId: id }, data: { taxType: tax } });
   }
 
   /**
