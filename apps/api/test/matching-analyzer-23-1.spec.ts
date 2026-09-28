@@ -45,9 +45,14 @@ function buildAnalyzer(profiles: any[], requestOver: any = {}) {
     request: { findUnique: vi.fn(async ({ where }: any) => (where?.id === 'req-9' ? { ...requestRow(), ...requestOver } : null)) },
   };
   const repository: any = {
-    listProfiles: vi.fn(async (limit: number, companyCode?: string) =>
-      profiles.filter((p) => !companyCode || p.companyCode === companyCode).slice(0, limit),
+    listRecallPool: vi.fn(async (companyCode?: string) =>
+      profiles.filter((p) => !companyCode || p.companyCode === companyCode),
     ),
+    searchProfiles: vi.fn(async (company: string, term: string, limit: number) =>
+      profiles
+        .filter((p) => p.companyCode === company)
+        .filter((p) => p.profitArticleCode.includes(term) || p.originalDescription.includes(term))
+        .slice(0, limit)),
     countProfiles: vi.fn(async (companyCode?: string) =>
       profiles.filter((p) => !companyCode || p.companyCode === companyCode).length,
     ),
@@ -116,7 +121,7 @@ describe('analyzeDraft — entrada combinada solicitud + borrador', () => {
       prof('AD_DIST', 'B1'),
     ]);
     const r = await service.analyzeDraft('req-9', { description: 'Filtro aceite DT466' });
-    expect(repository.listProfiles).toHaveBeenCalledWith(500, 'AD_TRANS');
+    expect(repository.listRecallPool).toHaveBeenCalledWith('AD_TRANS');
     expect(r.candidates.every((c) => c.article.companyCode === 'AD_TRANS')).toBe(true);
   });
 
@@ -215,8 +220,8 @@ describe('analyzeDraft — FASE P1: universo, modelo y trazabilidad', () => {
       { company: { code: 'AD_DIST' } },
     );
     await service.analyzeDraft('req-9', { description: 'Filtro aceite DT466' });
-    expect(repository.listProfiles).toHaveBeenCalledWith(500, 'AD_DIST');
-    expect(repository.listProfiles).not.toHaveBeenCalledWith(500, 'AD_TRANS');
+    expect(repository.listRecallPool).toHaveBeenCalledWith('AD_DIST');
+    expect(repository.listRecallPool).not.toHaveBeenCalledWith('AD_TRANS');
   });
 
   it('el modelo del borrador viaja al motor y aporta señal MODEL', async () => {
@@ -251,19 +256,23 @@ describe('analyzeDraft — FASE P1: universo, modelo y trazabilidad', () => {
     expect(audit.some((e: any) => e.action === 'MATCH_CANDIDATES_CONSULTED')).toBe(true);
   });
 
-  it('avisa cuando el tope de 500 perfiles silencia parte del universo', async () => {
+  it('el recall cubre el universo completo: sin corte arbitrario de 500', async () => {
     const { service, repository } = buildAnalyzer([prof('AD_TRANS', 'A1')]);
     repository.countProfiles.mockResolvedValue(900);
     const r = await service.analyzeDraft('req-9', { description: 'Filtro aceite DT466' });
-    expect(r.poolLimit).toBe(500);
+    // Se evaluó todo el pool disponible (1 perfil), no los primeros 500:
+    // el truncamiento solo se avisa si la red de seguridad recortó.
+    expect(r.poolScanned).toBe(1);
     expect(r.poolTotal).toBe(900);
     expect(r.poolTruncated).toBe(true);
+    expect((r as any).poolLimit).toBeUndefined();
   });
 
-  it('sin corte (universo completo) poolTruncated queda en false', async () => {
+  it('universo totalmente evaluado: poolTruncated queda en false', async () => {
     const { service } = buildAnalyzer([prof('AD_TRANS', 'A1')]);
     const r = await service.analyzeDraft('req-9', { description: 'Filtro aceite DT466' });
     expect(r.poolTruncated).toBe(false);
+    expect(r.poolScanned).toBe(1);
     expect(r.poolTotal).toBe(1);
   });
 });

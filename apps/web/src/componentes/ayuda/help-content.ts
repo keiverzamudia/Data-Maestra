@@ -461,6 +461,31 @@ const HELP: Record<string, HelpEntry> = {
     nextOwner: 'Almacén y Contabilidad.',
     flowStatus: 'CONTABILIDAD_APROBADA',
   },
+  replicacion: {
+    key: 'replicacion',
+    title: 'Ayuda — Replicación multiempresa',
+    subtitle: 'Llevar AD_TRANS a todas las empresas desde un solo lugar.',
+    what: 'Este módulo reúne la réplica de catálogos hacia las demás empresas, el registro de equivalencias de código, la habilitación de empresas y el estado de sincronización. AD_TRANS es la empresa estándar: de ella salen grupos, subgrupos, marcas, unidades, categorías y la información contable.',
+    whyHere: 'Estás aquí con permiso de administración para dejar todas las empresas al día antes de registrar artículos.',
+    steps: [
+      'En Replicar catálogos, selecciona las empresas y usa Comparar para ver solo lo que cambió.',
+      'Si una empresa usa otro código para el mismo elemento, regístralo en Equivalencias.',
+      'Usa Homologar para aplicar únicamente esas diferencias.',
+      'Revisa la pestaña Estado para saber desde cuándo cada empresa está al día.',
+    ],
+    doNot: [
+      'Las coincidencias por descripción son sugerencias: nunca se aplican solas.',
+      'No se escribe en ninguna empresa si alguna falla la validación.',
+      'Registrar equivalencias no modifica Profit: solo nuestra base local.',
+    ],
+    sources: [
+      { label: 'Equivalencias', desc: 'vinculan el código canónico con el código local de cada empresa.' },
+      { label: 'Auditoría', desc: 'registra cada equivalencia creada, modificada o desactivada.' },
+    ],
+    next: 'Con los catálogos al día y las equivalencias registradas, un artículo se registra con el mismo código en todas las empresas.',
+    nextOwner: 'Almacén y Contabilidad.',
+    flowStatus: 'CONTABILIDAD_APROBADA',
+  },
   mantenimiento: {
     key: 'mantenimiento',
     title: 'Ayuda — Mantenimiento',

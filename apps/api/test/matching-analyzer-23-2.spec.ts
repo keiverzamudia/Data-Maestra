@@ -47,6 +47,9 @@ function buildAnalyzer(profiles: any[], requestOver: any = {}) {
     request: { findUnique: vi.fn(async ({ where }: any) => (where?.id === 'req-9' ? { ...requestRow(), ...requestOver } : null)) },
   };
   const repository: any = {
+    listRecallPool: vi.fn(async (companyCode?: string) =>
+      profiles.filter((p) => !companyCode || p.companyCode === companyCode),
+    ),
     listProfiles: vi.fn(async (limit: number, companyCode?: string) =>
       profiles.filter((p) => !companyCode || p.companyCode === companyCode).slice(0, limit),
     ),

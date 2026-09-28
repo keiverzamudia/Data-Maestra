@@ -23,6 +23,7 @@ function buildRequestService(profiles: any[], decisions: any[] = [], profitCode:
     request: { findUnique: vi.fn(async () => requestRow(profitCode)) },
   };
   const repository: any = {
+    listRecallPool: vi.fn(async () => profiles),
     listProfiles: vi.fn(async () => profiles),
     findDecisionsInvolving: vi.fn(async () => decisions),
     findProfile: vi.fn(), upsertProfile: vi.fn(), findDecision: vi.fn(), createDecision: vi.fn(),
@@ -110,6 +111,7 @@ describe('findCandidatesForRequest (§29)', () => {
       },
     };
     const repository: any = {
+      listRecallPool: vi.fn(async () => [prof('AD_TRANS', 'A1')]),
       listProfiles: vi.fn(async () => [prof('AD_TRANS', 'A1')]),
       findDecisionsInvolving: vi.fn(async () => []),
       findProfile: vi.fn(), upsertProfile: vi.fn(), findDecision: vi.fn(), createDecision: vi.fn(),

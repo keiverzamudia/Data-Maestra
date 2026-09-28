@@ -26,6 +26,8 @@ import {
 import { buildInsertStatement } from '../src/modulos/profit/profit-article.payload';
 import { CorporateCompaniesService } from '../src/modulos/profit/corporate-companies.service';
 import { CorporateHomologationService } from '../src/modulos/profit/corporate-homologation.service';
+import type { EquivalenceLookup } from '../src/modulos/profit/corporate-equivalence';
+import { fakeEquivalences } from './helpers/equivalences';
 
 // ---------------------------------------------------------------------------
 // FASE 17 §28 — Tests con mocks/fixtures. Cero escrituras reales en Profit:
@@ -141,10 +143,25 @@ describe('FASE 17 — comparación y plan', () => {
     expect(buildSyncPlanItem(diffs[0]!).operation).toBe('BLOCKED');
   });
 
-  it('padre distinto → DATOS_DIFERENTES/BLOCKED (no adivina)', () => {
+  it('FASE 26.4: par (línea, código) ausente → FALTA/INSERT, no bloquea', () => {
+    // La PK de sub_lin es el par; (FER, MIS) y (SOF, MIS) son filas distintas.
+    // Falta crear la del estándar: no hay nada que "adivinar".
     const diffs = compareCatalogRows(
       'Sublíneas',
       [{ code: 'MIS', description: 'Misceláneo', parent: 'FER' }],
+      [{ code: 'MIS', description: 'Misceláneo', parent: 'SOF' }],
+      { parentAware: true },
+    );
+    expect(diffs[0]!.state).toBe('FALTA_EN_DESTINO');
+    const item = buildSyncPlanItem(diffs[0]!);
+    expect(item.operation).toBe('INSERT');
+    expect(item.safe).toBe(true);
+  });
+
+  it('FASE 26.4: estándar sin padre → DATOS_DIFERENTES/BLOCKED (no se adivina)', () => {
+    const diffs = compareCatalogRows(
+      'Sublíneas',
+      [{ code: 'MIS', description: 'Misceláneo', parent: '' }],
       [{ code: 'MIS', description: 'Misceláneo', parent: 'SOF' }],
       { parentAware: true },
     );
@@ -277,15 +294,16 @@ function makeHarness(opts: {
   listed?: string[];
   writesEnabled?: boolean;
   tamperVerifyFor?: string;
+  /** FASE 26 — lookup de equivalencias (sin él: identidad, como antes). */
+  equivalences?: EquivalenceLookup;
+  /** FASE 26.2 — flags de configuración por empresa. */
+  configs?: Array<{ code: string; enabled: boolean; isStandard: boolean; allowDescSync?: boolean }>;
 } = { dbs: {} }): Harness {
   let state: Record<string, MemDb> = structuredClone(opts.dbs);
   let txCount = 0;
   const auditLog: Array<{ action: string }> = [];
   const writesEnabled = opts.writesEnabled ?? true;
   const listed = opts.listed ?? [...Object.keys(opts.dbs), 'AD_GRUP'];
-
-  const codeOf = (rows: MemCatRow[], code: string): MemCatRow | undefined =>
-    rows.find((r) => r.code.trim().toUpperCase() === code.trim().toUpperCase());
 
   async function selectOn(model: Record<string, MemDb>, sql: string, params: Record<string, { value: any }>): Promise<any[]> {
     const pv = (n: string): string => String(params[n]?.value ?? '').trim();
@@ -336,9 +354,9 @@ function makeHarness(opts: {
       const hit = Object.values(model).some((db) => db.accounts.includes(pv('c')));
       return hit ? [{ one: 1 }] : [];
     }
-    // SELECT de catálogo completo (ORDER BY 1) vs existencia (WHERE).
+    // SELECT de catálogo completo (ORDER BY) vs existencia (WHERE).
     const ref = tableOf(sql);
-    if (ref && /ORDER BY 1/.test(sql)) {
+    if (ref && /ORDER BY (1|co_lin, co_subl)/.test(sql)) {
       return (model[ref.db]?.catalogs[ref.table] ?? []).map((r) => ({
         code: r.code, description: r.description, parent: r.parent,
       }));
@@ -348,7 +366,14 @@ function makeHarness(opts: {
         const hit = (model[ref.db]?.art ?? []).some((r) => (r['co_art'] ?? '').trim() === pv('c'));
         return hit ? [{ one: 1 }] : [];
       }
-      const hit = codeOf(model[ref.db]?.catalogs[ref.table] ?? [], pv('c'));
+      // FASE 26.4: la existencia se comprueba por el PAR cuando el SQL lleva
+      // la columna padre (@p en REQUIRED_CATALOGS, @l en FK_DEPS).
+      const wantCode = pv('c') || pv('s');
+      const wantParent = pv('p') || pv('l');
+      const hit = (model[ref.db]?.catalogs[ref.table] ?? []).some(
+        (r) => r.code === wantCode
+          && (!wantParent || String(r.parent ?? '').trim() === wantParent),
+      );
       return hit ? [{ one: 1 }] : [];
     }
     if (ref && /SELECT TOP 1/.test(sql) && ref.table === 'art') {
@@ -358,9 +383,18 @@ function makeHarness(opts: {
       if (opts.tamperVerifyFor === ref.db) out['art_des'] = 'MANIPULADO';
       return [out];
     }
-    if (ref && /SELECT LTRIM\(RTRIM\(co_lin\)\) AS p FROM/.test(sql)) {
-      const row = codeOf(model[ref.db]?.catalogs['sub_lin'] ?? [], pv('s'));
-      return row?.parent ? [{ p: row.parent }] : [];
+    // FASE 26.4: listado de líneas distintas de las que cuelga una sublínea
+    // (diagnóstico del error) y la forma antigua de traer el padre.
+    if (ref && /SELECT( DISTINCT)? LTRIM\(RTRIM\(co_lin\)\) AS p FROM/.test(sql)) {
+      const parents = [
+        ...new Set(
+          (model[ref.db]?.catalogs['sub_lin'] ?? [])
+            .filter((r) => r.code === pv('s'))
+            .map((r) => String(r.parent ?? '').trim())
+            .filter(Boolean),
+        ),
+      ];
+      return parents.map((p) => ({ p }));
     }
     throw new Error(`SQL no soportado por el fixture: ${sql.slice(0, 80)}`);
   }
@@ -394,7 +428,13 @@ function makeHarness(opts: {
       return [];
     }
     if (/^UPDATE/i.test(sql) && ref) {
-      const row = codeOf(model[ref.db]!.catalogs[ref.table]!, String(params['c0']?.value ?? ''));
+      // FASE 26.4: el UPDATE real filtra por (código, padre); el fixture debe
+      // hacer lo mismo o no detectaría la corrupción de cruzar líneas.
+      const code = String(params['c0']?.value ?? '');
+      const parent = params['c2'] !== undefined ? String(params['c2'].value ?? '') : undefined;
+      const row = (model[ref.db]!.catalogs[ref.table]!).find(
+        (r) => r.code === code && (parent === undefined || String(r.parent ?? '').trim() === parent),
+      );
       if (row) row.description = String(params['c1']?.value ?? '');
       return [];
     }
@@ -426,8 +466,31 @@ function makeHarness(opts: {
     },
   };
   const configFake = { get: (k: string) => (k === 'PROFIT_INTEGRATION_USER_CODE' ? 'DM' : undefined) };
-  const prismaFake = { auditEvent: { create: vi.fn(async () => ({})) } };
-  const svc = new CorporateHomologationService(readFake as any, writeFake as any, companiesFake as any, configFake as any, prismaFake as any);
+  // FASE 26 — estado de sincronización en memoria (mismo contrato Prisma).
+  const syncStore = new Map<string, any>();
+  const prismaFake = {
+    auditEvent: { create: vi.fn(async () => ({})) },
+    profitCompanyConfig: {
+      findMany: vi.fn(async () => (opts.configs ?? []).map((c) => ({ allowDescSync: false, ...c }))),
+      findUnique: vi.fn(async ({ where }: any) => {
+        const found = (opts.configs ?? []).find((c) => c.code === where.code);
+        return found ? { allowDescSync: false, ...found } : null;
+      }),
+      upsert: vi.fn(async ({ where, create, update }: any) => ({ ...create, ...update, code: where.code })),
+      updateMany: vi.fn(async () => ({ count: 1 })),
+    },
+    corporateSyncState: {
+      upsert: vi.fn(async ({ where, create, update }: any) => {
+        const k = `${where.companyCode_catalogKey.companyCode}|${where.companyCode_catalogKey.catalogKey}`;
+        const row = { ...create, ...update, ...where.companyCode_catalogKey };
+        syncStore.set(k, row);
+        return row;
+      }),
+      findMany: vi.fn(async ({ where }: any = {}) =>
+        [...syncStore.values()].filter((r) => !where?.companyCode || r.companyCode === where.companyCode)),
+    },
+  };
+  const svc = new CorporateHomologationService(readFake as any, writeFake as any, companiesFake as any, configFake as any, prismaFake as any, opts.equivalences as any);
   return { svc, txCalls: () => txCount, committed: () => state, audits: () => auditLog };
 }
 
@@ -464,7 +527,9 @@ describe('FASE 17 — homologate con transacción global', () => {
 
   it('plan bloqueado → cero escrituras (sin transacción)', async () => {
     const dbs = twoDbs();
-    dbs['AD_DIST']!.catalogs['sub_lin'] = [{ code: 'MIS', description: 'Misceláneo', parent: 'SOF' }];
+    // FASE 26.4: el bloqueo legítimo es una descripción con significado local
+    // (lin_art es namespace por empresa), no el padre de una sublínea.
+    dbs['AD_DIST']!.catalogs['lin_art'] = [{ code: 'FER', description: 'COMBUSTIBLE' }];
     const h = makeHarness({ dbs });
     const r = await h.svc.homologate(['AD_DIST'], CTX);
     expect(r.ok).toBe(false);
@@ -728,5 +793,223 @@ describe('FASE 17.2 — plan y preflight con divergencia real', () => {
     expect(r.errorCode).toBe('CORPORATE_PREFLIGHT_FAILED');
     expect(h.txCalls()).toBe(0);
     expect(h.committed()['AD_DIST']!.art.filter((a) => a['co_art'] === 'FERMIS0664')[0]!['art_des']).toBe('AJENO');
+  });
+});
+
+describe('FASE 26 — equivalencias de catálogo entre empresas', () => {
+  /** AD_DIST con la línea "Ferretería" nombrada FERRO (y su sublínea colgando de ella). */
+  function dbsConLineaLocal(): Record<string, MemDb> {
+    const dbs = twoDbs();
+    dbs['AD_DIST']!.catalogs['lin_art'] = [{ code: 'FERRO', description: 'Ferretería' }];
+    dbs['AD_DIST']!.catalogs['sub_lin'] = [{ code: 'MIS', description: 'Misceláneo', parent: 'FERRO' }];
+    return dbs;
+  }
+
+  it('equivalencia registrada → EQUIVALENTE, cero INSERT duplicado', async () => {
+    const h = makeHarness({ dbs: dbsConLineaLocal(), equivalences: fakeEquivalences({ lin_art: { FER: 'FERRO' } }) });
+    const c = await h.svc.compare(['AD_DIST']);
+    const lin = c.companies[0]!.items.find((i) => i.catalog === 'Líneas' && i.code === 'FER')!;
+    expect(lin.state).toBe('EQUIVALENTE');
+    expect(lin.destCode).toBe('FERRO');
+    expect(lin.operation).toBe('NO_ACTION');
+    expect(lin.safe).toBe(true);
+    expect(c.companies[0]!.summary.equivalentes).toBe(1);
+    expect(c.companies[0]!.summary.faltantes).toBe(0);
+    expect(c.executable).toBe(true);
+    const r = await h.svc.homologate(['AD_DIST'], CTX);
+    expect(r.ok).toBe(true);
+    expect(r.inserts).toBe(0);
+    expect(h.committed()['AD_DIST']!.catalogs['lin_art']).toEqual([
+      { code: 'FERRO', description: 'Ferretería', parent: undefined },
+    ]);
+  });
+
+  it('equivalencia a código local inexistente → crea el LOCAL, no el canónico', async () => {
+    const dbs = twoDbs();
+    dbs['AD_DIST']!.catalogs['sub_lin'] = [{ code: 'MIS', description: 'Misceláneo', parent: 'FERRO' }];
+    const h = makeHarness({ dbs, equivalences: fakeEquivalences({ lin_art: { FER: 'FERRO' } }) });
+    const c = await h.svc.compare(['AD_DIST']);
+    const lin = c.companies[0]!.items.find((i) => i.catalog === 'Líneas' && i.code === 'FER')!;
+    expect(lin.state).toBe('FALTA_EN_DESTINO');
+    expect(lin.destCode).toBe('FERRO');
+    expect(lin.operation).toBe('INSERT');
+    const r = await h.svc.homologate(['AD_DIST'], CTX);
+    expect(r.ok).toBe(true);
+    expect(r.inserts).toBe(1);
+    expect(h.committed()['AD_DIST']!.catalogs['lin_art'].map((x) => x.code)).toEqual(['FERRO']);
+  });
+
+  it('mismo co_art en todas; solo las claves foráneas se traducen', async () => {
+    const h = makeHarness({ dbs: dbsConLineaLocal(), equivalences: fakeEquivalences({ lin_art: { FER: 'FERRO' } }) });
+    const r = await h.svc.registerArticle(['AD_DIST'], ARTICLE, CTX);
+    expect(r.errorCode).toBeUndefined();
+    expect(r.ok).toBe(true);
+    const trans = h.committed()['AD_TRANS']!.art.find((a) => a['co_art'] === r.coArt)!;
+    const dist = h.committed()['AD_DIST']!.art.find((a) => a['co_art'] === r.coArt)!;
+    expect(dist['co_art']).toBe(trans['co_art']);
+    expect(trans['co_lin']).toBe('FER');
+    expect(dist['co_lin']).toBe('FERRO');
+    expect(dist['art_des']).toBe(trans['art_des']);
+    expect(r.perCompanyVerify.every((v) => v.verified)).toBe(true);
+  });
+
+  it('sin equivalencia registrada el código canónico se replica tal cual', async () => {
+    const h = makeHarness({ dbs: dbsConLineaLocal() });
+    const c = await h.svc.compare(['AD_DIST']);
+    const lin = c.companies[0]!.items.find((i) => i.catalog === 'Líneas' && i.code === 'FER')!;
+    expect(lin.state).toBe('FALTA_EN_DESTINO');
+    expect(lin.destCode).toBeUndefined();
+  });
+
+  it('sublínea colgada de otra línea → se crea el PAR faltante (FASE 26.4)', async () => {
+    const dbs = dbsConLineaLocal();
+    dbs['AD_DIST']!.catalogs['sub_lin'] = [{ code: 'MIS', description: 'Misceláneo', parent: 'SOF' }];
+    const h = makeHarness({ dbs, equivalences: fakeEquivalences({ lin_art: { FER: 'FERRO' } }) });
+    const c = await h.svc.compare(['AD_DIST']);
+    const sub = c.companies[0]!.items.find((i) => i.catalog === 'Sublíneas' && i.code === 'MIS')!;
+    expect(sub.state).toBe('FALTA_EN_DESTINO');
+    expect(sub.operation).toBe('INSERT');
+    expect(c.executable).toBe(true);
+    const r = await h.svc.homologate(['AD_DIST'], CTX);
+    expect(r.ok).toBe(true);
+    expect(h.txCalls()).toBe(1);
+    // Crea (FERRO, MIS) —bajo la línea local equivalente— y respeta (SOF, MIS).
+    expect(h.committed()['AD_DIST']!.catalogs['sub_lin']).toEqual([
+      { code: 'MIS', description: 'Misceláneo', parent: 'SOF' },
+      { code: 'MIS', description: 'Misceláneo', parent: 'FERRO' },
+    ]);
+  });
+
+  it('la última sincronización queda registrada por empresa y catálogo', async () => {
+    const h = makeHarness({ dbs: twoDbs() });
+    await h.svc.homologate(['AD_DIST'], CTX);
+    const state = await h.svc.syncState('AD_DIST');
+    expect(state).toHaveLength(8);
+    expect(state.every((s) => s.company === 'AD_DIST')).toBe(true);
+    expect(state.find((s) => s.catalog === 'lin_art')!.summary).toEqual({ inserts: 1, updates: 0 });
+  });
+});
+
+describe('FASE 26.3 — selección de catálogos e ítems (la selección es la revisión)', () => {
+  it('compare con catalogs limita la comparación a esos catálogos', async () => {
+    const h = makeHarness({ dbs: twoDbs() });
+    const r = await h.svc.compare(['AD_DIST'], { catalogs: ['lin_art'] });
+    const catalogs = new Set(r.companies[0]!.items.map((i) => i.catalog));
+    expect(catalogs.size).toBe(1);
+    expect([...catalogs][0]).toBe('Líneas');
+  });
+
+  it('compare sin catalogs trae todos los catálogos', async () => {
+    const h = makeHarness({ dbs: twoDbs() });
+    const r = await h.svc.compare(['AD_DIST']);
+    expect(r.companies[0]!.items.length).toBeGreaterThan(1);
+  });
+
+  it('FASE 26.4: catalogs vacío = sin filtro (la UI lo envía así)', async () => {
+    const h = makeHarness({ dbs: twoDbs() });
+    const sinFiltro = await h.svc.compare(['AD_DIST']);
+    const arrayVacio = await h.svc.compare(['AD_DIST'], { catalogs: [] });
+    expect(arrayVacio.companies[0]!.items).toHaveLength(sinFiltro.companies[0]!.items.length);
+    expect(arrayVacio.companies[0]!.items.length).toBeGreaterThan(1);
+    // y homologate hereda la misma regla
+    const r = await h.svc.homologate(['AD_DIST'], CTX, { catalogs: [] });
+    expect(r.ok).toBe(true);
+    expect(r.inserts).toBe(1);
+  });
+
+  it('homologate con items migra solo lo tildado', async () => {
+    const h = makeHarness({ dbs: twoDbs() });
+    const r = await h.svc.homologate(['AD_DIST'], CTX, {
+      items: [{ company: 'AD_DIST', catalog: 'Líneas', code: 'FER' }],
+    });
+    expect(r.ok).toBe(true);
+    expect(r.inserts).toBe(1);
+    expect(h.committed()['AD_DIST']!.catalogs['lin_art'].map((x) => x.code)).toEqual(['FER']);
+  });
+
+  it('homologate con items vacío no migra nada', async () => {
+    const h = makeHarness({ dbs: twoDbs() });
+    const r = await h.svc.homologate(['AD_DIST'], CTX, { items: [] });
+    expect(r.ok).toBe(true);
+    expect(r.inserts).toBe(0);
+    expect(h.committed()['AD_DIST']!.catalogs['lin_art']).toEqual([]);
+  });
+
+  it('un bloqueado por descripción tildado se aprueba y se actualiza', async () => {
+    const dbs = twoDbs();
+    dbs['AD_TRANS']!.catalogs['lin_art'].push({ code: 'VEH', description: 'VEHICULOS' });
+    dbs['AD_DIST']!.catalogs['lin_art'].push({ code: 'VEH', description: 'VEHICULO' });
+    const h = makeHarness({ dbs });
+    const r = await h.svc.homologate(['AD_DIST'], CTX, {
+      items: [{ company: 'AD_DIST', catalog: 'Líneas', code: 'VEH' }],
+    });
+    expect(r.ok).toBe(true);
+    expect(r.updates).toBe(1);
+    expect(h.committed()['AD_DIST']!.catalogs['lin_art'].find((x) => x.code === 'VEH')!.description).toBe('VEHICULOS');
+  });
+
+  it('un bloqueado sin tildar no se migra y no frena el resto', async () => {
+    const dbs = twoDbs();
+    dbs['AD_TRANS']!.catalogs['lin_art'].push({ code: 'VEH', description: 'VEHICULOS' });
+    dbs['AD_DIST']!.catalogs['lin_art'].push({ code: 'VEH', description: 'VEHICULO' });
+    const h = makeHarness({ dbs });
+    const r = await h.svc.homologate(['AD_DIST'], CTX, {
+      items: [{ company: 'AD_DIST', catalog: 'Líneas', code: 'FER' }],
+    });
+    expect(r.ok).toBe(true);
+    expect(r.inserts).toBe(1);
+    expect(h.committed()['AD_DIST']!.catalogs['lin_art'].find((x) => x.code === 'VEH')!.description).toBe('VEHICULO');
+  });
+
+  it('un DATOS_DIFERENTE tildado sigue bloqueado (no se aprueba)', async () => {
+    const dbs = twoDbs();
+    // FASE 26.4: tras corregir la identidad compuesta, el único
+    // DATOS_DIFERENTE restante es una fila estándar SIN padre: no hay dónde
+    // colgarla, así que no se aprueba aunque esté tildada.
+    dbs['AD_TRANS']!.catalogs['sub_lin'] = [{ code: 'MIS', description: 'Misceláneo', parent: '' }];
+    const h = makeHarness({ dbs });
+    const r = await h.svc.homologate(['AD_DIST'], CTX, {
+      items: [{ company: 'AD_DIST', catalog: 'Sublíneas', code: 'MIS' }],
+    });
+    expect(r.ok).toBe(false);
+    expect(r.errorCode).toBe('CORPORATE_PLAN_BLOCKED');
+  });
+
+  it('FASE 26.4: la selección distingue la LÍNEA (mismo código, distinto padre)', async () => {
+    const dbs = twoDbs();
+    // La PK de sub_lin es (co_lin, co_subl): MIS existe bajo dos líneas.
+    dbs['AD_TRANS']!.catalogs['lin_art'].push({ code: 'OTRA', description: 'Otra línea' });
+    dbs['AD_TRANS']!.catalogs['sub_lin'] = [
+      { code: 'MIS', description: 'Misceláneo', parent: 'FER' },
+      { code: 'MIS', description: 'Otros MISC', parent: 'OTRA' },
+    ];
+    dbs['AD_DIST']!.catalogs['lin_art'] = [
+      { code: 'FER', description: 'Ferretería' },
+      { code: 'OTRA', description: 'Otra línea' },
+    ];
+    dbs['AD_DIST']!.catalogs['sub_lin'] = [
+      { code: 'MIS', description: 'Viejo FER', parent: 'FER' },
+      { code: 'MIS', description: 'Viejo OTRA', parent: 'OTRA' },
+    ];
+    const h = makeHarness({ dbs });
+
+    // Sin padre la clave no existe → no se migra nada (y no falla).
+    const sinPadre = await h.svc.homologate(['AD_DIST'], CTX, {
+      items: [{ company: 'AD_DIST', catalog: 'Sublíneas', code: 'MIS' }],
+    });
+    expect(sinPadre.ok).toBe(true);
+    expect(sinPadre.updates).toBe(0);
+    expect(h.committed()['AD_DIST']!.catalogs['sub_lin'].map((r) => r.description))
+      .toEqual(['Viejo FER', 'Viejo OTRA']);
+
+    // Seleccionando SOLO la fila que cuelga de FER, solo esa se actualiza.
+    const conPadre = await h.svc.homologate(['AD_DIST'], CTX, {
+      items: [{ company: 'AD_DIST', catalog: 'Sublíneas', code: 'MIS', parent: 'FER' }],
+    });
+    expect(conPadre.ok).toBe(true);
+    expect(conPadre.updates).toBe(1);
+    const rows = h.committed()['AD_DIST']!.catalogs['sub_lin'];
+    expect(rows.find((r) => r.parent === 'FER')!.description).toBe('Misceláneo');
+    expect(rows.find((r) => r.parent === 'OTRA')!.description).toBe('Viejo OTRA');
   });
 });

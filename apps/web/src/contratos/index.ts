@@ -34,6 +34,12 @@ export interface WarehouseService {
   approveClassification(id: string): Promise<void>;
   returnRequest(id: string, comment: string): Promise<void>;
   rejectRequest(id: string, comment: string): Promise<void>;
+  /**
+   * Cierre SAME (A1): cierra la solicitud reutilizando el artículo vinculado
+   * (RequestArticleLink SAME). No crea código nuevo en Profit; el backend
+   * deja profitCode = código existente y notifica al solicitante.
+   */
+  closeWithExisting(id: string): Promise<void>;
   /** Dry-run "Validar artículo": verifica sin escribir (14C-FORM §24). */
   validateArticle(id: string, data: ClassificationData): Promise<DryRunResult>;
 }

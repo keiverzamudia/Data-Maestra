@@ -138,6 +138,54 @@ export const apiMatchingService = {
   ): Promise<ProfitSearchResult> {
     return api.post<ProfitSearchResult>('/api/v1/matching/buscar', { requestId, term, limit });
   },
+
+  /**
+   * FASE P4 — "Agregar a coincidencias": el backend puntúa el hallazgo con
+   * el MISMO motor del análisis y lo guarda como propuesta persistente
+   * (no es una decisión SAME/DIFFERENT ni mueve el workflow).
+   */
+  async proponer(
+    requestId: string,
+    article: ProfitArticleRef,
+    draft: AnalyzerDraft,
+    phase?: AnalyzerPhase,
+  ): Promise<EngineCandidate> {
+    return api.post<EngineCandidate>('/api/v1/matching/proponer', {
+      requestId,
+      companyCode: article.companyCode,
+      profitArticleCode: article.profitArticleCode,
+      ...draft,
+      phase,
+    });
+  },
+
+  /**
+   * FASE P4 — propuestas manuales guardadas de la solicitud, re-puntadas
+   * con el motor contra la fase actual (misma regla que los candidatos).
+   */
+  async listarPropuestas(
+    requestId: string,
+    draft: AnalyzerDraft,
+    phase?: AnalyzerPhase,
+  ): Promise<{ candidates: EngineCandidate[] }> {
+    return api.post<{ candidates: EngineCandidate[] }>('/api/v1/matching/proponer/listar', {
+      requestId,
+      ...draft,
+      phase,
+    });
+  },
+
+  /** FASE P4 — retira una propuesta manual (jamás borra SAME/DIFFERENT). */
+  async retirarPropuesta(
+    requestId: string,
+    article: ProfitArticleRef,
+  ): Promise<{ removed: number }> {
+    return api.post<{ removed: number }>('/api/v1/matching/proponer/retirar', {
+      requestId,
+      companyCode: article.companyCode,
+      profitArticleCode: article.profitArticleCode,
+    });
+  },
 };
 
 export interface EngineCandidate {
@@ -152,6 +200,8 @@ export interface EngineCandidate {
   explanation?: string;
   engineVersion?: string;
   priorDecision?: MatchDecisionKind;
+  /** FASE P4 — propuesta manual del usuario (agregada desde la búsqueda). */
+  manual?: boolean;
 }
 
 export interface CandidateDetail {
@@ -195,9 +245,9 @@ export interface AnalyzerDraft {
 }
 
 /**
- * FASE P1 — trazabilidad del universo consultado. `poolTruncated=true`
- * significa que el tope de perfiles silenció parte del universo de la empresa
- * (la UI lo avisa; el resultado sigue siendo el mismo análisis).
+ * Recall multicanal: el análisis evalúa el universo local completo
+ * (`poolScanned`) en vez de los primeros 500 por código. `poolTruncated=true`
+ * solo salta si la red de seguridad recortó (la UI lo avisa).
  */
 /** FASE P2 — fase de la búsqueda (eco de lo que el backend ejecutó). */
 export type AnalyzerPhase = 'INICIAL' | 'COMPLETA';
@@ -210,8 +260,11 @@ export interface AnalyzerResult {
   /** FASE P2 — qué fase produjo estos resultados (INICIAL = solo descripción). */
   phase?: AnalyzerPhase;
   poolTotal?: number | null;
-  poolLimit?: number;
+  /** Perfiles del universo realmente evaluados por el recall. */
+  poolScanned?: number;
   poolTruncated?: boolean;
+  /** De dónde salió el recall: espejo local, respaldo en vivo o ambos. */
+  recallSource?: 'LOCAL' | 'LOCAL+PROFIT' | 'PROFIT';
 }
 
 /** FASE P3 — origen de los resultados de la búsqueda manual. */

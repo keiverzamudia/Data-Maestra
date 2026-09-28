@@ -45,6 +45,20 @@ describe('ProfitCompaniesAdmin', () => {
     expect(companiesMock).toHaveBeenCalledTimes(2);
   });
 
+  it('autoriza que las descripciones de AD_TRANS mandan en una empresa (FASE 26.2)', async () => {
+    let current = structuredClone(LIST);
+    companiesMock.mockImplementation(async () => structuredClone(current));
+    saveMock.mockImplementation(async (code: string, enabled: boolean, allowDescSync?: boolean) => {
+      current = current.map((c) => (c.code === code ? { ...c, enabled, allowDescSync } : c));
+      return current.find((c) => c.code === code);
+    });
+    render(<ProfitCompaniesAdmin />);
+    await screen.findByText('AD_LUBSL');
+    fireEvent.click(screen.getByLabelText('Las descripciones de AD_TRANS mandan en AD_LUBSL'));
+    await waitFor(() => expect(saveMock).toHaveBeenCalledWith('AD_LUBSL', true, true));
+    expect(await screen.findByText('Mandan')).toBeTruthy();
+  });
+
   it('marcar estándar pide confirmación explícita', async () => {
     companiesMock.mockResolvedValue(structuredClone(LIST));
     standardMock.mockResolvedValue({});

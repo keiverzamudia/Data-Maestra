@@ -16,7 +16,12 @@ nada en Profit (INSERT = 0, UPDATE = 0, DELETE = 0).
    (Conflict) con vínculo SAME vigente; la UI muestra banner
    "Solicitud resuelta con artículo existente" y oculta
    "Aprobar Clasificación". Sin estado nuevo: el workflow existente lo
-   expresa (la solicitud no avanza a creación).
+   expresa (la solicitud no avanza a creación). **Cierre explícito (A1,
+   post-23.2)**: `POST /warehouse/:id/close-existing`
+   (`SolicitudesService.resolveWithExistingArticle`) termina
+   `PENDIENTE_ALMACEN → INSERTADO_PROFIT` reutilizando el código vinculado,
+   con auditoría `CLOSE_REUSED_EXISTING` y notificación al solicitante; el
+   guard `SAME_LINKED` de `approve` permanece intacto.
 3. **Guard de creación**: ya existía en `runProfitCreation` y
    `runCorporateProfitCreation` (`linkedExistingArticle` →
    `PROFIT_WRITE_SKIPPED_EXISTING`, `profitCode` reutilizado, sin INSERT).
@@ -47,10 +52,18 @@ nada en Profit (INSERT = 0, UPDATE = 0, DELETE = 0).
 ## 3. Flujo SAME final
 
 PENDIENTE_ALMACÉN → Analizador → "Es el mismo" → vínculo + historial +
-auditoría → banner + aprobación bloqueada (`SAME_LINKED`) → aunque llegara a
-`createInProfit`, el registro se omite reutilizando el código
-(`INSERTADO_PROFIT` + `profitCode`, sin INSERT). DIFFERENT posterior sobre el
-mismo par libera el bloqueo (última decisión manda).
+auditoría → banner + aprobación bloqueada (`SAME_LINKED`). Dos salidas:
+
+- **Cierre explícito (A1)**: el analista pulsa "Cerrar con código existente"
+  (confirmación con el código) → `PENDIENTE_ALMACEN → INSERTADO_PROFIT` con
+  `profitCode` = código vinculado, sin INSERT en Profit; auditoría
+  `CLOSE_REUSED_EXISTING`, workflow historial/tareas/instancia actualizados y
+  notificación al solicitante con el código reutilizado. Reclamo atómico
+  (`updateMany` condicionado al estado) ante cierres concurrentes.
+- **DIFFERENT posterior** sobre el mismo par libera el bloqueo (última
+  decisión manda) y el flujo normal de creación continúa; si llegara a
+  `createInProfit`, el registro se omite reutilizando el código
+  (`INSERTADO_PROFIT` + `profitCode`, sin INSERT).
 
 ## 4. Fuente de datos
 

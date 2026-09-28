@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
@@ -16,9 +17,12 @@ import { ProfitWriteAdapterService } from './profit-write.adapter';
 import { CorporateCompaniesService } from './corporate-companies.service';
 import { CorporateHomologationService } from './corporate-homologation.service';
 import { STANDARD_COMPANY, normalizeCompany } from './corporate-company';
-import { companyTableRef } from './corporate-catalogs';
+import { companyTableRef, CORPORATE_CATALOGS } from './corporate-catalogs';
 import { compareArticlePayload } from './corporate-compare';
 import type { CompanyPreflight } from './corporate-compare';
+import { CorporateEquivalenceService } from './corporate-equivalence.service';
+import { NO_EQUIVALENCES, type EquivalenceLookup } from './corporate-equivalence';
+import type { CorporateCatalogKey } from './corporate-catalogs';
 import {
   buildProfitArticlePayload,
   buildInsertStatement,
@@ -109,7 +113,17 @@ export class MultiCompanyService {
     private readonly homologation: CorporateHomologationService,
     private readonly auditoria: AuditoriaService,
     private readonly config: ConfigService,
+    // FASE 26 — opcional para los tests; en Nest siempre se provee.
+    @Optional() private readonly equivalences?: CorporateEquivalenceService,
   ) {}
+
+  /**
+   * FASE 26 — Resolución de códigos por empresa (identidad si no hay
+   * equivalencias: comportamiento idéntico al de la Fase 25).
+   */
+  private eq(): EquivalenceLookup {
+    return this.equivalences ?? NO_EQUIVALENCES;
+  }
 
   private async types(): Promise<any> {
     if (this.typeLib) return this.typeLib;
@@ -131,19 +145,25 @@ export class MultiCompanyService {
         name: d.name,
         isStandard: cfg ? cfg.isStandard : d.code === STANDARD_COMPANY,
         enabled: cfg ? cfg.enabled : true,
+        // FASE 26.2 — "Las descripciones de AD_TRANS mandan" en esta empresa.
+        allowDescSync: cfg ? cfg.allowDescSync === true : false,
       };
     });
   }
 
-  async saveCompanyConfig(code: string, enabled: boolean, actorId: string) {
+  /**
+   * FASE 26.2 — `allowDescSync` es opcional: si no se envía se conserva el
+   * valor actual (no se resetea a false en cada cambio de `enabled`).
+   */
+  async saveCompanyConfig(code: string, enabled: boolean, actorId: string, allowDescSync?: boolean) {
     const c = normalizeCompany(code);
     if (!c) throw new BadRequestException('Código de empresa inválido.');
     const listed = await this.companies.isListed(c).catch(() => null);
     if (!listed) throw new NotFoundException(`Empresa Profit desconocida: ${c}.`);
     const row = await this.prisma.profitCompanyConfig.upsert({
       where: { code: c },
-      create: { code: c, enabled },
-      update: { enabled },
+      create: { code: c, enabled, allowDescSync: allowDescSync === true },
+      update: { enabled, ...(allowDescSync === undefined ? {} : { allowDescSync: allowDescSync === true }) },
     });
     await this.auditoria.logEvent({
       correlationId: randomUUID(),
@@ -152,7 +172,7 @@ export class MultiCompanyService {
       entityType: 'ProfitCompanyConfig',
       entityId: c,
       action: 'PROFIT_COMPANY_CONFIG_SAVED',
-      afterData: JSON.stringify({ code: c, enabled }),
+      afterData: JSON.stringify({ code: c, enabled, allowDescSync: row.allowDescSync }),
     }).catch((e: any) => this.logger.error(`Audit failed: ${e?.message}`));
     return row;
   }
@@ -452,10 +472,13 @@ export class MultiCompanyService {
   /** Inserción en UNA empresa con revalidación fresca (sin asumir el análisis). */
   private async insertOneCompany(
     company: string,
-    payload: ReturnType<typeof buildProfitArticlePayload>,
+    basePayload: ReturnType<typeof buildProfitArticlePayload>,
     requestId: string,
     actorId: string,
   ): Promise<CompanyInsertResult> {
+    // FASE 26: mismo co_art en todas; solo las claves foráneas se traducen a
+    // los códigos locales de esta empresa.
+    const payload = await this.eq().resolvePayload(company, basePayload);
     const coArt = payload.co_art;
     const done = (outcome: CompanyInsertOutcome, detail: string, differences: string[] = []): CompanyInsertResult => {
       void this.auditoria.logEvent({
@@ -601,16 +624,18 @@ export class MultiCompanyService {
         return '';
       }
     };
-    const pairs: Array<[string, string, string, string, string]> = [
+    const pairs: Array<[string, CorporateCatalogKey, string, string, string]> = [
       ['Grupo', 'lin_art', 'co_lin', 'lin_des', input.groupCode],
       ['Subgrupo', 'sub_lin', 'co_subl', 'subl_des', input.subgroupCode],
       ['Unidad', 'unidades', 'co_uni', 'des_uni', input.unitCode],
     ];
     const stdMap: Record<string, string> = { Grupo: std.lin ?? '', Subgrupo: std.sub ?? '', Unidad: std.uni ?? '' };
-    for (const [label, table, codeCol, desCol, code] of pairs) {
-      if (!code) continue;
+    for (const [label, key, codeCol, desCol, standardCode] of pairs) {
+      if (!standardCode) continue;
       // eslint-disable-next-line no-await-in-loop
-      const got = await get(table, codeCol, desCol, code);
+      const code = await this.eq().resolveCode(company, key, standardCode);
+      // eslint-disable-next-line no-await-in-loop
+      const got = await get(CORPORATE_CATALOGS[key].table, codeCol, desCol, code);
       const want = stdMap[label] ?? '';
       if (got && want && got.toUpperCase() !== want.toUpperCase()) {
         warnings.push(`${label} ${code}: descripción distinta al estándar ("${want}" vs "${got}").`);

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { apiMatchingService, type AnalyzerDraft, type AnalyzerPhase, type AnalyzerResult, type EngineCandidate, type ProfitSearchResult } from '../../servicios/api/api-matching-service';
+import { apiMatchingService, type AnalyzerDraft, type AnalyzerPhase, type AnalyzerResult, type EngineCandidate, type ProfitSearchHit, type ProfitSearchResult } from '../../servicios/api/api-matching-service';
 import {
   getMatchClassificationLabel,
   getMatchDecisionLabel,
@@ -9,6 +9,22 @@ import {
 import { Button, Modal, ConfirmDialog, Alert, Skeleton, SectionCard, Badge, Select, Input } from '../../componentes/ui';
 
 type Estado = 'idle' | 'loading' | 'success' | 'empty' | 'insufficient' | 'error';
+
+/**
+ * FASE P5 — resumen liviano que el Analizador publica a su contenedor para
+ * la tarjeta de acceso lateral: estado del último análisis y cuánto queda
+ * visible por revisar, desglosado por origen (motor vs. agregado a mano).
+ */
+export type AnalyzerSummary = {
+  /** Estado efectivo (con las propuestas manuales ya consideradas). */
+  estado: Estado;
+  /** Candidatos devueltos por el motor en el último análisis. */
+  engineTotal: number;
+  /** Candidatos del motor aún visibles (no descartados ni triados). */
+  visibleEngine: number;
+  /** Propuestas manuales del usuario aún visibles. */
+  visibleManual: number;
+};
 
 const COUNT_OPTIONS = [3, 5, 10, 20];
 
@@ -35,6 +51,12 @@ interface Props {
   onChanged?: () => void;
   /** FASE 23.2 — notifica análisis en curso para deshabilitar Validar artículo. */
   onBusyChange?: (busy: boolean) => void;
+  /**
+   * FASE P5 — publica un resumen vivo (estado + conteos) para que el
+   * contenedor muestre la tarjeta de acceso sin re-ejecutar nada. Opcional:
+   * no altera el contrato existente.
+   */
+  onSummaryChange?: (summary: AnalyzerSummary) => void;
   /**
    * FASE P2 — indica si los select de clasificación (grupo, subgrupo, tipo y
    * unidad) están completos. Solo entonces "Validar artículo" dispara la
@@ -90,7 +112,7 @@ function hasMinimumData(draft: AnalyzerDraft | null): boolean {
  * ejecución manual inmediata, guardia contra respuestas tardías y contra
  * ejecuciones simultáneas.
  */
-export const Analizador: React.FC<Props> = ({ requestId, canDecide, draft, manualRun, photoUri, debounceMs = 500, onChanged, onBusyChange, clasificacionCompleta = true }) => {
+export const Analizador: React.FC<Props> = ({ requestId, canDecide, draft, manualRun, photoUri, debounceMs = 500, onChanged, onBusyChange, onSummaryChange, clasificacionCompleta = true }) => {
   const [estado, setEstado] = React.useState<Estado>('idle');
   const [result, setResult] = React.useState<AnalyzerResult | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -115,6 +137,15 @@ export const Analizador: React.FC<Props> = ({ requestId, canDecide, draft, manua
   const [downloading, setDownloading] = React.useState(false);
   const [downloadError, setDownloadError] = React.useState<string | null>(null);
   const [visibleCount, setVisibleCount] = React.useState(5);
+  // FASE P4 — propuestas manuales del usuario (persistidas en el backend):
+  // sobreviven a "Validar artículo" y se recargan al cambiar de solicitud.
+  const [manuales, setManuales] = React.useState<EngineCandidate[]>([]);
+  /** Clave de la operación de propuesta en curso (un solo vuelo a la vez). */
+  const [proponiendo, setProponiendo] = React.useState<string | null>(null);
+  const [proponerMsg, setProponerMsg] = React.useState<string | null>(null);
+  const [proponerError, setProponerError] = React.useState<string | null>(null);
+  /** Invalida respuestas de propuestas de otra solicitud o fase. */
+  const propRef = React.useRef(0);
   const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
   // FASE P2 — fase de la última búsqueda y aviso cuando no se puede completar.
   const [fase, setFase] = React.useState<AnalyzerPhase>('INICIAL');
@@ -126,6 +157,23 @@ export const Analizador: React.FC<Props> = ({ requestId, canDecide, draft, manua
   const clasifRef = React.useRef(clasificacionCompleta);
   clasifRef.current = clasificacionCompleta;
   const draftKey = JSON.stringify(draft ?? null);
+
+  /**
+   * FASE P4 — carga (o re-puntúa) las propuestas guardadas de esta solicitud
+   * con la fase que el motor acaba de usar: el puntaje de una propuesta se
+   * mide con la MISMA regla que el de un candidato del análisis. Nunca tumba
+   * el análisis: si falla, simplemente no se muestran propuestas.
+   */
+  const refrescarPropuestas = async () => {
+    const n = ++propRef.current;
+    try {
+      const r = await apiMatchingService.listarPropuestas(requestId, draft ?? {}, faseRef.current);
+      if (propRef.current !== n) return; // respuesta vieja de otra solicitud/fase
+      setManuales(r?.candidates ?? []);
+    } catch {
+      // silencioso: las propuestas son complemento del análisis.
+    }
+  };
 
   /**
    * FASE P2 — ejecuta una búsqueda de la fase indicada.
@@ -155,6 +203,8 @@ export const Analizador: React.FC<Props> = ({ requestId, canDecide, draft, manua
       } else {
         setEstado(r.candidates.length > 0 ? 'success' : 'empty');
       }
+      // FASE P4 — re-puntúa las propuestas con la fase recién ejecutada.
+      void refrescarPropuestas();
     } catch {
       if (reqRef.current !== n) return;
       setError('No pudimos completar el análisis.');
@@ -186,12 +236,67 @@ export const Analizador: React.FC<Props> = ({ requestId, canDecide, draft, manua
     setBuscaCargando(true);
     setBuscaError(null);
     setBuscaRes(null);
+    setProponerMsg(null);
+    setProponerError(null);
     try {
       setBuscaRes(await apiMatchingService.buscarArticulo(requestId, term));
     } catch {
       setBuscaError('No pudimos consultar Profit con ese texto. Inténtalo de nuevo.');
     } finally {
       setBuscaCargando(false);
+    }
+  };
+
+  /**
+   * FASE P4 — "Agregar a coincidencias": el backend puntúa el hallazgo con
+   * el mismo motor y lo guarda como propuesta persistida (no es SAME ni
+   * mueve el workflow). El carrusel la muestra con su insignia manual.
+   */
+  const proponer = async (hit: ProfitSearchHit) => {
+    if (proponiendo) return;
+    const key = `${hit.companyCode}:${hit.profitArticleCode}`;
+    setProponiendo(key);
+    setProponerError(null);
+    setProponerMsg(null);
+    try {
+      const c = await apiMatchingService.proponer(
+        requestId,
+        { companyCode: hit.companyCode, profitArticleCode: hit.profitArticleCode },
+        draft ?? {},
+        faseRef.current,
+      );
+      setManuales((prev) => (prev.some((x) => candidateKey(x) === key) ? prev : [...prev, c]));
+      setProponerMsg(
+        `${hit.profitArticleCode} se agregó a tus coincidencias. Revísalo en el carrusel y decide si es este.`,
+      );
+    } catch {
+      setProponerError(
+        `No pudimos agregar ${hit.profitArticleCode}. Puede que ya tenga una decisión registrada en esta solicitud.`,
+      );
+    } finally {
+      setProponiendo(null);
+    }
+  };
+
+  /**
+   * FASE P4 — quita una propuesta guardada: el backend borra SOLO la fila
+   * PROPUESTA (las decisiones SAME/DIFFERENT no se tocan en ningún caso).
+   */
+  const retirarPropuesta = async (c: EngineCandidate) => {
+    if (proponiendo) return;
+    const key = candidateKey(c);
+    setProponiendo(key);
+    setError(null);
+    setProponerError(null);
+    try {
+      await apiMatchingService.retirarPropuesta(requestId, c.article);
+      setManuales((prev) => prev.filter((x) => candidateKey(x) !== key));
+      setSavedMsg(`${c.article.profitArticleCode} se quitó de tus coincidencias agregadas.`);
+    } catch {
+      setSavedMsg(null);
+      setError(`No pudimos quitar ${c.article.profitArticleCode} de las coincidencias.`);
+    } finally {
+      setProponiendo(null);
     }
   };
 
@@ -204,8 +309,15 @@ export const Analizador: React.FC<Props> = ({ requestId, canDecide, draft, manua
     setIndex(0);
     setTrayOpen(null);
     setViewer(null);
+    setManuales([]);
+    setProponiendo(null);
+    setProponerMsg(null);
+    setProponerError(null);
     setEstado('idle');
     runningRef.current = false;
+    // FASE P4 — carga las propuestas persistidas de ESTA solicitud.
+    void refrescarPropuestas();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestId]);
 
   React.useEffect(() => {
@@ -262,17 +374,51 @@ export const Analizador: React.FC<Props> = ({ requestId, canDecide, draft, manua
     }
   };
 
-  const visible = (result?.candidates ?? []).filter(
+  /**
+   * FASE P4 — el carrusel presenta el análisis del motor Y las propuestas
+   * manuales del usuario, sin duplicados: si el motor también encontró un
+   * artículo propuesto, manda la versión del motor (trae toda la evidencia
+   * del recall). Las propuestas restantes entran con su insignia manual.
+   */
+  const engineCandidates = result?.candidates ?? [];
+  const propuestas = manuales.filter(
+    (c) => !engineCandidates.some((e) => candidateKey(e) === candidateKey(c)),
+  );
+  const todos = [...engineCandidates, ...propuestas];
+  const visible = todos.filter(
     (c) => !dismissed.has(candidateKey(c)) && !triage.has(candidateKey(c)),
   );
   /** Descartados locales (triage) en orden original, recuperables. */
-  const discarded = (result?.candidates ?? []).filter(
+  const discarded = todos.filter(
     (c) => triage.has(candidateKey(c)) && !dismissed.has(candidateKey(c)),
   );
-  const allDismissed = estado === 'success' && visible.length === 0;
+  /** Desglose honesto del contador: motor vs. agregadas por el usuario. */
+  const visMotor = visible.filter((c) => !c.manual).length;
+  const visManuales = visible.length - visMotor;
+  /**
+   * "empty" describe al MOTOR: si el usuario ya agregó propuestas hay algo
+   * que revisar, así que se muestra el carrusel en vez del estado vacío.
+   */
+  const efectivo: Estado = estado === 'empty' && todos.length > 0 ? 'success' : estado;
+  const allDismissed = efectivo === 'success' && visible.length === 0;
   /** Todo lo visible fue triage-descartado (nada persistido): recuperable. */
   const allTriaged = allDismissed && discarded.length > 0;
   const current = visible.length > 0 ? visible[Math.min(index, visible.length - 1)]! : null;
+
+  /**
+   * FASE P5 — informa a la tarjeta de acceso lateral el estado del análisis
+   * y lo que queda visible. Depende de valores (no de identidades), así que
+   * solo se emite cuando algo cambia de verdad: el contenedor puede guardar
+   * el resumen con setState sin entrar en bucles de render.
+   */
+  React.useEffect(() => {
+    onSummaryChange?.({
+      estado: efectivo,
+      engineTotal: engineCandidates.length,
+      visibleEngine: visMotor,
+      visibleManual: visManuales,
+    });
+  }, [onSummaryChange, efectivo, engineCandidates.length, visMotor, visManuales]);
 
   // La posición nunca sale del rango cuando la lista activa cambia.
   React.useEffect(() => {
@@ -365,57 +511,177 @@ export const Analizador: React.FC<Props> = ({ requestId, canDecide, draft, manua
   return (
     <SectionCard
       title="Analizador"
-      desc="Revisamos si ya existe este artículo antes de crear un código nuevo."
+      desc="Compara el artículo con los existentes antes de crear uno nuevo."
+      actions={
+        <div className="analyzer-tools">
+          {result && efectivo === 'success' && (
+            <>
+              {engineCandidates.length > 0 && (
+                <span className="analyzer-count">
+                  <b>{visMotor}</b> de <b>{engineCandidates.length}</b> del motor
+                </span>
+              )}
+              {visManuales > 0 && (
+                <span className="analyzer-count-manual">
+                  + <b>{visManuales}</b> agregada{visManuales === 1 ? '' : 's'}
+                </span>
+              )}
+            </>
+          )}
+          <span className="muted small">Mostrar</span>
+          <Select
+            value={String(visibleCount)}
+            onChange={(e) => setVisibleCount(Number(e.target.value))}
+            aria-label="Cantidad de coincidencias a revisar"
+          >
+            {COUNT_OPTIONS.map((n) => (
+              <option key={n} value={n}>{n} coincidencias</option>
+            ))}
+          </Select>
+        </div>
+      }
     >
-      <div className="toolbar">
-        <span className="muted small">Mostrar</span>
-        <Select
-          value={String(visibleCount)}
-          onChange={(e) => setVisibleCount(Number(e.target.value))}
-          aria-label="Cantidad de coincidencias a revisar"
-        >
-          {COUNT_OPTIONS.map((n) => (
-            <option key={n} value={n}>{n} coincidencias</option>
-          ))}
-        </Select>
+      {/* Una sola línea de estado: fase, aviso de clasificación y tope de universo. */}
+      <div className="status-line" role="status">
+        {avisoFase && <p className="status-line-warn">{avisoFase}</p>}
+        <p>
+          {fase === 'COMPLETA'
+            ? 'Búsqueda completa: comparamos descripción, clasificación y demás campos del artículo.'
+            : 'Búsqueda inicial por descripción. Pulsa "Validar artículo" con la clasificación completa para comparar todos los campos.'}
+        </p>
+        {typeof result?.poolScanned === 'number' && (
+          <p>
+            {typeof result?.poolTotal === 'number'
+              ? `Revisados ${result.poolScanned} de ${result.poolTotal} artículos del universo.`
+              : `Revisados ${result.poolScanned} artículos del universo.`}
+          </p>
+        )}
+        {result?.poolTruncated && (
+          <details className="status-detail">
+            <summary>No se pudo revisar el universo completo</summary>
+            <p>
+              Por seguridad solo se evaluó una parte
+              {typeof result.poolTotal === 'number' ? ` (hay ${result.poolTotal} en total)` : ''}. Si no ves el
+              artículo que buscas, pulsa "Validar artículo" con más datos del formulario.
+            </p>
+          </details>
+        )}
       </div>
 
-      {result?.poolTruncated && (
-        <Alert tone="warning">
-          Este análisis comparó los primeros {result.poolLimit ?? 500} artículos del universo de la empresa
-          {typeof result.poolTotal === 'number' ? ` (hay ${result.poolTotal} en total)` : ''}. Si no ves el
-          artículo que buscas, usa "Validar artículo" con más datos del formulario o revisa el universo.
-        </Alert>
+      {efectivo === 'idle' || efectivo === 'loading' ? (
+        <div className="stack-sm" aria-label="Analizando artículos existentes">
+          <p className="muted small" role="status">Analizando artículos existentes...</p>
+          <Skeleton height={16} width="40%" /><Skeleton height={60} /><Skeleton height={60} />
+        </div>
+      ) : efectivo === 'insufficient' ? (
+        <div className="analyzer-state">
+          <p>Completa la información del artículo para analizar coincidencias.</p>
+        </div>
+      ) : efectivo === 'error' ? (
+        <div className="stack-sm">
+          <Alert tone="danger">No pudimos completar el análisis.</Alert>
+          <div>
+            <Button variant="secondary" size="sm" onClick={() => void ejecutar(faseRef.current)}>Reintentar</Button>
+          </div>
+          <p className="muted small">Puedes continuar con el proceso normal.</p>
+        </div>
+      ) : efectivo === 'empty' ? (
+        <div className="analyzer-state analyzer-state-ok">
+          <p><strong>✓ Validación completada</strong></p>
+          <p>No encontramos coincidencias relevantes. Puede continuar con la creación del nuevo artículo.</p>
+        </div>
+      ) : allDismissed ? (
+        allTriaged ? (
+          <div className="analyzer-state">
+            <p><strong>No quedan coincidencias activas.</strong></p>
+            <p className="muted small">Puedes revisar los descartados antes de continuar.</p>
+            <div>
+              <Button variant="secondary" size="sm" onClick={() => setTrayExpanded(true)}>Revisar descartados</Button>
+            </div>
+            <DiscardTray
+              discarded={discarded}
+              expanded={trayExpanded}
+              onToggle={() => setTrayExpanded((v) => !v)}
+              onOpen={setTrayOpen}
+            />
+          </div>
+        ) : (
+          <div className="analyzer-state">
+            <p><strong>No encontramos otra coincidencia relevante.</strong></p>
+            <p className="muted small">Puedes continuar con la creación del nuevo artículo.</p>
+          </div>
+        )
+      ) : (
+        <div className="stack-sm">
+          {savedMsg && <Alert tone="success">{savedMsg}</Alert>}
+          {error && <Alert tone="danger">{error}</Alert>}
+          <p className="muted small" role="status">
+            {visible.length === 1
+              ? '1 coincidencia posible con lo que solicitaste.'
+              : `${visible.length} coincidencias posibles con lo que solicitaste.`}
+          </p>
+          {current && (
+            <CarouselCard
+              key={candidateKey(current)}
+              candidate={current}
+              canDecide={canDecide}
+              saving={saving || proponiendo !== null}
+              expanded={expanded.has(candidateKey(current))}
+              downloading={downloading}
+              downloadError={downloadError}
+              onToggleEvidence={() => setExpanded((prev) => {
+                const next = new Set(prev);
+                const key = candidateKey(current);
+                if (next.has(key)) next.delete(key);
+                else next.add(key);
+                return next;
+              })}
+              onDetail={() => setDetail(current)}
+              onDiscard={() => discardLocal(current)}
+              onDecide={(decision) => setConfirm({ candidate: current, decision })}
+              onViewPhoto={(urls, i) => { setDownloadError(null); setViewer({ list: urls, i }); }}
+              onDownloadPhoto={() => void handleDownload(current)}
+              onRemoveProposal={() => void retirarPropuesta(current)}
+            />
+          )}
+          <CarouselNav
+            index={visible.length === 0 ? 0 : Math.min(index, visible.length - 1)}
+            total={visible.length}
+            onPrev={() => setIndex((i) => Math.max(0, i - 1))}
+            onNext={() => setIndex((i) => Math.min(visible.length - 1, i + 1))}
+            onGo={(i) => setIndex(i)}
+          />
+          <DiscardTray
+            discarded={discarded}
+            expanded={trayExpanded}
+            onToggle={() => setTrayExpanded((v) => !v)}
+            onOpen={setTrayOpen}
+          />
+        </div>
       )}
 
-      {/* FASE P2 — aviso de la búsqueda en dos tiempos. */}
-      {avisoFase && <Alert tone="warning">{avisoFase}</Alert>}
-      <p className="muted small" role="status">
-        {fase === 'COMPLETA'
-          ? 'Búsqueda completa: se comparan descripción, clasificación y demás campos del artículo.'
-          : 'Búsqueda inicial por descripción. Pulsa "Validar artículo" con la clasificación completa para comparar todos los campos.'}
-      </p>
-
-      {/* FASE P3 — búsqueda manual en Profit (solo consulta informativa). */}
-      <div className="stack-sm" aria-label="Búsqueda manual en Profit">
+      {/* FASE P3 — búsqueda manual en Profit: escape hatch, solo informativa. */}
+      <div className="search-block" aria-label="Búsqueda manual en Profit">
         <form
-          className="toolbar"
+          className="search-form"
           onSubmit={(e) => { e.preventDefault(); void buscarManual(); }}
         >
-          <label className="muted small" htmlFor="busqueda-profit">
-            ¿Ya existe? Busca un artículo en Profit (por palabras)
+          <label className="search-label" htmlFor="busqueda-profit">
+            Buscar si ya existe en Profit
           </label>
-          <Input
-            id="busqueda-profit"
-            value={buscaTexto}
-            onChange={(e) => setBuscaTexto(e.target.value)}
-            placeholder="Código o palabras clave (mínimo 2 caracteres)"
-            maxLength={60}
-            disabled={buscaCargando}
-          />
-          <Button type="submit" variant="secondary" size="sm" disabled={buscaCargando}>
-            {buscaCargando ? 'Buscando...' : 'Buscar en Profit'}
-          </Button>
+          <div className="search-row">
+            <Input
+              id="busqueda-profit"
+              value={buscaTexto}
+              onChange={(e) => setBuscaTexto(e.target.value)}
+              placeholder="Código o palabras clave (mínimo 2 caracteres)"
+              maxLength={60}
+              disabled={buscaCargando}
+            />
+            <Button type="submit" variant="secondary" size="sm" disabled={buscaCargando}>
+              {buscaCargando ? 'Buscando...' : 'Buscar en Profit'}
+            </Button>
+          </div>
         </form>
 
         {buscaError && <Alert tone="danger">{buscaError}</Alert>}
@@ -435,117 +701,45 @@ export const Analizador: React.FC<Props> = ({ requestId, canDecide, draft, manua
               {buscaRes.companyCode}
               {buscaRes.source === 'LOCAL' ? ' (universo local)' : ' (consulta directa a Profit)'}.
             </Alert>
-            <ul className="stack-sm">
-              {buscaRes.results.map((r) => (
-                <li key={`${r.companyCode}:${r.profitArticleCode}`}>
-                  <strong>{r.profitArticleCode}</strong> — {r.description}
-                  {(r.brand || r.model) ? (
-                    <span className="muted small"> {[r.brand, r.model].filter(Boolean).join(' · ')}</span>
-                  ) : null}
-                </li>
-              ))}
+            {proponerMsg && <Alert tone="success">{proponerMsg}</Alert>}
+            {proponerError && <Alert tone="danger">{proponerError}</Alert>}
+            <ul className="manual-list">
+              {buscaRes.results.map((r) => {
+                const key = `${r.companyCode}:${r.profitArticleCode}`;
+                const enFlujo = todos.some((c) => candidateKey(c) === key);
+                return (
+                  <li key={key} className="manual-row">
+                    <div className="manual-row-info">
+                      <span className="manual-row-code">{r.profitArticleCode}</span>
+                      <span className="manual-row-desc">{r.description}</span>
+                      {(r.brand || r.model) ? (
+                        <span className="manual-row-meta muted small">
+                          {[r.brand, r.model].filter(Boolean).join(' · ')}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="manual-row-action">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={proponiendo !== null || enFlujo}
+                        onClick={() => void proponer(r)}
+                      >
+                        {proponiendo === key ? 'Agregando…' : enFlujo ? '✓ En coincidencias' : 'Agregar'}
+                      </Button>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           </>
         )}
 
-        <p className="muted small">
-          Solo consulta informativa: no modifica el análisis ni decide nada. Coinciden todos los
-          textos que escribas (en cualquier orden): no hace falta escribir la frase exacta.
+        <p className="search-note">
+          Coinciden todas las palabras, en cualquier orden. Al agregar, el artículo se puntúa con el mismo
+          motor y queda guardado como tu propuesta para esta solicitud (no decide nada por sí solo).
         </p>
       </div>
-
-      {estado === 'idle' || estado === 'loading' ? (
-        <div className="stack-sm" aria-label="Analizando artículos existentes">
-          <p className="muted small" role="status">Analizando artículos existentes...</p>
-          <Skeleton height={16} width="40%" /><Skeleton height={60} /><Skeleton height={60} />
-        </div>
-      ) : estado === 'insufficient' ? (
-        <p className="muted small">Completa la información del artículo para analizar coincidencias.</p>
-      ) : estado === 'error' ? (
-        <div className="stack-sm">
-          <Alert tone="danger">No pudimos completar el análisis.</Alert>
-          <div>
-            <Button variant="secondary" size="sm" onClick={() => void ejecutar(faseRef.current)}>Reintentar</Button>
-          </div>
-          <p className="muted small">Puedes continuar con el proceso normal.</p>
-        </div>
-      ) : estado === 'empty' ? (
-        <div className="stack-sm">
-          <p><strong>✓ Validación completada</strong></p>
-          <p>No encontramos coincidencias relevantes. Puede continuar con la creación del nuevo artículo.</p>
-        </div>
-      ) : allDismissed ? (
-        allTriaged ? (
-          <div className="stack-sm">
-            <p><strong>No quedan coincidencias activas.</strong></p>
-            <p className="muted small">Puedes revisar los descartados antes de continuar.</p>
-            <div>
-              <Button variant="secondary" size="sm" onClick={() => setTrayExpanded(true)}>Revisar descartados</Button>
-            </div>
-            <DiscardTray
-              discarded={discarded}
-              expanded={trayExpanded}
-              onToggle={() => setTrayExpanded((v) => !v)}
-              onOpen={setTrayOpen}
-            />
-          </div>
-        ) : (
-          <div className="stack-sm">
-            <p><strong>No encontramos otra coincidencia relevante.</strong></p>
-            <p className="muted small">Puedes continuar con la creación del nuevo artículo.</p>
-          </div>
-        )
-      ) : (
-        <div className="stack-sm">
-          {savedMsg && <Alert tone="success">{savedMsg}</Alert>}
-          {error && <Alert tone="danger">{error}</Alert>}
-          {draft?.description && (
-            <div className="carousel-request">
-              <p className="muted small">Artículo solicitado</p>
-              <p><strong>{draft.description}</strong></p>
-            </div>
-          )}
-          <p className="muted small" role="status">
-            Encontramos {visible.length === 1 ? 'un artículo existente que podría corresponder a tu solicitud.' : `${visible.length} artículos existentes que podrían corresponder a tu solicitud.`}
-          </p>
-          {current && (
-            <CarouselCard
-              key={candidateKey(current)}
-              candidate={current}
-              canDecide={canDecide}
-              saving={saving}
-              expanded={expanded.has(candidateKey(current))}
-              downloading={downloading}
-              downloadError={downloadError}
-              onToggleEvidence={() => setExpanded((prev) => {
-                const next = new Set(prev);
-                const key = candidateKey(current);
-                if (next.has(key)) next.delete(key);
-                else next.add(key);
-                return next;
-              })}
-              onDetail={() => setDetail(current)}
-              onDiscard={() => discardLocal(current)}
-              onDecide={(decision) => setConfirm({ candidate: current, decision })}
-              onViewPhoto={(urls, i) => { setDownloadError(null); setViewer({ list: urls, i }); }}
-              onDownloadPhoto={() => void handleDownload(current)}
-            />
-          )}
-          <CarouselNav
-            index={visible.length === 0 ? 0 : Math.min(index, visible.length - 1)}
-            total={visible.length}
-            onPrev={() => setIndex((i) => Math.max(0, i - 1))}
-            onNext={() => setIndex((i) => Math.min(visible.length - 1, i + 1))}
-            onGo={(i) => setIndex(i)}
-          />
-          <DiscardTray
-            discarded={discarded}
-            expanded={trayExpanded}
-            onToggle={() => setTrayExpanded((v) => !v)}
-            onOpen={setTrayOpen}
-          />
-        </div>
-      )}
 
       <Modal open={detail !== null} onClose={() => setDetail(null)} title="Comparar coincidencia" wide>
         {detail && (
@@ -690,7 +884,9 @@ const CarouselCard: React.FC<{
   onDecide: (d: 'SAME' | 'DIFFERENT') => void;
   onViewPhoto: (urls: string[], i: number) => void;
   onDownloadPhoto: () => void;
-}> = ({ candidate, canDecide, saving, expanded, downloading, downloadError, onToggleEvidence, onDetail, onDiscard, onDecide, onViewPhoto, onDownloadPhoto }) => {
+  /** FASE P4 — retira una propuesta manual guardada (si la hay). */
+  onRemoveProposal?: () => void;
+}> = ({ candidate, canDecide, saving, expanded, downloading, downloadError, onToggleEvidence, onDetail, onDiscard, onDecide, onViewPhoto, onDownloadPhoto, onRemoveProposal }) => {
   const c = candidate;
   const photoUrl = isPhotoUrl(c.detail?.photo) ? c.detail.photo : null;
   const touchX = React.useRef<number | null>(null);
@@ -725,79 +921,100 @@ const CarouselCard: React.FC<{
         por debajo el artículo sigue visible (para que el humano pueda
         descartarlo) pero sin presentarse como coincidencia.
       */}
-      <p className="muted small">
-        {typeof c.score === 'number' && c.score >= MATCH_MIN_SCORE
-          ? '🔎 Posible coincidencia'
-          : 'Sin coincidencia demostrada (solo se lista para descartar)'}
-      </p>
-      <p className="muted small">Código Profit</p>
-      <p><strong className="mono">{c.article.profitArticleCode}</strong></p>
-      {c.description && <p>{c.description}</p>}
-      <p className="muted small">Empresa: {c.article.companyCode}</p>
-      <div className="match-photo">
-        {photoUrl ? (
-          <div className="stack-sm">
-            <button
-              type="button"
-              className="carousel-photo-btn"
-              onClick={() => onViewPhoto([photoUrl], 0)}
-              aria-label={`Ampliar foto de ${c.article.profitArticleCode}`}
-            >
-              <img src={photoUrl} alt={`Foto del artículo ${c.article.profitArticleCode}`} loading="lazy" />
-            </button>
-            <div className="form-actions carousel-photo-actions">
-              <Button variant="ghost" size="sm" onClick={() => onViewPhoto([photoUrl], 0)}>Ampliar</Button>
-              <Button variant="ghost" size="sm" disabled={downloading || saving} onClick={onDownloadPhoto}>
-                {downloading ? 'Descargando…' : 'Descargar foto'}
-              </Button>
+      <div className="cand-head">
+        <div className="cand-id">
+          <p className={`cand-kicker${typeof c.score === 'number' && c.score >= MATCH_MIN_SCORE ? '' : ' cand-kicker-muted'}`}>
+            {typeof c.score === 'number' && c.score >= MATCH_MIN_SCORE
+              ? '🔎 Posible coincidencia'
+              : 'Sin coincidencia demostrada (solo se lista para descartar)'}
+          </p>
+          <p className="muted small cand-code-label">Código Profit</p>
+          <p className="cand-code">{c.article.profitArticleCode}</p>
+        </div>
+        <div className="cand-score">
+          <p className="cand-score-line">
+            <span className="muted small">Puntaje: </span>
+            <strong>{typeof c.score === 'number' ? `${c.score}/100` : getMatchClassificationLabel(c.classification)}</strong>
+          </p>
+          <p className="cand-badges">
+            <Badge tone={c.classification === 'HIGH' ? 'green' : c.classification === 'REVIEW' ? 'yellow' : 'gray'}>
+              {getMatchClassificationLabel(c.classification)}
+            </Badge>
+            {c.manual && <Badge tone="gray">Agregada por ti</Badge>}
+          </p>
+        </div>
+      </div>
+
+      <div className="cand-grid">
+        <div className="cand-photo">
+          {photoUrl ? (
+            <div className="stack-sm">
+              <button
+                type="button"
+                className="carousel-photo-btn"
+                onClick={() => onViewPhoto([photoUrl], 0)}
+                aria-label={`Ampliar foto de ${c.article.profitArticleCode}`}
+              >
+                <img src={photoUrl} alt={`Foto del artículo ${c.article.profitArticleCode}`} loading="lazy" />
+              </button>
+              <div className="form-actions carousel-photo-actions">
+                <Button variant="ghost" size="sm" onClick={() => onViewPhoto([photoUrl], 0)}>Ampliar</Button>
+                <Button variant="ghost" size="sm" disabled={downloading || saving} onClick={onDownloadPhoto}>
+                  {downloading ? 'Descargando…' : 'Descargar foto'}
+                </Button>
+              </div>
+              {downloadError && <p className="muted small" role="alert">{downloadError}</p>}
             </div>
-            {downloadError && <p className="muted small" role="alert">{downloadError}</p>}
-          </div>
-        ) : c.detail?.photo ? (
-          <div>
-            <p className="muted small">Foto del artículo existente (referencial)</p>
-            <p className="mono small">{c.detail.photo}</p>
-          </div>
-        ) : (
-          <p className="muted small">No existe foto disponible</p>
-        )}
-      </div>
-      <p>
-        <span className="muted small">Puntaje: </span>
-        <strong>{typeof c.score === 'number' ? `${c.score}/100` : getMatchClassificationLabel(c.classification)}</strong>
-      </p>
-      <p><Badge tone={c.classification === 'HIGH' ? 'green' : c.classification === 'REVIEW' ? 'yellow' : 'gray'}>
-        {getMatchClassificationLabel(c.classification)}
-      </Badge></p>
-      {c.priorDecision === 'SAME' && (
-        <p className="muted small">Marcado previamente como el mismo artículo.</p>
-      )}
-      {c.priorDecision === 'DIFFERENT' && (
-        <p className="muted small">Marcado previamente como diferente.</p>
-      )}
-      <div>
-        <Button variant="ghost" size="sm" onClick={onToggleEvidence} aria-expanded={expanded}>
-          {expanded ? '▾ Ocultar por qué aparece' : '▸ ¿Por qué aparece este artículo?'}
-        </Button>
-        {expanded && (
-          <div className="stack-sm">
-            {c.evidence.length > 0 && (
-              <ul className="match-list" aria-label="Coincidencias">
-                {c.evidence.map((e) => (
-                  <li key={e}><span aria-hidden="true">✓ </span>{getMatchEvidenceLabel(e)}</li>
-                ))}
-              </ul>
-            )}
-            {c.conflicts.length > 0 && (
-              <p className="muted small"><span aria-hidden="true">⚠ </span>Hay una diferencia que requiere revisión.</p>
+          ) : c.detail?.photo ? (
+            <div className="cand-photo-empty">
+              <span className="muted small">Foto del artículo existente (referencial)</span>
+              <span className="mono small">{c.detail.photo}</span>
+            </div>
+          ) : (
+            <p className="cand-photo-empty">No existe foto disponible</p>
+          )}
+        </div>
+
+        <div className="cand-body">
+          {c.description && <p className="cand-desc">{c.description}</p>}
+          <p className="muted small">Empresa: {c.article.companyCode}</p>
+          {c.priorDecision === 'SAME' && (
+            <p className="muted small">Marcado previamente como el mismo artículo.</p>
+          )}
+          {c.priorDecision === 'DIFFERENT' && (
+            <p className="muted small">Marcado previamente como diferente.</p>
+          )}
+          {c.explanation && <p className="muted small">{c.explanation}</p>}
+          <div className="cand-evidence">
+            <Button variant="ghost" size="sm" onClick={onToggleEvidence} aria-expanded={expanded}>
+              {expanded ? '▾ Ocultar por qué aparece' : '▸ ¿Por qué aparece este artículo?'}
+            </Button>
+            {expanded && (
+              <div className="stack-sm">
+                {c.evidence.length > 0 && (
+                  <ul className="match-list" aria-label="Coincidencias">
+                    {c.evidence.map((e) => (
+                      <li key={e}><span aria-hidden="true">✓ </span>{getMatchEvidenceLabel(e)}</li>
+                    ))}
+                  </ul>
+                )}
+                {c.conflicts.length > 0 && (
+                  <p className="muted small"><span aria-hidden="true">⚠ </span>Hay una diferencia que requiere revisión.</p>
+                )}
+              </div>
             )}
           </div>
-        )}
+        </div>
       </div>
-      {c.explanation && <p className="muted small">{c.explanation}</p>}
-      <div className="form-actions carousel-actions">
-        <Button variant="secondary" size="sm" disabled={saving} onClick={onDiscard}>Descartar</Button>
+
+      <div className="cand-actions">
+        <Button variant="ghost" size="sm" disabled={saving} onClick={onDiscard}>Descartar</Button>
         <Button variant="secondary" size="sm" onClick={onDetail}>Ver detalles</Button>
+        {c.manual && onRemoveProposal && (
+          <Button variant="ghost" size="sm" disabled={saving} onClick={onRemoveProposal}>
+            Quitar
+          </Button>
+        )}
         {canDecide && (
           <Button variant="accent" size="sm" disabled={saving} onClick={() => onDecide('SAME')}>
             Es este

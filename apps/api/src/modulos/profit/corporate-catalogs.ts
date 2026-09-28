@@ -26,6 +26,8 @@ export interface CorporateCatalogDescriptor {
   descColumn: string;
   /** Columna padre para catálogos jerárquicos (solo sub_lin → co_lin). */
   parentColumn?: string;
+  /** Catálogo dueño de la columna padre (FASE 26: se traduce por empresa). */
+  parentCatalog?: CorporateCatalogKey;
   /**
    * La tabla tiene co_us_in (evidencia Fase 16 §6: todas menos tabulado).
    * Se registra el usuario de integración al crear elementos faltantes.
@@ -48,7 +50,7 @@ export const CORPORATE_CATALOGS: Record<CorporateCatalogKey, CorporateCatalogDes
   tabulado: { key: 'tabulado', label: 'Tasas de impuesto', table: 'tabulado', codeColumn: 'tipo', descColumn: 'descripcio', acceptsIntegrationUser: false },
   unidades: { key: 'unidades', label: 'Unidades', table: 'unidades', codeColumn: 'co_uni', descColumn: 'des_uni', acceptsIntegrationUser: true },
   lin_art: { key: 'lin_art', label: 'Líneas', table: 'lin_art', codeColumn: 'co_lin', descColumn: 'lin_des', acceptsIntegrationUser: true },
-  sub_lin: { key: 'sub_lin', label: 'Sublíneas', table: 'sub_lin', codeColumn: 'co_subl', descColumn: 'subl_des', parentColumn: 'co_lin', acceptsIntegrationUser: true },
+  sub_lin: { key: 'sub_lin', label: 'Sublíneas', table: 'sub_lin', codeColumn: 'co_subl', descColumn: 'subl_des', parentColumn: 'co_lin', parentCatalog: 'lin_art', acceptsIntegrationUser: true },
   cat_art: { key: 'cat_art', label: 'Categorías', table: 'cat_art', codeColumn: 'co_cat', descColumn: 'cat_des', acceptsIntegrationUser: true },
   colores: { key: 'colores', label: 'Marcas', table: 'colores', codeColumn: 'co_col', descColumn: 'des_col', acceptsIntegrationUser: true },
   prov: { key: 'prov', label: 'Proveedores', table: 'prov', codeColumn: 'co_prov', descColumn: 'prov_des', acceptsIntegrationUser: true },
@@ -82,8 +84,11 @@ export function catalogSelectSql(desc: CorporateCatalogDescriptor): { sql: strin
   // El calificador de base se aplica en el servicio sobre una conexión del
   // mismo servidor (three-part). Aquí se devuelve el cuerpo; el servicio
   // antepone [DB].dbo mediante companyTableRef.
+  // FASE 26.4: con columna padre la identidad es (co_lin, co_subl); ordenar
+  // solo por código deja el orden de los repetidos sin definir.
+  const order = desc.parentColumn ? `${desc.parentColumn}, ${desc.codeColumn}` : '1';
   return {
-    sql: `SELECT ${cols.join(', ')} FROM __TABLE__ ORDER BY 1`,
+    sql: `SELECT ${cols.join(', ')} FROM __TABLE__ ORDER BY ${order}`,
     db: '__DB__',
   };
 }
@@ -117,8 +122,17 @@ export function catalogInsertForCompany(
   return { sql: `INSERT INTO ${ref} (${cols.join(', ')}) VALUES (${vals.join(', ')})`, params };
 }
 
-/** UPDATE solo de descripción (nunca código/PK, §6-§7). Puro. */
+/**
+ * UPDATE solo de descripción (nunca código/PK, §6-§7). Puro.
+ *
+ * FASE 26.4 — CRÍTICO: en catálogos jerárquicos (sub_lin) la PK es el par
+ * (co_lin, co_subl); el MISMO co_subl se repite bajo líneas distintas. Un
+ * WHERE solo por código reescribiría TODAS las líneas a la vez (corrupción
+ * masiva). Por eso el padre entra en el WHERE.
+ */
 export function catalogUpdateDescForCompany(desc: CorporateCatalogDescriptor, db: string): string {
   const ref = companyTableRef(db, desc.table);
-  return `UPDATE ${ref} SET ${desc.descColumn} = @c1 WHERE LTRIM(RTRIM(${desc.codeColumn})) = LTRIM(RTRIM(@c0))`;
+  const where = [`LTRIM(RTRIM(${desc.codeColumn})) = LTRIM(RTRIM(@c0))`];
+  if (desc.parentColumn) where.push(`LTRIM(RTRIM(${desc.parentColumn})) = LTRIM(RTRIM(@c2))`);
+  return `UPDATE ${ref} SET ${desc.descColumn} = @c1 WHERE ${where.join(' AND ')}`;
 }

@@ -6,6 +6,7 @@ import { ProfitWriteAdapterService } from './profit-write.adapter';
 import { ProfitArticleCreationService } from './profit-article-creation.service';
 import { CorporateCompaniesService } from './corporate-companies.service';
 import { CorporateHomologationService } from './corporate-homologation.service';
+import { CorporateEquivalenceService } from './corporate-equivalence.service';
 import { MultiCompanyService } from './multi-company.service';
 import { ProfitController } from './profit.controller';
 import { CorporateController } from './corporate.controller';
@@ -19,6 +20,7 @@ import { MultiCompanyController } from './multi-company.controller';
     ProfitWriteAdapterService,
     ProfitArticleCreationService,
     CorporateCompaniesService,
+    CorporateEquivalenceService,
     CorporateHomologationService,
     MultiCompanyService,
   ],
@@ -27,6 +29,7 @@ import { MultiCompanyController } from './multi-company.controller';
     ProfitWriteAdapterService,
     ProfitArticleCreationService,
     CorporateCompaniesService,
+    CorporateEquivalenceService,
     CorporateHomologationService,
     MultiCompanyService,
   ],

@@ -19,6 +19,9 @@ a{color:inherit;text-decoration:none}
 .layout{display:flex;min-height:100vh}
 .sidebar{width:var(--sidebar-w);background:var(--sidebar);color:var(--sidebar-text);display:flex;flex-direction:column;transition:width var(--transition-base)}
 .sidebar-collapsed{width:var(--sidebar-w-collapsed)}
+/* Menú lateral fijo en escritorio: no se va con el scroll.
+   (El móvil conserva el drawer fijo de ds.css: máx. 767px.) */
+@media(min-width:768px){.sidebar{position:sticky;top:0;height:100dvh;overflow-y:auto;z-index:3}}
 .sidebar-head{display:flex;align-items:center;justify-content:space-between;padding:var(--sp-4);border-bottom:1px solid var(--sidebar-active)}
 .logo{font-weight:800;letter-spacing:.5px;color:var(--white)}
 .nav{padding:var(--sp-2)}
@@ -159,7 +162,6 @@ a{color:inherit;text-decoration:none}
 .btn-accent{background:var(--color-secondary);color:var(--color-secondary-contrast)}
 .btn-accent:hover:not(:disabled){filter:brightness(.96)}
 /* carrusel del Analizador */
-.carousel-request{border-left:3px solid var(--blue);padding-left:var(--sp-3);margin-bottom:var(--sp-2)}
 .carousel-card{animation:carousel-in .2s ease}
 .carousel-card:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 @keyframes carousel-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
@@ -184,8 +186,9 @@ a{color:inherit;text-decoration:none}
 .compare-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3)}
 .compare-panel{border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--sp-3);background:var(--card)}
 .compare-panel h4{margin-bottom:2px}
-.compare-photo{height:170px;border:1px solid var(--border-soft);border-radius:var(--radius-sm);background:var(--surface-soft);display:grid;place-items:center;overflow:hidden;margin:var(--sp-2) 0;text-align:center;padding:var(--sp-2)}
-.compare-photo img{max-width:100%;max-height:100%;object-fit:contain;cursor:zoom-in}
+.compare-photo{height:170px;border:1px solid var(--border-soft);border-radius:var(--radius-sm);background:var(--surface-soft);display:flex;align-items:center;justify-content:center;overflow:hidden;margin:var(--sp-2) 0;text-align:center;padding:var(--sp-2)}
+/* max-height en px: el % no resolvía en la fila del grid y la foto se cortaba. */
+.compare-photo img{display:block;max-width:100%;max-height:152px;width:auto;height:auto;object-fit:contain;cursor:zoom-in}
 .compare-photo-empty{color:var(--muted);font-size:var(--text-sm)}
 .compare-row{padding:6px 0;border-bottom:1px solid var(--border-soft);font-size:var(--text-md)}
 .compare-row:last-child{border-bottom:none}
@@ -198,3 +201,109 @@ a{color:inherit;text-decoration:none}
 .compare-foot-group{display:flex;gap:var(--sp-2);flex-wrap:wrap}
 .carousel-viewer-img{display:block;max-width:100%;max-height:60vh;margin:0 auto;border-radius:var(--radius-sm)}
 @media(max-width:767px){.compare-grid{grid-template-columns:1fr}.compare-vals{grid-template-columns:1fr}}
+/* ==========================================================================
+   Almacén / Clasificación — rediseño: panel de contexto + zona de decisión.
+   Solo clases nuevas y valores de tokens.css (§43): sin tamaños/colores propios.
+   ========================================================================== */
+/* layout: contexto fijo a la izquierda, zona de trabajo a la derecha */
+.grid-side-main{display:grid;grid-template-columns:320px minmax(0,1fr);gap:var(--sp-4);align-items:start}
+@media(max-width:1100px){.grid-side-main{grid-template-columns:minmax(0,1fr)}}
+/* panel de contexto: qué se pidió, foto y códigos, siempre a la vista */
+.ctx-panel{position:sticky;top:calc(var(--header-h) + var(--sp-3));display:flex;flex-direction:column;gap:var(--sp-3);max-height:calc(100dvh - var(--header-h) - var(--sp-6));overflow:auto;padding-right:2px}
+.ctx-block{flex:none;display:flex;flex-direction:column;gap:var(--sp-2);background:var(--card);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--sp-4)}
+.ctx-eyebrow{font-size:var(--text-sm);font-weight:700;color:var(--blue)}
+.ctx-title{font-size:var(--text-card-title);font-weight:700;line-height:var(--line-height-tight)}
+.ctx-meta{font-size:var(--text-sm);color:var(--muted)}
+.ctx-help-row{display:flex;align-items:center;gap:2px}
+.ctx-photo-btn{display:block;width:100%;padding:0;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-soft);cursor:zoom-in;overflow:hidden}
+.ctx-photo-btn img{display:block;width:100%;max-height:180px;object-fit:cover;transition:opacity var(--transition-fast)}
+.ctx-photo-btn:hover img{opacity:.88}
+.ctx-block .code-preview-panel{background:var(--surface-soft);border-color:var(--border-soft);text-align:left!important;padding:var(--sp-3)!important}
+.ctx-block .master-code-display{margin-top:var(--sp-1);letter-spacing:1.5px}
+/* FASE P5 — tarjeta de acceso al Analizador: resumen en vivo de lo que hay
+   que revisar (misma gramática visual que el resto del panel contextual) */
+.ctx-analyzer-summary{font-size:var(--text-md);font-weight:600;color:var(--slate);line-height:var(--line-height-tight)}
+.ctx-analyzer-card .btn{align-self:flex-start}
+@media(max-width:1100px){.ctx-panel{position:static;max-height:none;overflow:visible}}
+/* barra de acciones flotante: se alinea con el contenido de las tarjetas
+   (mismo borde, mismo radio y 16px interiores) y no pega los botones al borde */
+.action-bar-sticky{position:sticky;bottom:0;z-index:4;align-items:center;gap:var(--sp-3);background:var(--card);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--sp-3) var(--sp-4);box-shadow:var(--shadow-md)}
+/* deshabilitado consistente (mismo alto, texto legible, sin opacidad lavada) */
+.action-bar-sticky .btn:disabled{background:var(--surface-soft);border-color:var(--border);color:var(--muted);opacity:1;cursor:not-allowed}
+/* FASE P5 — conmutador de vistas (segmentado, tranquilo) y paneles alternos:
+   la clasificación queda limpia y el Analizador se abre en su propia ventana */
+.view-switch{display:inline-flex;gap:2px;padding:3px;align-self:flex-start;background:var(--surface-soft);border:1px solid var(--border-soft);border-radius:var(--radius-pill)}
+.view-switch-tab{border:0;background:transparent;color:var(--slate);font-family:inherit;font-size:var(--text-sm);font-weight:600;padding:6px 14px;border-radius:var(--radius-pill);cursor:pointer;transition:background var(--transition-fast),color var(--transition-fast)}
+.view-switch-tab[aria-selected="true"]{background:var(--card);color:var(--blue)}
+.view-panel{display:flex;flex-direction:column;gap:var(--sp-4)}
+/* el atributo hidden debe ganar al display:flex de arriba (autor > hoja UA) */
+.view-panel[hidden]{display:none}
+/* el foco programático al cambiar de vista no dibuja anillo: el propio
+   cambio de contenido es la confirmación visible */
+.view-panel:focus{outline:none;box-shadow:none}
+.view-back{align-self:flex-start}
+/* Analizador: contador de coincidencias en la cabecera de la tarjeta */
+.analyzer-tools{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}
+.analyzer-count{background:var(--blue-soft);color:var(--blue);border:1px solid var(--border);border-radius:var(--radius-pill);padding:4px 10px;font-size:var(--text-sm);font-weight:600;white-space:nowrap}
+.analyzer-count b{font-family:var(--font-mono);font-weight:700}
+/* FASE P4 — contador desdoblado: lo que puntúa el motor y lo que agregó
+   el usuario (misma píldora, tono neutro para no confundirse con el motor) */
+.analyzer-count-manual{background:var(--surface-soft);color:var(--slate);border:1px solid var(--border);border-radius:var(--radius-pill);padding:4px 10px;font-size:var(--text-sm);font-weight:600;white-space:nowrap}
+.analyzer-count-manual b{font-family:var(--font-mono);font-weight:700}
+/* select "Mostrar" compacto: acompaña al contador sin competir con el título */
+.analyzer-tools .input{width:auto;min-width:96px;padding:5px 8px;font-size:var(--text-sm)}
+/* una sola línea de estado: fase, aviso de clasificación y tope de universo */
+.status-line{display:flex;flex-direction:column;gap:var(--sp-1);background:var(--surface-soft);border:1px solid var(--border-soft);border-radius:var(--radius-sm);padding:var(--sp-2) var(--sp-3);font-size:var(--text-md);color:var(--slate)}
+.status-line-warn{font-weight:600;color:var(--warning-text)}
+.status-detail{font-size:var(--text-sm);color:var(--muted)}
+.status-detail summary{cursor:pointer;color:var(--blue);font-weight:600}
+.status-detail p{margin-top:var(--sp-1);max-width:80ch}
+/* estados del análisis (sin coincidencias / sin datos): un solo recuadro */
+.analyzer-state{display:flex;flex-direction:column;gap:var(--sp-1);background:var(--surface-soft);border:1px solid var(--border-soft);border-radius:var(--radius-sm);padding:var(--sp-3)}
+.analyzer-state-ok strong{color:var(--success-text)}
+/* búsqueda manual en Profit: escape hatch, visualmente secundario */
+.search-block{margin-top:var(--sp-4);padding-top:var(--sp-3);border-top:1px solid var(--border-soft);display:flex;flex-direction:column;gap:var(--sp-2)}
+.search-form{display:flex;flex-direction:column;gap:6px}
+.search-label{font-size:var(--text-sm);font-weight:600;color:var(--slate)}
+.search-row{display:flex;gap:var(--sp-2);align-items:center}
+.search-row .input{flex:1;min-width:0}
+.search-note{font-size:var(--text-sm);color:var(--muted);max-width:80ch}
+@media(max-width:767px){.search-row{flex-wrap:wrap}.search-row .btn{width:100%}}
+/* FASE P4 — resultados de búsqueda en filas compactas con acción "Agregar":
+   la lista se acota (scroll propio) para que muchos resultados no empujen
+   el formulario fuera de la vista */
+.manual-list{display:flex;flex-direction:column;gap:var(--sp-2);max-height:340px;overflow-y:auto;padding:0;list-style:none}
+.manual-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--sp-3);align-items:center;background:var(--card);border:1px solid var(--border-soft);border-radius:var(--radius-sm);padding:var(--sp-2) var(--sp-3);transition:border-color .18s ease}
+.manual-row:hover{border-color:var(--border)}
+.manual-row-info{display:flex;flex-direction:column;gap:2px;min-width:0}
+.manual-row-code{font-family:var(--font-mono);font-size:var(--text-sm);font-weight:700;color:var(--blue)}
+.manual-row-desc{font-size:var(--text-sm);overflow-wrap:anywhere}
+.manual-row-meta{overflow-wrap:anywhere}
+.manual-row-action .btn{white-space:nowrap}
+@media(max-width:767px){.manual-row{grid-template-columns:minmax(0,1fr)}.manual-row-action .btn{width:100%}}
+/* tarjeta de candidato: foto · datos · acciones (antes: una columna larga) */
+.cand-head{display:flex;justify-content:space-between;gap:var(--sp-3);align-items:flex-start;flex-wrap:wrap;padding-bottom:var(--sp-3);border-bottom:1px solid var(--border-soft)}
+.cand-id{min-width:0}
+.cand-kicker{font-size:var(--text-sm);font-weight:600;color:var(--blue)}
+.cand-kicker-muted{color:var(--muted)}
+.cand-code-label{margin-top:var(--sp-2)}
+.cand-code{font-family:var(--font-mono);font-size:var(--text-h3);font-weight:700;letter-spacing:.4px}
+.cand-score{display:flex;flex-direction:column;align-items:flex-end;gap:var(--sp-1);text-align:right}
+.cand-score-line strong{font-family:var(--font-mono);font-size:var(--text-metric);font-weight:800;line-height:1;color:var(--blue)}
+/* FASE P4 — clasificación + insignia "Agregada por ti" alineadas a la derecha */
+.cand-badges{display:flex;gap:var(--sp-2);align-items:center;justify-content:flex-end;flex-wrap:wrap}
+.cand-grid{display:grid;grid-template-columns:200px minmax(0,1fr);gap:var(--sp-4);align-items:start;margin-top:var(--sp-3)}
+.cand-photo{display:flex;flex-direction:column;gap:var(--sp-2);min-width:0}
+.cand-photo .carousel-photo-btn{width:100%}
+.cand-photo .carousel-photo-btn img{width:100%;max-height:160px;object-fit:contain}
+.cand-photo .carousel-photo-actions{flex-wrap:wrap;gap:4px}
+.cand-photo-empty{min-height:92px;display:grid;place-items:center;text-align:center;padding:var(--sp-2);border:1px dashed var(--border);border-radius:var(--radius-sm);background:var(--surface-soft);color:var(--muted);font-size:var(--text-sm)}
+.cand-body{display:flex;flex-direction:column;gap:var(--sp-2);min-width:0}
+.cand-desc{font-size:var(--text-h2);font-weight:600;line-height:var(--line-height-tight);max-width:70ch}
+.cand-actions{display:flex;gap:var(--sp-2);justify-content:flex-end;flex-wrap:wrap;margin-top:var(--sp-3);padding-top:var(--sp-3);border-top:1px solid var(--border-soft)}
+@media(max-width:767px){
+  .cand-grid{grid-template-columns:1fr}
+  .cand-score{align-items:flex-start;text-align:left}
+  .cand-badges{justify-content:flex-start}
+  .cand-actions .btn{flex:1}
+}

@@ -51,6 +51,7 @@ function buildService() {
     findDecision: (k: string) => prisma.articleMatchDecision.findUnique({ where: { pairKey: k } }),
     createDecision: (d: any) => prisma.articleMatchDecision.create({ data: d }),
     listProfiles: vi.fn(async () => []),
+    listRecallPool: vi.fn(async () => []),
     findDecisionsInvolving: vi.fn(async () => []),
     findRequestLink: vi.fn(async () => null),
   };

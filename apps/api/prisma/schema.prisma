@@ -531,10 +531,65 @@ model ProfitCompanyConfig {
   code       String   @id @map("code")
   enabled    Boolean  @default(true)
   isStandard Boolean  @default(false) @map("is_standard")
+  // FASE 26.2 — "Las descripciones de AD_TRANS mandan": con este flag activo,
+  // las filas con el mismo código pero distinta descripción en catálogos de
+  // namespace local se actualizan en vez de bloquear el plan. Decisión
+  // explícita del administrador, auditada. Default false = fail-closed.
+  allowDescSync Boolean @default(false) @map("allow_desc_sync")
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @default(now()) @map("updated_at")
 
   @@map("profit_company_config")
+}
+
+// FASE 26 — Equivalencias de catálogos entre empresas (AD_TRANS canónico).
+//
+// Evidencia Fase 17.2: los códigos de catálogo son namespaces locales por
+// empresa (lin_art 01 = FLETES en AD_TRANS vs COMBUSTIBLE en AD_DIST). Si una
+// empresa ya usa un código distinto para el MISMO elemento (AD_TRANS 01
+// HERRAMIENTAS = AD_DISAY 01A HERRAMIENTAS), aquí se registra el vínculo de
+// forma explícita y auditable.
+//
+// Regla de resolución (siempre en este orden):
+//   1. equivalencia registrada  → se usa el código local;
+//   2. código estándar existente en la empresa → se usa tal cual;
+//   3. ninguno → se replica el catálogo desde AD_TRANS y se usa el estándar.
+// Si nada aplica el motor falla cerrado: nunca duplica ni adivina.
+
+model CatalogCodeEquivalence {
+  id           String   @id @default(uuid())
+  catalogKey   String   @map("catalog_key")
+  companyCode  String   @map("company_code")
+  standardCode String   @map("standard_code")
+  localCode    String   @map("local_code")
+  active       Boolean  @default(true)
+  note         String?
+  createdBy    String?  @map("created_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@unique([catalogKey, companyCode, standardCode])
+  @@index([companyCode, catalogKey, localCode])
+  @@map("catalog_code_equivalence")
+}
+
+// FASE 26 — Estado de sincronización de catálogos por empresa/católogo.
+// Origen: AD_TRANS. Registra cuándo se replicó por última vez y qué se
+// aplicó, para que el muestre "al día / N cambios pendientes" sin recalcular
+// nada ni tocar Profit.
+
+model CorporateSyncState {
+  id          String   @id @default(uuid())
+  companyCode String   @map("company_code")
+  catalogKey  String   @map("catalog_key")
+  lastSyncAt  DateTime @default(now()) @map("last_sync_at")
+  lastRunId   String   @map("last_run_id")
+  summary     String?
+  updatedBy   String?  @map("updated_by")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([companyCode, catalogKey])
+  @@map("corporate_sync_state")
 }
 
 // --- Requests ---

@@ -11,9 +11,12 @@ import { Button, Combobox, Textarea, Modal, ImageLightbox, Alert, ConfirmDialog,
 import { Page } from '../../componentes/ui';
 import { HelpButton, HelpFieldInfo } from '../../componentes/ayuda';
 import { WorkflowStepper, WorkflowStatusInfo, MasterCodePreview } from '../../componentes/workflow';
-import { Analizador } from './Analizador';
+import { Analizador, type AnalyzerSummary } from './Analizador';
 import type { AnalyzerDraft } from '../../servicios/api/api-matching-service';
 import type { Request } from '../../tipos';
+
+/** FASE P5 — la solicitud se edita en dos vistas alternas del mismo panel. */
+type Vista = 'clasificacion' | 'analizador';
 
 export const WarehouseClassify: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -48,6 +51,30 @@ export const WarehouseClassify: React.FC = () => {
   const [analyzerRun, setAnalyzerRun] = React.useState(0);
   // FASE 23.2 — análisis en curso (deshabilita Validar) y recarga tras decisión.
   const [analyzerBusy, setAnalyzerBusy] = React.useState(false);
+  // FASE P5 — dos vistas del mismo panel: la clasificación queda limpia y el
+  // Analizador se abre en su propia ventana. Ambos paneles permanecen montados
+  // (hidden) para conservar el estado: triage, índice y término de búsqueda.
+  const [vista, setVista] = React.useState<Vista>('clasificacion');
+  const [resumen, setResumen] = React.useState<AnalyzerSummary | null>(null);
+  const panelClasRef = React.useRef<HTMLDivElement | null>(null);
+  const panelAnaRef = React.useRef<HTMLDivElement | null>(null);
+  /** Panel al que llevar el foco tras el próximo cambio de vista. */
+  const pendingFocus = React.useRef<Vista | null>(null);
+  const cambiarVista = React.useCallback((v: Vista) => {
+    pendingFocus.current = v;
+    setVista(v);
+  }, []);
+  // Tras el render del cambio de vista, el foco sigue a la ventana de destino
+  // (teclado y lector de pantalla anuncian el panel activo).
+  React.useEffect(() => {
+    const target = pendingFocus.current;
+    if (!target) return;
+    pendingFocus.current = null;
+    (target === 'analizador' ? panelAnaRef.current : panelClasRef.current)?.focus();
+  }, [vista]);
+  // Callback estable: el Analizador lo incluye en las deps de su efecto de
+  // resumen; con identidad fija no hay bucles de render.
+  const handleSummaryChange = React.useCallback((s: AnalyzerSummary) => setResumen(s), []);
   const reloadRequest = React.useCallback(() => {
     if (!id) return Promise.resolve();
     return warehouseService.getRequestForClassification(id).then(r => { if (r) setRequest(r); });
@@ -71,6 +98,9 @@ export const WarehouseClassify: React.FC = () => {
   const [returnModal, setReturnModal] = React.useState(false);
   const [returnReason, setReturnReason] = React.useState('');
   const [confirmApprove, setConfirmApprove] = React.useState(false);
+  // Cierre SAME (A1) — confirmación de "cerrar reutilizando código existente".
+  const [confirmClose, setConfirmClose] = React.useState(false);
+  const [closing, setClosing] = React.useState(false);
   const [saved, setSaved] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -227,11 +257,28 @@ export const WarehouseClassify: React.FC = () => {
   // FASE 23.2 — SAME vigente: solicitud resuelta con el artículo existente.
   const sameLink = request?.articleLink?.decision === 'SAME' ? request.articleLink : null;
 
+  // FASE P5 — resumen en vivo para la tarjeta lateral del Analizador.
+  const resumenTotal = resumen ? resumen.visibleEngine + resumen.visibleManual : 0;
+  const resumenTexto = (() => {
+    if (sameLink) return 'Resuelta con artículo existente';
+    if (!resumen || resumen.estado === 'idle' || resumen.estado === 'loading') return 'Sin analizar aún';
+    if (resumen.estado === 'insufficient') return 'Faltan datos para analizar';
+    if (resumen.estado === 'error') return 'No se pudo analizar';
+    const partes: string[] = [];
+    if (resumen.engineTotal > 0) partes.push(`${resumen.visibleEngine} de ${resumen.engineTotal} del motor`);
+    if (resumen.visibleManual > 0) partes.push(`+${resumen.visibleManual} agregada${resumen.visibleManual === 1 ? '' : 's'}`);
+    return partes.length > 0 ? partes.join(' · ') : 'Sin coincidencias';
+  })();
+
   const handleValidate = () => {
     // FASE 23.1 — "Validar artículo" ejecuta el Analizador ahora (no valida
     // campos; los obligatorios se exigen al aprobar). Sin doble ejecución.
     if (!id || request?.status !== 'PENDIENTE_ALMACEN' || analyzerBusy) return;
     setAnalyzerRun((n) => n + 1);
+    // FASE P5 — con la clasificación completa la comparación COMPLETA se
+    // revisa en su ventana: saltamos al Analizador. Si falta algo, el usuario
+    // se queda aquí viendo qué falta (sin cambio de vista).
+    if (canApprove) cambiarVista('analizador');
   };
 
   const handleSave = async () => {
@@ -273,6 +320,29 @@ export const WarehouseClassify: React.FC = () => {
     }
   };
 
+  /**
+   * Cierre SAME (A1) — termina la solicitud reutilizando el artículo que ya
+   * quedó vinculado con "Es este": no se crea código nuevo en Profit, el
+   * solicitante queda notificado con el código reutilizado (C1) y la
+   * solicitud pasa a solo lectura tras recargar.
+   */
+  const handleCloseExisting = async () => {
+    if (!id || closing || request?.status !== 'PENDIENTE_ALMACEN') return;
+    setClosing(true);
+    setError(null);
+    try {
+      await warehouseService.closeWithExisting(id);
+      setConfirmClose(false);
+      await reloadRequest();
+    } catch (err: any) {
+      // El diálogo se cierra para que el error quede visible bajo él.
+      setConfirmClose(false);
+      setError(err?.message || 'No se pudo cerrar la solicitud con el código existente.');
+    } finally {
+      setClosing(false);
+    }
+  };
+
   if (!request || loadingProfit) return <Page title="Clasificación"><Skeleton height={20} width="40%" /><Skeleton height={36} /><Skeleton height={120} /></Page>;
 
   // Regla de estado (el estado real viene de la API en cada carga, nunca solo
@@ -284,50 +354,10 @@ export const WarehouseClassify: React.FC = () => {
   return (
     <Page
       title={`Clasificación — ${request.requestNumber}`}
-      desc={request.requestedDescription}
       actions={<><HelpButton helpKey="almacen-classify" status={request.status} /><StatusBadge status={request.status} /><Button variant="secondary" onClick={() => navigate('/warehouse')}>Volver</Button></>}
     >
       <WorkflowStepper status={request.status} />
       <WorkflowStatusInfo status={request.status} />
-
-      {/* FASE 23.1 — Analizador: candidatos del motor (solo presenta). */}
-      {id && (
-        <Analizador
-          requestId={id}
-          canDecide={canEditClassification}
-          manualRun={analyzerRun}
-          photoUri={request.referencePhotoUri}
-          draft={draft}
-          onChanged={() => { void reloadRequest(); }}
-          onBusyChange={setAnalyzerBusy}
-          // FASE P2 — la clasificación completa habilita la búsqueda COMPLETA
-          // al pulsar "Validar artículo"; si no, solo hay búsqueda por
-          // descripción y el componente explica qué falta.
-          clasificacionCompleta={canApprove}
-        />
-      )}
-
-      {/* FASE 23.2 — SAME vigente: resuelta con el artículo existente. */}
-      {sameLink && isPendingWarehouse && (
-        <Alert tone="success">
-          <strong>Solicitud resuelta con artículo existente</strong>
-          <p className="muted small" style={{ marginTop: 4 }}>
-            Esta solicitud corresponde al artículo {sameLink.companyCode}:{sameLink.profitArticleCode} de Profit.
-            Se reutilizará ese código: no se creará un artículo nuevo{sameLink.companyCode ? ` en ${sameLink.companyCode}` : ''}.
-          </p>
-        </Alert>
-      )}
-
-      {/* Clasificación terminada: enviada al Encargado de Almacén. */}
-      {!isPendingWarehouse && (
-        <Alert tone="info">
-          <strong>Clasificación enviada</strong>
-          <p className="muted small" style={{ marginTop: 4 }}>
-            Esta solicitud fue clasificada y está pendiente de aprobación del Encargado de Almacén.
-          </p>
-          {classifiedBy && <p className="muted small">Clasificada por: {classifiedBy}</p>}
-        </Alert>
-      )}
 
       {/* Rejection note from accounting — E-05 fix: último RETURN/REJECT */}
       {request.status === 'PENDIENTE_ALMACEN' && request.approvals && (
@@ -337,7 +367,7 @@ export const WarehouseClassify: React.FC = () => {
             .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
           const lastRejection = candidates[0];
           if (lastRejection) {
-  return (
+            return (
               <Alert tone="danger">
                 <div className="callout callout-pad">
                   <strong>Observación de Contabilidad</strong>
@@ -353,52 +383,182 @@ export const WarehouseClassify: React.FC = () => {
         })()
       )}
 
-      <div className="grid2">
-        <SectionCard
-          title="Información recibida"
-          desc="Datos de la solicitud. Solo lectura: Almacén no modifica la descripción original."
-        >
-            <div>
-              <span className="muted small">Descripción original</span>
-              <p className="received-desc">{request.requestedDescription}</p>
+      {/* Contexto fijo (qué se pidió y con qué códigos) + zona de trabajo. */}
+      <div className="grid-side-main">
+        <aside className="ctx-panel" aria-label="Artículo solicitado, códigos y Analizador">
+          <section className="ctx-block">
+            <p className="ctx-eyebrow">Artículo solicitado</p>
+            <p className="ctx-title">{draft.description || request.requestedDescription}</p>
+            {draft.description && draft.description !== request.requestedDescription && (
+              <p className="ctx-meta">Original: {request.requestedDescription}</p>
+            )}
+            {request.referencePhotoUri ? (
+              <button
+                type="button"
+                className="ctx-photo-btn"
+                onClick={() => setLightboxOpen(true)}
+                aria-label="Ampliar imagen referencial"
+              >
+                <img src={`/api/v1/uploads/${request.referencePhotoUri}`} alt="Imagen referencial" />
+              </button>
+            ) : (
+              <p className="ctx-meta">Sin imagen referencial.</p>
+            )}
+          </section>
+
+          <section className="ctx-block">
+            <p className="ctx-eyebrow">Códigos</p>
+            <MasterCodePreview groupCode={groupCode} subgroupCode={subgroupCode} />
+            <div className="ctx-help-row">
+              <span className="muted small">Código Master</span>
+              <HelpFieldInfo
+                label="Código Master"
+                what="Identifica de forma única el artículo homologado. Se propone desde el grupo y subgrupo que defines y Contabilidad lo confirma."
+                origin="Se genera a partir de tu clasificación; no lo inventes manualmente."
+                owner="Almacén lo propone, Contabilidad lo valida."
+              />
             </div>
-            {request.referencePhotoUri && (
-              <div className="block-mt">
-                <span className="muted small field-label-block">Imagen referencial</span>
-                <img
-                  src={`/api/v1/uploads/${request.referencePhotoUri}`}
-                  alt="Imagen referencial"
-                  onClick={() => setLightboxOpen(true)}
-                  className="evidence-thumb evidence-action"
-                  onMouseEnter={e => (e.currentTarget.style.opacity = '0.85')}
-                  onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
-                />
+
+            {request.groupId && (
+              <div>
+                <span className="muted small">Código de Origen (Profit)</span>
+                <div className="origin-code">
+                  {request.partNumber || '—'}
+                </div>
               </div>
             )}
-        </SectionCard>
+          </section>
 
-        <div className="stack" aria-label="Código y resumen">
-          <MasterCodePreview groupCode={groupCode} subgroupCode={subgroupCode} />
-          <div>
-            <HelpFieldInfo
-              label="Código Master"
-              what="Identifica de forma única el artículo homologado. Se propone desde el grupo y subgrupo que defines y Contabilidad lo confirma."
-              origin="Se genera a partir de tu clasificación; no lo inventes manualmente."
-              owner="Almacén lo propone, Contabilidad lo valida."
-            />
-          </div>
+          {/* FASE P5 — acceso al Analizador con resumen en vivo: si el usuario
+              quiere revisar coincidencias entra por aquí y vuelve sin perder
+              lo que traía escrito en la clasificación. */}
+          <section className="ctx-block ctx-analyzer-card">
+            <p className="ctx-eyebrow">Analizador</p>
+            <p className="ctx-analyzer-summary">{resumenTexto}</p>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => cambiarVista('analizador')}
+            >
+              Revisar coincidencias
+            </Button>
+          </section>
+        </aside>
 
-          {request.groupId && (
-            <div className="card p16">
-              <span className="muted small">Código de Origen (Profit)</span>
-              <div className="origin-code">
-                {request.partNumber || '—'}
-              </div>
-            </div>
-          )}
-        </div>
+        <div className="stack">
+      {/* FASE 23.2 — SAME vigente: resuelta con el artículo existente.
+          (Alertas de página: visibles en AMBAS vistas.) */}
+      {sameLink && isPendingWarehouse && (
+        <Alert tone="success">
+          <strong>Solicitud resuelta con artículo existente</strong>
+          <p className="muted small" style={{ marginTop: 4 }}>
+            Esta solicitud corresponde al artículo {sameLink.companyCode}:{sameLink.profitArticleCode} de Profit.
+            Se reutilizará ese código: no se creará un artículo nuevo{sameLink.companyCode ? ` en ${sameLink.companyCode}` : ''}.
+          </p>
+        </Alert>
+      )}
+
+      {/* Cierre SAME consumado (A1): la solicitud terminó con el código
+          existente; ya no espera ninguna aprobación. */}
+      {sameLink && request.status === 'INSERTADO_PROFIT' && (
+        <Alert tone="success">
+          <strong>Solicitud cerrada reutilizando código existente</strong>
+          <p className="muted small" style={{ marginTop: 4 }}>
+            Se reutilizó {sameLink.companyCode}:{sameLink.profitArticleCode} de Profit: no se creó un artículo nuevo.
+            El solicitante fue notificado.
+          </p>
+        </Alert>
+      )}
+
+      {/* Clasificación terminada: enviada al Encargado de Almacén.
+          (No aplica al cierre SAME: esa solicitud ya terminó.) */}
+      {!isPendingWarehouse && !(sameLink && request.status === 'INSERTADO_PROFIT') && (
+        <Alert tone="info">
+          <strong>Clasificación enviada</strong>
+          <p className="muted small" style={{ marginTop: 4 }}>
+            Esta solicitud fue clasificada y está pendiente de aprobación del Encargado de Almacén.
+          </p>
+          {classifiedBy && <p className="muted small">Clasificada por: {classifiedBy}</p>}
+        </Alert>
+      )}
+
+      {/* FASE P5 — conmutador de vistas: la clasificación queda limpia y el
+          Analizador vive en su propia ventana (ambos paneles montados). */}
+      <div className="view-switch" role="tablist" aria-label="Vistas de la clasificación">
+        <button
+          type="button"
+          role="tab"
+          id="tab-clasificacion"
+          aria-controls="panel-clasificacion"
+          aria-selected={vista === 'clasificacion'}
+          className="view-switch-tab"
+          onClick={() => cambiarVista('clasificacion')}
+        >
+          Clasificación
+        </button>
+        <button
+          type="button"
+          role="tab"
+          id="tab-analizador"
+          aria-controls="panel-analizador"
+          aria-selected={vista === 'analizador'}
+          className="view-switch-tab"
+          onClick={() => cambiarVista('analizador')}
+        >
+          Analizador{resumenTotal > 0 ? ` (${resumenTotal})` : ''}
+        </button>
       </div>
 
+      {/* Panel del Analizador: siempre montado para conservar su estado
+          (triage, índice, búsqueda); visible solo en su vista. */}
+      <div
+        id="panel-analizador"
+        role="tabpanel"
+        aria-labelledby="tab-analizador"
+        tabIndex={-1}
+        className="view-panel"
+        hidden={vista !== 'analizador'}
+        ref={panelAnaRef}
+      >
+        <Button
+          variant="ghost"
+          size="sm"
+          className="view-back"
+          onClick={() => cambiarVista('clasificacion')}
+        >
+          ← Volver a clasificación
+        </Button>
+        {/* FASE 23.1 — Analizador: candidatos del motor (solo presenta). */}
+        {id && (
+          <Analizador
+            requestId={id}
+            canDecide={canEditClassification}
+            manualRun={analyzerRun}
+            photoUri={request.referencePhotoUri}
+            draft={draft}
+            onChanged={() => { void reloadRequest(); }}
+            onBusyChange={setAnalyzerBusy}
+            onSummaryChange={handleSummaryChange}
+            // FASE P2 — la clasificación completa habilita la búsqueda COMPLETA
+            // al pulsar "Validar artículo"; si no, solo hay búsqueda por
+            // descripción y el componente explica qué falta.
+            clasificacionCompleta={canApprove}
+          />
+        )}
+      </div>
+
+      {/* Rejection note from accounting — E-05 fix: movido al inicio del layout. */}
+
+      {/* FASE P5 — panel de la clasificación (formulario + acciones). */}
+      <div
+        id="panel-clasificacion"
+        role="tabpanel"
+        aria-labelledby="tab-clasificacion"
+        tabIndex={-1}
+        className="view-panel"
+        hidden={vista !== 'clasificacion'}
+        ref={panelClasRef}
+      >
       <SectionCard
         title="Clasificación"
             desc={canEditClassification
@@ -419,7 +579,7 @@ export const WarehouseClassify: React.FC = () => {
             )}
 
             <div className="form-grid">
-              <Field label="Descripción ajustada (opcional)" helper="Si se informa y difiere de la original, sustituye a requestedDescription como art_des en Profit y se muestra al solicitante en su seguimiento.">
+              <Field label="Descripción ajustada (opcional)" helper="Si esta descripcion no coincide con la original, sustituyela. Recuerda esta sera la descripción que se mostrará en Profit.">
                 <input
                   className="input"
                   value={adjustedDescription}
@@ -538,8 +698,15 @@ export const WarehouseClassify: React.FC = () => {
             </label>
           </SectionCard>
 
+          {canEditClassification && !canApprove && (
+            <p className="muted small">
+              Para Validar articulo se requieren todos los campos llenos, esto mostrará la coincidencia que hay en Profit.
+            </p>
+          )}
+
+          {/* Acciones al final de la columna de trabajo (visibles al desplazar). */}
           {canEditClassification && (
-            <div className="action-bar">
+            <div className="action-bar action-bar-sticky">
               <Can permission="WAREHOUSE.CLASSIFY">
                 <Button variant="ghost" onClick={() => setReturnModal(true)} disabled={saving}>Devolver</Button>
                 <Button variant="secondary" onClick={handleSave} disabled={saving}>{saving ? 'Guardando...' : saved ? 'Guardar Borrador ✓' : 'Guardar Borrador'}</Button>
@@ -547,14 +714,15 @@ export const WarehouseClassify: React.FC = () => {
                 {!sameLink && (
                   <Button onClick={() => setConfirmApprove(true)} disabled={saving || !canApprove}>{saving ? 'Procesando...' : 'Aprobar Clasificación'}</Button>
                 )}
+                {sameLink && (
+                  <Button onClick={() => setConfirmClose(true)} disabled={saving || closing}>{closing ? 'Cerrando...' : 'Cerrar con código existente'}</Button>
+                )}
               </Can>
             </div>
           )}
-          {canEditClassification && !canApprove && (
-            <p className="muted small block-mt-sm">
-              Para aprobar se requieren grupo, subgrupo, tipo de artículo y unidad Profit.
-            </p>
-          )}
+      </div>
+        </div>
+      </div>
 
           {/* Los campos obligatorios se exigen al aprobar (canApprove). */}
           <ConfirmDialog
@@ -565,6 +733,20 @@ export const WarehouseClassify: React.FC = () => {
             busy={saving}
             onCancel={() => setConfirmApprove(false)}
             onConfirm={() => { setConfirmApprove(false); void handleApprove(); }}
+          />
+
+          {/* Cierre SAME (A1): confirmación explícita antes de terminar la
+              solicitud sin crear nada nuevo (auditoría + notificación). */}
+          <ConfirmDialog
+            open={confirmClose}
+            title="Cerrar con código existente"
+            desc={sameLink
+              ? `La solicitud se cerrará reutilizando el artículo ${sameLink.companyCode}:${sameLink.profitArticleCode} de Profit: no se creará un artículo nuevo y el solicitante recibirá una notificación. Esta acción es definitiva.`
+              : ''}
+            confirmLabel="Cerrar solicitud"
+            busy={closing}
+            onCancel={() => setConfirmClose(false)}
+            onConfirm={() => { void handleCloseExisting(); }}
           />
 
           {error && (

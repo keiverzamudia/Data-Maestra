@@ -12,6 +12,7 @@ import { RoleAdminModal } from './RoleAdminModal';
 import { OrganizacionSection } from './OrganizacionSection';
 import { CatalogosProfitAdmin } from './CatalogosProfitAdmin';
 import { ProfitCompaniesAdmin } from './ProfitCompaniesAdmin';
+import { ReplicacionMultiempresa } from './ReplicacionMultiempresa';
 import { MantenimientoSection } from './MantenimientoSection';
 import { AuditoriaHistorica } from './AuditoriaHistorica';
 import type { Company, Department, Role } from '../../tipos';
@@ -329,7 +330,7 @@ const RolesSection: React.FC = () => {
     </SectionCard>
   );
 };
-export type AdminSection = 'personas' | 'organizacion' | 'roles' | 'catalogos' | 'empresas' | 'mantenimiento' | 'historico';
+export type AdminSection = 'personas' | 'organizacion' | 'roles' | 'catalogos' | 'replicacion' | 'empresas' | 'mantenimiento' | 'historico';
 
 export const AdminPage: React.FC<{ section?: AdminSection }> = ({ section = 'personas' }) => {
   const { empresas, departamentos, usuarios, roles: rolesData } = useOrganizacion();
@@ -357,6 +358,10 @@ export const AdminPage: React.FC<{ section?: AdminSection }> = ({ section = 'per
 
   if (section === 'empresas') {
     return <ProfitCompaniesAdmin />;
+  }
+
+  if (section === 'replicacion') {
+    return <ReplicacionMultiempresa />;
   }
 
   if (section === 'mantenimiento') {

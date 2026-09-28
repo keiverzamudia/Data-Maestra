@@ -210,3 +210,112 @@ export class SearchArticleDto {
   @Max(50, { message: 'El límite máximo es 50.' })
   limit?: number;
 }
+
+/**
+ * FASE P4 — campos de borrador compartidos por los DTO de propuestas
+ * manuales (clase base; no se expone sola en ningún endpoint). Mismos
+ * campos y mensajes que AnalyzeDraftDto: con ellos se puntúa la propuesta
+ * igual que el análisis en curso.
+ */
+export class DraftFieldsDto {
+  @IsOptional()
+  @IsString({ message: DEBE_SER_TEXTO })
+  description?: string;
+
+  @IsOptional()
+  @IsString({ message: DEBE_SER_TEXTO })
+  purpose?: string;
+
+  @IsOptional()
+  @IsString({ message: DEBE_SER_TEXTO })
+  groupCode?: string;
+
+  @IsOptional()
+  @IsString({ message: DEBE_SER_TEXTO })
+  subgroupCode?: string;
+
+  @IsOptional()
+  @IsString({ message: DEBE_SER_TEXTO })
+  categoryCode?: string;
+
+  @IsOptional()
+  @IsString({ message: DEBE_SER_TEXTO })
+  brandCode?: string;
+
+  @IsOptional()
+  @IsString({ message: DEBE_SER_TEXTO })
+  unitCode?: string;
+
+  @IsOptional()
+  @IsString({ message: DEBE_SER_TEXTO })
+  taxType?: string;
+
+  @IsOptional()
+  @IsString({ message: DEBE_SER_TEXTO })
+  model?: string;
+
+  @IsOptional()
+  @IsString({ message: DEBE_SER_TEXTO })
+  partNumber?: string;
+
+  @IsOptional()
+  @IsString({ message: DEBE_SER_TEXTO })
+  application?: string;
+
+  /** Fase con la que se puntúa (misma regla que el análisis visible). */
+  @IsOptional()
+  @IsIn(['INICIAL', 'COMPLETA'] as const, { message: 'La fase de búsqueda no es válida.' })
+  phase?: 'INICIAL' | 'COMPLETA';
+}
+
+/**
+ * FASE P4 — "Agregar a coincidencias": promueve un hallazgo de la búsqueda
+ * manual a propuesta persistida del usuario. Solo agrega a la bandeja de
+ * revisión: no decide SAME/DIFFERENT, no mueve el workflow y no escribe en
+ * Profit (REQUEST.VIEW, igual que analizar/buscar).
+ *
+ * OJO: `companyCode` es la EMPRESA DEL ARTÍCULO (el universo que devolvió
+ * la búsqueda), no un override de universo como en AnalyzeDraftDto — el
+ * universo lo resuelve el backend con el mismo criterio que la búsqueda.
+ */
+export class ProposeManualHitDto extends DraftFieldsDto {
+  @IsString({ message: 'El identificador de solicitud debe ser un texto.' })
+  @IsNotEmpty({ message: 'El identificador de solicitud es requerido.' })
+  requestId!: string;
+
+  @IsString({ message: 'El código de empresa debe ser un texto.' })
+  @IsNotEmpty({ message: 'La empresa del artículo es requerida.' })
+  companyCode!: string;
+
+  @IsString({ message: 'El código del artículo debe ser un texto.' })
+  @IsNotEmpty({ message: 'El código del artículo es requerido.' })
+  profitArticleCode!: string;
+}
+
+/**
+ * FASE P4 — propuestas manuales guardadas de una solicitud, re-puntadas
+ * con el motor contra la fase indicada (solo lectura).
+ */
+export class ListManualProposalsDto extends DraftFieldsDto {
+  @IsString({ message: 'El identificador de solicitud debe ser un texto.' })
+  @IsNotEmpty({ message: 'El identificador de solicitud es requerido.' })
+  requestId!: string;
+}
+
+/**
+ * FASE P4 — retira una propuesta manual (solo la fila PROPUESTA de esa
+ * tripleta; jamás borra decisiones SAME/DIFFERENT).
+ */
+export class UnproposeManualHitDto {
+  @IsString({ message: 'El identificador de solicitud debe ser un texto.' })
+  @IsNotEmpty({ message: 'El identificador de solicitud es requerido.' })
+  requestId!: string;
+
+  @IsString({ message: 'El código de empresa debe ser un texto.' })
+  @IsNotEmpty({ message: 'La empresa del artículo es requerida.' })
+  companyCode!: string;
+
+  @IsString({ message: 'El código del artículo debe ser un texto.' })
+  @IsNotEmpty({ message: 'El código del artículo es requerido.' })
+  profitArticleCode!: string;
+}

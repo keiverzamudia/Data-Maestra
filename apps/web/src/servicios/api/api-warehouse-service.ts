@@ -22,6 +22,11 @@ export const apiWarehouseService: WarehouseService = {
     await api.post(`/api/v1/warehouse/${id}/approve`);
   },
 
+  async closeWithExisting(id) {
+    // Cierre SAME (A1): cierra reutilizando el vínculo; sin INSERT en Profit.
+    await api.post(`/api/v1/warehouse/${id}/close-existing`);
+  },
+
   async returnRequest(id, comment) {
     await api.post(`/api/v1/warehouse/${id}/return`, { comment });
   },

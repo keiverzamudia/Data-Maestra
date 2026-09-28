@@ -63,8 +63,8 @@ function build(opts: {
     request: { findUnique: vi.fn(async () => requestRow(opts.companyCode)) },
   };
   const repository: any = {
-    listProfiles: vi.fn(async (limit: number, companyCode?: string) =>
-      profiles.filter((p) => !companyCode || p.companyCode === companyCode).slice(0, limit)),
+    listRecallPool: vi.fn(async (companyCode?: string) =>
+      profiles.filter((p) => !companyCode || p.companyCode === companyCode)),
     countProfiles: vi.fn(async (companyCode?: string) =>
       profiles.filter((p) => !companyCode || p.companyCode === companyCode).length),
     searchProfiles: vi.fn(async (company: string, term: string, limit: number) =>
@@ -106,7 +106,7 @@ describe('resolución de universo — FASE P4', () => {
     const { service, repository, audit } = build({ companyCode: 'EMP-A' });
     const r = await service.analyzeDraft(REQUEST_ID, { description: PROFILE_DESC });
 
-    expect(repository.listProfiles).toHaveBeenCalledWith(500, 'AD_TRANS');
+    expect(repository.listRecallPool).toHaveBeenCalledWith('AD_TRANS');
     expect(r.insufficient).toBe(false);
     expect(r.candidates.length).toBeGreaterThan(0);
 
@@ -133,7 +133,7 @@ describe('resolución de universo — FASE P4', () => {
     });
     await service.analyzeDraft(REQUEST_ID, { description: PROFILE_DESC });
 
-    expect(repository.listProfiles).toHaveBeenCalledWith(500, 'AD_DIST');
+    expect(repository.listRecallPool).toHaveBeenCalledWith('AD_DIST');
     const data = JSON.parse(lastAudit(audit, 'MATCH_CANDIDATES_CONSULTED').afterData);
     expect(data.universeSource).toBe('EMPRESA_SOLICITUD');
   });
@@ -143,12 +143,12 @@ describe('resolución de universo — FASE P4', () => {
     await service.analyzeDraft(REQUEST_ID, { description: PROFILE_DESC }, {
       universeCompanyCode: 'EMP-B',
     });
-    expect(repository.listProfiles).toHaveBeenCalledWith(500, 'AD_TRANS');
+    expect(repository.listRecallPool).toHaveBeenCalledWith('AD_TRANS');
 
     await service.analyzeDraft(REQUEST_ID, { description: PROFILE_DESC }, {
       universeCompanyCode: 'AD_TRANS',
     });
-    expect(repository.listProfiles).toHaveBeenLastCalledWith(500, 'AD_TRANS');
+    expect(repository.listRecallPool).toHaveBeenLastCalledWith('AD_TRANS');
   });
 
   it('buscar: con EMP-A busca en el universo real y no lanza 400', async () => {
@@ -202,6 +202,6 @@ describe('resolución de universo — FASE P4', () => {
     process.env.PROFIT_DB_DATABASE = 'AD_TRANS';
     const { service, repository } = build({ companyCode: 'EMP-A', withConfig: false });
     await service.analyzeDraft(REQUEST_ID, { description: PROFILE_DESC });
-    expect(repository.listProfiles).toHaveBeenCalledWith(500, 'AD_TRANS');
+    expect(repository.listRecallPool).toHaveBeenCalledWith('AD_TRANS');
   });
 });

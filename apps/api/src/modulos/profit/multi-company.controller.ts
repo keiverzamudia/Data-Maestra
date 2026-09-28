@@ -52,7 +52,7 @@ export class MultiCompanyController {
   @RequirePermission('ADMIN.MANAGE')
   @ApiOperation({ summary: 'Habilita/deshabilita una empresa para inserción (admin)' })
   saveConfig(@CurrentUser() user: RequestUser, @Body() dto: CompanyConfigDto) {
-    return this.multi.saveCompanyConfig(dto.code, dto.enabled, user.id);
+    return this.multi.saveCompanyConfig(dto.code, dto.enabled, user.id, dto.allowDescSync);
   }
 
   @Post('companies/standard')

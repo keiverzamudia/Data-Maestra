@@ -77,6 +77,7 @@ export const NAV: NavEntry[] = [
       { key: 'admin-organizacion', to: '/admin/organizacion', label: 'Organización', permission: 'ADMIN.MANAGE', icon: Building2 },
       { key: 'admin-roles', to: '/admin/roles', label: 'Roles y permisos', permission: 'ADMIN.MANAGE', icon: ShieldCheck },
       { key: 'admin-catalogos', to: '/admin/catalogos', label: 'Catálogos Profit', permission: 'ADMIN.MANAGE', icon: Database },
+      { key: 'admin-replicacion', to: '/admin/replicacion', label: 'Replicación multiempresa', permission: 'ADMIN.MANAGE', icon: GitCompare },
       { key: 'admin-empresas', to: '/admin/empresas', label: 'Empresas Profit', permission: 'ADMIN.MANAGE', icon: Factory },
       { key: 'admin-mantenimiento', to: '/admin/mantenimiento', label: 'Mantenimiento', permission: 'ADMIN.MANAGE', icon: Trash2 },
       { key: 'admin-historico', to: '/admin/historico', label: 'Auditoría histórica', permission: 'ADMIN.MANAGE', icon: GitCompare },

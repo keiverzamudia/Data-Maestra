@@ -6,12 +6,22 @@ import { Analizador } from './Analizador';
 import { apiMatchingService } from '../../servicios/api/api-matching-service';
 
 vi.mock('../../servicios/api/api-matching-service', () => ({
-  apiMatchingService: { analizar: vi.fn(), vincular: vi.fn(), buscarArticulo: vi.fn() },
+  apiMatchingService: {
+    analizar: vi.fn(),
+    vincular: vi.fn(),
+    buscarArticulo: vi.fn(),
+    proponer: vi.fn(),
+    listarPropuestas: vi.fn(),
+    retirarPropuesta: vi.fn(),
+  },
 }));
 
 const analizarMock = apiMatchingService.analizar as any;
 const vincularMock = apiMatchingService.vincular as any;
 const buscarMock = apiMatchingService.buscarArticulo as any;
+const proponerMock = apiMatchingService.proponer as any;
+const listarPropuestasMock = apiMatchingService.listarPropuestas as any;
+const retirarMock = apiMatchingService.retirarPropuesta as any;
 
 const CAND = {
   article: { companyCode: 'AD_TRANS', profitArticleCode: 'FERMIS0662' },
@@ -39,6 +49,7 @@ describe('Analizador', () => {
     vi.clearAllMocks();
     vincularMock.mockResolvedValue({ id: 'link-1', decision: 'SAME' });
     buscarMock.mockResolvedValue({ companyCode: 'AD_TRANS', term: '', source: 'LOCAL', results: [] });
+    listarPropuestasMock.mockResolvedValue({ candidates: [] });
   });
   afterEach(() => cleanup());
 
@@ -462,22 +473,24 @@ describe('Analizador', () => {
     expect(screen.getByText(/🔎 Posible coincidencia/)).toBeTruthy();
   });
 
-  it('P1: avisa cuando el tope de perfiles silenció parte del universo', async () => {
+  it('recall multicanal: revisa el universo y avisa si hubo recorte', async () => {
     analizarMock.mockResolvedValue({
       ...structuredClone(OK),
-      poolLimit: 500,
+      poolScanned: 500,
       poolTotal: 1200,
       poolTruncated: true,
     });
     renderAnalyzer();
     expect(await screen.findByText('FERMIS0662')).toBeTruthy();
+    expect(screen.getByText(/Revisados 500 de 1200/)).toBeTruthy();
     expect(screen.getByText(/hay 1200 en total/)).toBeTruthy();
   });
 
-  it('P1: sin corte de universo no aparece el aviso', async () => {
-    analizarMock.mockResolvedValue({ ...structuredClone(OK), poolTotal: 30, poolLimit: 500, poolTruncated: false });
+  it('universo totalmente revisado: cuenta honesta y sin aviso de recorte', async () => {
+    analizarMock.mockResolvedValue({ ...structuredClone(OK), poolScanned: 30, poolTotal: 30, poolTruncated: false });
     renderAnalyzer();
     expect(await screen.findByText('FERMIS0662')).toBeTruthy();
+    expect(screen.getByText(/Revisados 30 de 30/)).toBeTruthy();
     expect(screen.queryByText(/hay .* en total/)).toBeNull();
   });
 
@@ -550,7 +563,7 @@ describe('Analizador', () => {
     });
     renderAnalyzer();
     await waitFor(() => expect(analizarMock).toHaveBeenCalledTimes(1));
-    fireEvent.change(await screen.findByLabelText(/¿Ya existe\? Busca un artículo en Profit/), {
+    fireEvent.change(await screen.findByLabelText(/Buscar si ya existe en Profit/), {
       target: { value: 'FERMIS0662' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Buscar en Profit' }));
@@ -568,7 +581,7 @@ describe('Analizador', () => {
     buscarMock.mockResolvedValue({ companyCode: 'AD_TRANS', term: 'TORNILLO XYZ', source: 'PROFIT', results: [] });
     renderAnalyzer();
     await waitFor(() => expect(analizarMock).toHaveBeenCalledTimes(1));
-    fireEvent.change(await screen.findByLabelText(/¿Ya existe\? Busca un artículo en Profit/), {
+    fireEvent.change(await screen.findByLabelText(/Buscar si ya existe en Profit/), {
       target: { value: 'TORNILLO XYZ' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Buscar en Profit' }));
@@ -580,11 +593,157 @@ describe('Analizador', () => {
     analizarMock.mockResolvedValue({ input: {}, candidates: [], insufficient: false, engineVersion: 'v1' });
     renderAnalyzer();
     await waitFor(() => expect(analizarMock).toHaveBeenCalledTimes(1));
-    fireEvent.change(await screen.findByLabelText(/¿Ya existe\? Busca un artículo en Profit/), {
+    fireEvent.change(await screen.findByLabelText(/Buscar si ya existe en Profit/), {
       target: { value: 'F' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Buscar en Profit' }));
     expect(await screen.findByText(/Escribe al menos 2 caracteres para buscar el artículo/)).toBeTruthy();
     expect(buscarMock).not.toHaveBeenCalled();
+  });
+
+  // ---- FASE P4: propuestas manuales ("Agregar a coincidencias") ----
+
+  const PROPUESTA = {
+    article: { companyCode: 'AD_TRANS', profitArticleCode: 'VASO001' },
+    description: 'VASO PLASTICO 200ML',
+    confidence: 0.4,
+    classification: 'LOW',
+    evidence: ['DESCRIPTION_SIMILARITY'],
+    conflicts: [],
+    score: 40,
+    explanation: 'La descripción es similar.',
+    engineVersion: 'v1',
+    manual: true,
+  };
+
+  /** Texto normalizado de un selector (los pilas juntan nodos de texto). */
+  const txt = (sel: string) =>
+    (document.querySelector(sel)?.textContent ?? '').replace(/\s+/g, ' ').trim();
+
+  it('P4: agrega un hallazgo de la búsqueda y queda en el carrusel con su insignia', async () => {
+    analizarMock.mockResolvedValue({ input: {}, candidates: [], insufficient: false, engineVersion: 'v1' });
+    buscarMock.mockResolvedValue({
+      companyCode: 'AD_TRANS',
+      term: 'VASO',
+      source: 'LOCAL',
+      results: [{ companyCode: 'AD_TRANS', profitArticleCode: 'VASO001', description: 'VASO PLASTICO 200ML' }],
+    });
+    proponerMock.mockResolvedValue(structuredClone(PROPUESTA));
+    renderAnalyzer();
+    // Estado vacío del motor: nada que revisar… hasta que el usuario agrega.
+    expect(await screen.findByText('✓ Validación completada')).toBeTruthy();
+    fireEvent.change(await screen.findByLabelText(/Buscar si ya existe en Profit/), { target: { value: 'VASO' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Buscar en Profit' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Agregar' }));
+    await waitFor(() => expect(proponerMock).toHaveBeenCalledWith(
+      'req-1',
+      { companyCode: 'AD_TRANS', profitArticleCode: 'VASO001' },
+      DRAFT,
+      'INICIAL',
+    ));
+    // El código está en la tarjeta del carrusel (y sigue en la fila buscada).
+    const card = await screen.findByRole('group', { name: /Coincidencia: VASO001/ });
+    expect(card).toBeTruthy();
+    expect(screen.getByText('Agregada por ti')).toBeTruthy();
+    expect(screen.getByText(/se agregó a tus coincidencias/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /En coincidencias/ })).toBeTruthy();
+    // Solo agrega a la bandeja: no corre otro análisis ni decide nada.
+    expect(analizarMock).toHaveBeenCalledTimes(1);
+    expect(vincularMock).not.toHaveBeenCalled();
+  });
+
+  it('P4: la propuesta sobrevive a "Validar artículo" y no se duplica', async () => {
+    analizarMock.mockResolvedValue({ input: {}, candidates: [], insufficient: false, engineVersion: 'v1' });
+    listarPropuestasMock.mockResolvedValue({ candidates: [structuredClone(PROPUESTA)] });
+    const { rerender } = renderAnalyzer();
+    expect(await screen.findByText('VASO001')).toBeTruthy();
+    expect(screen.getByText('Agregada por ti')).toBeTruthy();
+    rerender(<Analizador requestId="req-1" canDecide draft={DRAFT} manualRun={1} debounceMs={10} />);
+    await waitFor(() => expect(analizarMock).toHaveBeenCalledTimes(2));
+    // Cada análisis re-puntúa las propuestas (montaje + auto + manual).
+    await waitFor(() => expect(listarPropuestasMock.mock.calls.length).toBeGreaterThanOrEqual(2));
+    expect(screen.getAllByText('VASO001')).toHaveLength(1);
+    expect(screen.getByText('Agregada por ti')).toBeTruthy();
+  });
+
+  it('P4: si el motor también encontró la propuesta, manda la versión del motor (sin duplicar)', async () => {
+    analizarMock.mockResolvedValue(structuredClone(OK));
+    listarPropuestasMock.mockResolvedValue({ candidates: [{ ...structuredClone(CAND), manual: true }] });
+    renderAnalyzer();
+    await screen.findByText('FERMIS0662');
+    expect(screen.getAllByText('FERMIS0662')).toHaveLength(1);
+    expect(screen.queryByText('Agregada por ti')).toBeNull();
+    expect(txt('.analyzer-count')).toBe('1 de 1 del motor');
+    expect(document.querySelector('.analyzer-count-manual')).toBeNull();
+  });
+
+  it('P4: contador desdoblado — del motor + agregadas por ti', async () => {
+    analizarMock.mockResolvedValue(TWO());
+    listarPropuestasMock.mockResolvedValue({ candidates: [structuredClone(PROPUESTA)] });
+    renderAnalyzer();
+    await screen.findByText('FERMIS0662');
+    expect(txt('.analyzer-count')).toBe('2 de 2 del motor');
+    expect(txt('.analyzer-count-manual')).toBe('+ 1 agregada');
+    // En el carrusel las tres cuentan juntas (3 de 3); la propuesta es la 3.ª.
+    expect(screen.getByText('Coincidencia 1 de 3')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Coincidencia siguiente' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Coincidencia siguiente' }));
+    expect(await screen.findByText('VASO001')).toBeTruthy();
+    expect(screen.getByText('Coincidencia 3 de 3')).toBeTruthy();
+  });
+
+  it('P4: quitar propuesta lo retira del backend y devuelve el estado vacío honesto', async () => {
+    analizarMock.mockResolvedValue({ input: {}, candidates: [], insufficient: false, engineVersion: 'v1' });
+    listarPropuestasMock.mockResolvedValue({ candidates: [structuredClone(PROPUESTA)] });
+    retirarMock.mockResolvedValue({ removed: 1 });
+    renderAnalyzer();
+    await screen.findByText('VASO001');
+    fireEvent.click(screen.getByText('Quitar'));
+    await waitFor(() => expect(retirarMock).toHaveBeenCalledWith('req-1', PROPUESTA.article));
+    expect(await screen.findByText('✓ Validación completada')).toBeTruthy();
+    expect(screen.queryByText('VASO001')).toBeNull();
+  });
+});
+
+describe('Analizador — FASE P5: resumen al contenedor', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vincularMock.mockResolvedValue({ id: 'link-1', decision: 'SAME' });
+    buscarMock.mockResolvedValue({ companyCode: 'AD_TRANS', term: '', source: 'LOCAL', results: [] });
+    listarPropuestasMock.mockResolvedValue({ candidates: [] });
+  });
+  afterEach(() => cleanup());
+
+  it('emite onSummaryChange con estado y conteos tras el análisis', async () => {
+    analizarMock.mockResolvedValue(structuredClone(OK));
+    const onSummaryChange = vi.fn();
+    renderAnalyzer({ onSummaryChange });
+    // La primera emisión es idle (montaje); esperamos la del análisis hecho.
+    await waitFor(() => {
+      const calls = onSummaryChange.mock.calls;
+      expect(calls[calls.length - 1]![0]).toEqual({
+        estado: 'success',
+        engineTotal: 1,
+        visibleEngine: 1,
+        visibleManual: 0,
+      });
+    });
+  });
+
+  it('sin candidatos el resumen queda honesto (empty, 0 del motor)', async () => {
+    analizarMock.mockResolvedValue({ input: {}, candidates: [], insufficient: false, engineVersion: 'v1' });
+    const onSummaryChange = vi.fn();
+    renderAnalyzer({ onSummaryChange });
+    await waitFor(() =>
+      expect(
+        onSummaryChange.mock.calls.some(
+          (c) =>
+            c[0].estado === 'empty' &&
+            c[0].engineTotal === 0 &&
+            c[0].visibleEngine === 0 &&
+            c[0].visibleManual === 0,
+        ),
+      ).toBe(true),
+    );
   });
 });

@@ -110,6 +110,25 @@ export class AlmacenService {
     return this.requestsService.approve(id, { action: 'APPROVE', comment: 'Warehouse classification approved' }, userId, companyId);
   }
 
+  /**
+   * Cierre SAME (A1) — cierra la solicitud reutilizando el artículo vinculado
+   * en lugar de avanzar hacia la creación de un código nuevo (antes quedaba
+   * estancada: approve() la bloqueaba con SAME_LINKED y no había salida). El
+   * bloqueo de approve() sigue intacto para el flujo normal de creación; aquí
+   * Almacén confirma expresamente que NO se creará nada. Mismo permiso que
+   * clasificar (B1: quien identificó puede cerrar). La validación del vínculo
+   * SAME vive en SolicitudesService.resolveWithExistingArticle.
+   */
+  async closeWithExisting(id: string, userId: string, companyId: string) {
+    const request = await this.findOneForClassification(id);
+
+    if (request.status !== 'PENDIENTE_ALMACEN') {
+      throw new NotFoundException(`Request ${id} is not pending warehouse classification`);
+    }
+
+    return this.requestsService.resolveWithExistingArticle(id, userId, companyId);
+  }
+
   async returnToRequester(id: string, comment?: string, userId?: string, companyId?: string) {
     const request = await this.findOneForClassification(id);
 

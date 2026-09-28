@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { WarehouseClassify } from './AlmacenClassify';
 
@@ -29,6 +29,7 @@ const mockGetRequest = vi.fn();
 const mockValidate = vi.fn();
 const mockSave = vi.fn();
 const mockApprove = vi.fn();
+const mockCloseExisting = vi.fn();
 const mockAuditEvents = vi.fn();
 
 // AlmacenClassify ya no consume SessionContext (10E).
@@ -38,6 +39,7 @@ vi.mock('../../servicios', () => ({
     getRequestForClassification: (...args: unknown[]) => mockGetRequest(...args),
     saveClassification: (...args: unknown[]) => mockSave(...args),
     approveClassification: (...args: unknown[]) => mockApprove(...args),
+    closeWithExisting: (...args: unknown[]) => mockCloseExisting(...args),
     returnRequest: vi.fn(),
     validateArticle: (...args: unknown[]) => mockValidate(...args),
   },
@@ -51,6 +53,8 @@ vi.mock('../../servicios/api/api-matching-service', () => ({
   apiMatchingService: {
     analizar: (...args: unknown[]) => mockAnalizar(...args),
     vincular: vi.fn(),
+    // FASE P4/P5 — el Analizador las consulta en silencio; aquí no hay propuestas.
+    listarPropuestas: vi.fn().mockResolvedValue({ candidates: [] }),
   },
 }));
 
@@ -271,6 +275,10 @@ describe('AlmacenClassify 14C-FORM: tipo, unidad Profit, impuesto, dry-run', () 
 
   it('botón Validar artículo ejecuta el Analizador manualmente', async () => {
     mockAnalizar.mockResolvedValue({ input: {}, candidates: [], insufficient: false, engineVersion: 'v1' });
+    // Este describe no limpia mocks (acumulados de tests previos): sin esto,
+    // el waitFor de más abajo pasaría con llamadas viejas y no sincronizaría
+    // con el análisis de ESTE render (flake bajo carga de suite completa).
+    mockAnalizar.mockClear();
     renderClassify();
     await screen.findByRole('combobox', { name: /Grupo \(Profit\)/i });
     // Espera a que la búsqueda automática (INICIAL) se haya lanzado.
@@ -498,5 +506,169 @@ describe('AlmacenClassify descripción ajustada', () => {
     renderClassify();
     const input = await screen.findByLabelText(/Descripción ajustada/i) as HTMLInputElement;
     expect(input.value).toBe('TORNILLO CORTO');
+  });
+});
+
+// FASE P5 — vistas: tarjeta lateral, conmutador y salto al Analizador.
+describe('AlmacenClassify vistas Clasificación ↔ Analizador (FASE P5)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sessionAllow.value = true;
+    mockGetRequest.mockResolvedValue(REQUEST);
+    mockAuditEvents.mockResolvedValue({ data: [], total: 0 });
+    mockAnalizar.mockResolvedValue({ input: {}, candidates: [], insufficient: false, engineVersion: 'v1' });
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('la tarjeta lateral abre el Analizador y el conmutador regresa sin perder el estado', async () => {
+    renderClassify();
+    await screen.findByRole('combobox', { name: /Grupo \(Profit\)/i });
+    // Inicio: solo la clasificación en la columna de trabajo (sin Analizador).
+    expect(screen.getByRole('heading', { level: 2, name: 'Clasificación' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { level: 2, name: 'Analizador' })).toBeNull();
+
+    // La tarjeta del panel contextual abre la ventana del Analizador.
+    fireEvent.click(screen.getByRole('button', { name: 'Revisar coincidencias' }));
+    await waitFor(() => expect(screen.getByRole('heading', { level: 2, name: 'Analizador' })).toBeTruthy());
+    expect(screen.queryByRole('heading', { level: 2, name: 'Clasificación' })).toBeNull();
+
+    // El conmutador regresa; el panel del Analizador queda montado (hidden)
+    // para conservar triage, índice y término de búsqueda.
+    fireEvent.click(screen.getByRole('tab', { name: 'Clasificación' }));
+    await waitFor(() => expect(screen.getByRole('heading', { level: 2, name: 'Clasificación' })).toBeTruthy());
+    expect(screen.queryByRole('heading', { level: 2, name: 'Analizador' })).toBeNull();
+    expect(document.getElementById('panel-analizador')!.hasAttribute('hidden')).toBe(true);
+    expect(document.getElementById('panel-clasificacion')!.hasAttribute('hidden')).toBe(false);
+  });
+
+  it('con clasificación completa, Validar artículo salta al Analizador y se puede volver', async () => {
+    renderClassify();
+    const grupo = await screen.findByRole('combobox', { name: /Grupo \(Profit\)/i });
+    pickOption(grupo, 'RVH');
+    // El grupo preselecciona el tipo por defecto (C): faltan subgrupo y unidad.
+    await waitFor(() => expect(
+      (screen.getByRole('combobox', { name: /Tipo de art/i }) as HTMLInputElement).value,
+    ).toContain('C —'));
+    pickOption(screen.getByRole('combobox', { name: /Subgrupo/i }), 'CARROCERIA');
+    pickOption(screen.getByRole('combobox', { name: /Unidad de venta/i }), 'UND');
+    // Clasificación completa: desaparece el aviso de campos faltantes.
+    await waitFor(() => expect(screen.queryByText(/Para Validar articulo/)).toBeNull());
+    // Espera a que el Analizador no esté ocupado (auto-análisis previo).
+    await waitFor(() =>
+      expect((screen.getByRole('button', { name: 'Validar artículo' }) as HTMLButtonElement).disabled).toBe(false),
+      { timeout: 3000 },
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Validar artículo' }));
+    // Salta a la vista del Analizador con la comparación COMPLETA en marcha.
+    await waitFor(() => expect(screen.getByRole('heading', { level: 2, name: 'Analizador' })).toBeTruthy());
+    expect(screen.queryByRole('heading', { level: 2, name: 'Clasificación' })).toBeNull();
+    expect(
+      mockAnalizar.mock.calls.some((c) => (c[2] as { phase?: string } | undefined)?.phase === 'COMPLETA'),
+    ).toBe(true);
+
+    // Vuelve a la clasificación y el formulario sigue ahí.
+    fireEvent.click(screen.getByRole('button', { name: /Volver a clasificación/ }));
+    await waitFor(() => expect(screen.getByRole('heading', { level: 2, name: 'Clasificación' })).toBeTruthy());
+    expect(screen.getByLabelText(/Descripción ajustada/i)).toBeTruthy();
+  });
+
+  it('la tarjeta resume el análisis del motor y el conmutador refleja el total', async () => {
+    const cands = [
+      {
+        article: { companyCode: 'AD_TRANS', profitArticleCode: 'FERMIS0662' },
+        description: 'FILTRO DE ACEITE', confidence: 0.87, classification: 'HIGH',
+        evidence: ['BRAND_MATCH'], conflicts: [], score: 87, explanation: 'ok', engineVersion: 'v1',
+      },
+      {
+        article: { companyCode: 'AD_TRANS', profitArticleCode: 'FERMIS0663' },
+        description: 'FILTRO DE AIRE', confidence: 0.7, classification: 'MEDIUM',
+        evidence: ['DESCRIPTION_SIMILARITY'], conflicts: [], score: 70, explanation: 'ok', engineVersion: 'v1',
+      },
+    ];
+    mockAnalizar.mockResolvedValue({ input: {}, candidates: cands, insufficient: false, engineVersion: 'v1' });
+    renderClassify();
+    await screen.findByRole('combobox', { name: /Grupo \(Profit\)/i });
+    // Resumen en vivo en la tarjeta lateral: 2 de 2 del motor, sin agregadas.
+    await waitFor(() => expect(screen.getByText('2 de 2 del motor')).toBeTruthy(), { timeout: 3000 });
+    expect(screen.getByRole('tab', { name: 'Analizador (2)' })).toBeTruthy();
+  });
+});
+
+describe('AlmacenClassify cierre SAME (A1: reutilizar código existente)', () => {
+  const SAME_LINK = {
+    companyCode: 'AD_TRANS', profitArticleCode: '094-7134-CAT',
+    decision: 'SAME', decidedBy: 'u-alm',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sessionAllow.value = true;
+    mockGetRequest.mockResolvedValue({ ...REQUEST, articleLink: SAME_LINK });
+    mockAuditEvents.mockResolvedValue({ data: [], total: 0 });
+    mockAnalizar.mockResolvedValue({ input: {}, candidates: [], insufficient: false, engineVersion: 'v1' });
+    mockCloseExisting.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('ofrece cerrar reutilizando el código y lo cierra con confirmación', async () => {
+    // Tras el cierre, la recarga devuelve la solicitud en estado terminal.
+    mockGetRequest
+      .mockResolvedValueOnce({ ...REQUEST, articleLink: SAME_LINK })
+      .mockResolvedValue({ ...REQUEST, status: 'INSERTADO_PROFIT', articleLink: SAME_LINK });
+    renderClassify();
+    await screen.findByRole('combobox', { name: /Grupo \(Profit\)/i });
+
+    // En lugar de "Aprobar Clasificación", la acción es cerrar con el código.
+    expect(screen.queryByRole('button', { name: 'Aprobar Clasificación' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar con código existente' }));
+
+    // El diálogo explica qué implica, con el código reutilizado.
+    const dialog = await screen.findByRole('alertdialog');
+    expect(within(dialog).getByText(/094-7134-CAT/)).toBeTruthy();
+    expect(within(dialog).getByText(/no se creará un artículo nuevo/)).toBeTruthy();
+    expect(within(dialog).getByText(/definitiva/)).toBeTruthy();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cerrar solicitud' }));
+    await waitFor(() => expect(mockCloseExisting).toHaveBeenCalledWith('r1'));
+
+    // Recarga: solicitud terminada (INSERTADO_PROFIT), solo lectura y banner de cierre.
+    expect(await screen.findByText(/Solicitud cerrada reutilizando código existente/)).toBeTruthy();
+    expect(screen.queryByText(/pendiente de aprobación del Encargado de Almacén/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Cerrar con código existente' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Guardar Borrador' })).toBeNull();
+    expect((screen.getByRole('combobox', { name: /Grupo \(Profit\)/i }) as HTMLInputElement).disabled).toBe(true);
+  });
+
+  it('puede cancelar el diálogo de cierre sin llamar al servicio', async () => {
+    renderClassify();
+    await screen.findByRole('combobox', { name: /Grupo \(Profit\)/i });
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar con código existente' }));
+    const dialog = await screen.findByRole('alertdialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancelar' }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(mockCloseExisting).not.toHaveBeenCalled();
+    // Sigue pendiente con la salida normal disponible.
+    expect(await screen.findByText(/Solicitud resuelta con artículo existente/)).toBeTruthy();
+  });
+
+  it('si el cierre falla, muestra el error y conserva la salida normal', async () => {
+    mockCloseExisting.mockRejectedValue(new Error('CLOSE_IN_PROGRESS'));
+    renderClassify();
+    await screen.findByRole('combobox', { name: /Grupo \(Profit\)/i });
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar con código existente' }));
+    const dialog = await screen.findByRole('alertdialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cerrar solicitud' }));
+
+    expect(await screen.findByText(/CLOSE_IN_PROGRESS/)).toBeTruthy();
+    expect(await screen.findByText(/Solicitud resuelta con artículo existente/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Cerrar con código existente' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Devolver' })).toBeTruthy();
   });
 });

@@ -68,4 +68,14 @@ export class AlmacenController {
     const companyId = await this.authService.resolveCompanyContext(user.id);
     return this.warehouseService.returnToRequester(id, comment, user.id, companyId);
   }
+
+  @Post(':id/close-existing')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('WAREHOUSE.CLASSIFY')
+  @ApiOperation({ summary: 'Close request reusing the linked existing article (SAME): no new Profit code is created' })
+  @ApiParam({ name: 'id', description: 'Request ID' })
+  async closeExisting(@CurrentUser() user: RequestUser, @Param('id') id: string) {
+    const companyId = await this.authService.resolveCompanyContext(user.id);
+    return this.warehouseService.closeWithExisting(id, user.id, companyId);
+  }
 }

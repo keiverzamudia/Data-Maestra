@@ -30,6 +30,14 @@ export class CompanyConfigDto {
   @ApiProperty({ example: true })
   @IsBoolean()
   enabled!: boolean;
+
+  @ApiPropertyOptional({
+    example: true,
+    description: 'FASE 26.2 — "Las descripciones de AD_TRANS mandan" en esta empresa.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  allowDescSync?: boolean;
 }
 
 export class StandardCompanyDto {

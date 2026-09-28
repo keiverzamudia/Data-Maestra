@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../comun/prisma/prisma.service';
 import { ProfitAdapterService } from './profit-adapter.service';
@@ -47,6 +47,8 @@ import {
 } from './profit-article.payload';
 import { deserializarDis } from '../contabilidad/dis.utils';
 import { profitDriver } from './profit-driver';
+import { CorporateEquivalenceService } from './corporate-equivalence.service';
+import { NO_EQUIVALENCES, type EquivalenceLookup } from './corporate-equivalence';
 
 /** Contexto de auditoría corporativa (sin secretos jamás). */
 export interface CorporateAuditCtx {
@@ -67,6 +69,8 @@ export interface CorporateCompareResult {
   standard: string;
   companies: CompanyPlanResult[];
   executable: boolean;
+  /** FASE 26.2 — empresas que autorizaron que AD_TRANS mande en descripciones. */
+  descSync: string[];
 }
 
 export interface CorporateHomologateResult {
@@ -95,6 +99,16 @@ const ART_TRIGGERS = ['TrigI_art', 'TrigU_art', 'TrigD_art', 'TrigD_artMce'];
 
 const norm = (v: unknown): string => String(v ?? '').trim().toUpperCase();
 
+/** Resumen guardado como texto → objeto (JSON inválido ⇒ null). Puro. */
+function safeParse(value: string | null): unknown {
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
 function check(key: PreflightCheckKey, ok: boolean, detail: string): PreflightCheck {
   return { key, ok, detail };
 }
@@ -117,7 +131,18 @@ export class CorporateHomologationService {
     private readonly companiesService: CorporateCompaniesService,
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
+    // FASE 26 — opcional: sin él el comportamiento es idéntico al previo
+    // (identidad NO_EQUIVALENCES). En Nest siempre se provee.
+    @Optional() private readonly equivalences?: CorporateEquivalenceService,
   ) {}
+
+  /**
+   * FASE 26 — Resolución de códigos por empresa. Objetos identidad cuando no
+   * hay servicio: cero equivalencias ⇒ mismas reglas de la Fase 17.
+   */
+  private eq(): EquivalenceLookup {
+    return this.equivalences ?? NO_EQUIVALENCES;
+  }
 
   private async types(): Promise<any> {
     if (this.typeLib) return this.typeLib;
@@ -135,28 +160,59 @@ export class CorporateHomologationService {
   }
 
   // ---------------------------------------------------------- COMPARAR (§11)
-  /** Solo lectura: difiere cada destino contra el estándar. Sin escrituras. */
-  async compare(companiesRaw: unknown): Promise<CorporateCompareResult> {
+  /**
+   * Solo lectura: difiere cada destino contra el estándar. Sin escrituras.
+   * FASE 26.3 — `catalogs` limita la comparación a esos catálogos (clave).
+   */
+  async compare(companiesRaw: unknown, opts?: { catalogs?: string[] }): Promise<CorporateCompareResult> {
     const companies = normalizeCompanyList(companiesRaw).filter((c) => c !== STANDARD_COMPANY);
     if (companies.length === 0) {
       throw new BadRequestException('Seleccione al menos una empresa destino (distinta del estándar).');
     }
+    // FASE 26.3 — `catalogs` limita la comparación a esos catálogos (clave).
+    // FASE 26.4: un array VACÍO significa "sin filtro" (la UI lo envía así
+    // cuando no se tilda ningún catálogo). Tratarlo como filtro habría
+    // devuelto CERO filas y la pantalla habría mostrado "Sin diferencias".
+    const catalogs = opts?.catalogs && opts.catalogs.length > 0
+      ? opts.catalogs.filter((k) => CORPORATE_CATALOGS[k as CorporateCatalogKey])
+      : undefined;
     const standardRows = await this.readAllCatalogs(STANDARD_COMPANY);
+    // FASE 26.2 — "Las descripciones de AD_TRANS mandan" por empresa. Sin fila
+    // o con false: fail-closed (BLOCKED), igual que en la Fase 17.
+    const configs = await this.prisma.profitCompanyConfig.findMany();
+    const descSyncByCompany = new Map(configs.map((c) => [c.code, c.allowDescSync === true]));
     const results: CompanyPlanResult[] = [];
     for (const company of companies) {
+      const allowDescSync = descSyncByCompany.get(company) === true;
       const items: SyncPlanItem[] = [];
       for (const key of CORPORATE_CATALOG_ORDER) {
+        if (catalogs && !catalogs.includes(key)) continue;
         const desc = CORPORATE_CATALOGS[key];
         const destRows = await this.readCatalog(company, desc);
+        // FASE 26: el destino se resuelve con las equivalencias registradas
+        // para que jamás se proponga duplicar un código que ya existe otro.
+        // eslint-disable-next-line no-await-in-loop
+        const equivalents = await this.eq().codesForCatalog(company, key);
+        // eslint-disable-next-line no-await-in-loop
+        const parentEquivalents = desc.parentCatalog
+          ? await this.eq().codesForCatalog(company, desc.parentCatalog)
+          : undefined;
         const diffs = compareCatalogRows(desc.label, standardRows[key], destRows, {
           parentAware: !!desc.parentColumn,
+          equivalences: equivalents,
+          parentEquivalences: parentEquivalents,
         });
-        for (const d of diffs) items.push(buildSyncPlanItem(d, desc));
+        for (const d of diffs) items.push(buildSyncPlanItem(d, desc, { allowDescSync }));
       }
       results.push({ company, isStandard: false, items, summary: summarizePlan(items) });
     }
     const all = results.flatMap((r) => r.items);
-    return { standard: STANDARD_COMPANY, companies: results, executable: isPlanExecutable(all) };
+    return {
+      standard: STANDARD_COMPANY,
+      companies: results,
+      executable: isPlanExecutable(all),
+      descSync: [...descSyncByCompany.entries()].filter(([, v]) => v).map(([k]) => k),
+    };
   }
 
   private async readCatalog(db: string, desc: CorporateCatalogDescriptor): Promise<CatalogRow[]> {
@@ -184,7 +240,7 @@ export class CorporateHomologationService {
    */
   async preflight(
     companiesRaw: unknown,
-    opts?: { article?: ProfitArticleInput; planItems?: Array<SyncPlanItem & { company: string }>; planned?: Array<{ catalog: string; code: string; company: string }> },
+    opts?: { article?: ProfitArticleInput; planItems?: Array<SyncPlanItem & { company: string }>; planned?: Array<{ catalog: string; code: string; company: string; parent?: string }> },
   ): Promise<GlobalPreflight> {
     const requested = normalizeCompanyList(companiesRaw);
     const companies = Array.from(new Set([STANDARD_COMPANY, ...requested.filter((c) => c !== STANDARD_COMPANY)]));
@@ -291,7 +347,7 @@ export class CorporateHomologationService {
     candidate: { candidate: string; seq: number; prefix: string } | null,
     stdTrig: { def: string | null; disabled: boolean },
     pendingInserts: Set<string>,
-    planned: Array<{ catalog: string; code: string; company: string }>,
+    planned: Array<{ catalog: string; code: string; company: string; parent?: string }>,
   ): Promise<CompanyPreflight> {
     const checks: PreflightCheck[] = [];
     const mssql = await this.types();
@@ -454,12 +510,16 @@ export class CorporateHomologationService {
         checks.push(check(k, true, d));
       }
     } else {
-      // Payload esperado con defaults del contrato (mismos que el motor).
-      const payload = this.expectedPayload('__CAND__', article);
+      // Payload esperado con defaults del contrato (mismos que el motor),
+      // con las claves foráneas traducidas a los códigos de ESTA empresa
+      // (FASE 26): el preflight valida lo que realmente se va a insertar.
+      const payload = await this.eq().resolvePayload(company, this.expectedPayload('__CAND__', article));
       // 8. Catálogos requeridos por el artículo existen en destino.
-      const fkCodes: Array<{ key: CorporateCatalogKey; code: string }> = [
+      // FASE 26.4: sub_lin se valida por el PAR (co_lin, co_subl); su PK es
+      // compuesta y el mismo co_subl se repite bajo varias líneas.
+      const fkCodes: Array<{ key: CorporateCatalogKey; code: string; parent?: string }> = [
         { key: 'lin_art', code: payload.co_lin },
-        { key: 'sub_lin', code: payload.co_subl },
+        { key: 'sub_lin', code: payload.co_subl, parent: payload.co_lin },
         { key: 'unidades', code: payload.uni_venta },
         { key: 'tabulado', code: payload.tipo_imp },
         { key: 'cat_art', code: payload.co_cat },
@@ -469,37 +529,62 @@ export class CorporateHomologationService {
       ];
       let fkOk = true;
       const fkMissing: string[] = [];
-      const coveredByPlan = (label: string, code: string): boolean =>
-        planned.some((p) => p.company === company && p.catalog === label && norm(p.code) === norm(code));
-      for (const { key, code } of fkCodes) {
+      const coveredByPlan = (label: string, code: string, parent?: string): boolean =>
+        planned.some((p) => p.company === company && p.catalog === label && norm(p.code) === norm(code)
+          && (parent === undefined || norm(p.parent) === norm(parent)));
+      for (const { key, code, parent } of fkCodes) {
         const desc = CORPORATE_CATALOGS[key];
-        if (coveredByPlan(desc.label, code)) continue;
+        if (coveredByPlan(desc.label, code, parent)) continue;
+        const where = [`LTRIM(RTRIM(${desc.codeColumn})) = LTRIM(RTRIM(@c))`];
+        const params: Record<string, { type: any; value: any }> = { c: { type: mssql.VarChar(30), value: code } };
+        if (desc.parentColumn && parent) {
+          where.push(`LTRIM(RTRIM(${desc.parentColumn})) = LTRIM(RTRIM(@p))`);
+          params['p'] = { type: mssql.VarChar(30), value: parent };
+        }
         const rows = await this.readAdapter.rawQuery<{ one: number }>(
-          `SELECT 1 AS one FROM ${companyTableRef(company, desc.table)} WHERE LTRIM(RTRIM(${desc.codeColumn})) = LTRIM(RTRIM(@c))`,
-          { c: { type: mssql.VarChar(30), value: code } },
+          `SELECT 1 AS one FROM ${companyTableRef(company, desc.table)} WHERE ${where.join(' AND ')}`,
+          params,
         ).catch(() => []);
         if (rows.length === 0) {
           fkOk = false;
-          fkMissing.push(`${desc.label} ${code}`);
+          fkMissing.push(parent ? `${desc.label} ${parent}/${code}` : `${desc.label} ${code}`);
         }
       }
       checks.push(check('REQUIRED_CATALOGS', fkOk, fkOk ? 'Dependencias del artículo presentes.' : `Faltan en destino (homologue primero): ${fkMissing.join(', ')}.`));
 
       // 9. Dependencia jerárquica sub_lin → lin_art.
+      // FASE 26.4: se comprueba el PAR. Antes se traía la primera fila con ese
+      // co_subl y, con códigos repetidos bajo varias líneas, daba falsos
+      // "pertenece a otra línea" que impedían el alta del artículo.
       let depOk = true;
       let depDetail = 'Jerarquía línea/sublínea consistente.';
-      try {
-        const rows = await this.readAdapter.rawQuery<{ p: string }>(
-          `SELECT LTRIM(RTRIM(co_lin)) AS p FROM ${companyTableRef(company, 'sub_lin')} WHERE LTRIM(RTRIM(co_subl)) = LTRIM(RTRIM(@s))`,
-          { s: { type: mssql.VarChar(10), value: payload.co_subl } },
-        ).catch(() => []);
-        if (rows.length > 0 && norm(rows[0]?.p) !== norm(payload.co_lin)) {
+      if (coveredByPlan(CORPORATE_CATALOGS['sub_lin'].label, payload.co_subl, payload.co_lin)) {
+        depDetail = 'Sublínea pendiente de crear en esta misma transacción.';
+      } else {
+        try {
+          const rows = await this.readAdapter.rawQuery<{ one: number }>(
+            `SELECT 1 AS one FROM ${companyTableRef(company, 'sub_lin')}
+             WHERE LTRIM(RTRIM(co_subl)) = LTRIM(RTRIM(@s)) AND LTRIM(RTRIM(co_lin)) = LTRIM(RTRIM(@l))`,
+            {
+              s: { type: mssql.VarChar(10), value: payload.co_subl },
+              l: { type: mssql.VarChar(10), value: payload.co_lin },
+            },
+          ).catch(() => []);
+          if (rows.length === 0) {
+            depOk = false;
+            const others = await this.readAdapter.rawQuery<{ p: string }>(
+              `SELECT DISTINCT LTRIM(RTRIM(co_lin)) AS p FROM ${companyTableRef(company, 'sub_lin')}
+               WHERE LTRIM(RTRIM(co_subl)) = LTRIM(RTRIM(@s))`,
+              { s: { type: mssql.VarChar(10), value: payload.co_subl } },
+            ).catch(() => []);
+            depDetail = others.length > 0
+              ? `Sublínea ${payload.co_subl} existe en destino colgando de ${others.map((o) => norm(o.p)).join(', ')}, no de ${payload.co_lin}: homologue o registre la equivalencia de línea.`
+              : `Sublínea ${payload.co_subl} no existe en destino.`;
+          }
+        } catch {
           depOk = false;
-          depDetail = `Sublínea ${payload.co_subl} pertenece a otra línea en destino.`;
+          depDetail = 'Jerarquía no comprobable.';
         }
-      } catch {
-        depOk = false;
-        depDetail = 'Jerarquía no comprobable.';
       }
       checks.push(check('FK_DEPS', depOk, depDetail));
 
@@ -567,22 +652,52 @@ export class CorporateHomologationService {
    * Homologa catálogos del estándar en los destinos dentro de una
    * transacción global: comparar → plan → preflight → ejecutar → verificar.
    * Si el plan contiene bloqueos o el preflight falla: cero escrituras.
+   *
+   * FASE 26.3 — Selección fina:
+   *   - `catalogs`: solo esos catálogos (clave).
+   *   - `items`: solo esas filas (catálogo + código). Un BLOQUEADO tildado se
+   *     aprueba (UPDATE_DESCRIPTION); un BLOQUEADO sin tildar no se migra.
+   *     Sin `items` el comportamiento es el de siempre (todo lo no bloqueado).
    */
-  async homologate(companiesRaw: unknown, ctx: CorporateAuditCtx): Promise<CorporateHomologateResult> {
+  async homologate(
+    companiesRaw: unknown,
+    ctx: CorporateAuditCtx,
+    opts?: { catalogs?: string[]; items?: Array<{ company: string; catalog: string; code: string; parent?: string }> },
+  ): Promise<CorporateHomologateResult> {
     const correlationId = ctx.correlationId ?? this.newCorrelationId();
     const requested = normalizeCompanyList(companiesRaw).filter((c) => c !== STANDARD_COMPANY);
     if (requested.length === 0) {
       throw new BadRequestException('Seleccione al menos una empresa destino (distinta del estándar).');
     }
-    const compared = await this.compare(requested);
-    const items = compared.companies.flatMap((r) => r.items.map((i) => ({ ...i, company: r.company })));
+    const compared = await this.compare(requested, { catalogs: opts?.catalogs });
+    let items = compared.companies.flatMap((r) => r.items.map((i) => ({ ...i, company: r.company })));
+    // FASE 26.3 — la selección ES la revisión: lo tildado se migra, lo demás no.
+    // FASE 26.4 — la clave incluye el PADRE: en sub_lin hay varias filas con el
+    // mismo código bajo líneas distintas y sin el padre se marcarían todas a la vez.
+    if (opts?.items !== undefined) {
+      const key = (i: { company: string; catalog: string; code: string; parent?: string }): string =>
+        `${i.company}|${i.catalog}|${i.code}|${String(i.parent ?? '').trim()}`;
+      const selected = new Set(opts.items.map(key));
+      items = items
+        .filter((i) => selected.has(key(i)))
+        .map((i) => (i.operation === 'BLOCKED' && i.state === 'DESCRIPCION_DIFERENTE'
+          ? { ...i, operation: 'UPDATE_DESCRIPTION' as const, reason: 'Aprobado por revisión humana (FASE 26.3).', safe: true }
+          : i));
+    }
+    // FASE 26.3 — la ejecutabilidad se evalúa SOLO sobre lo seleccionado:
+    // un bloqueado sin tildar no frena la migración de lo demás.
+    const executable = isPlanExecutable(items);
     await this.audit(ctx, correlationId, 'CORPORATE_COMPARE', null, {
       standard: STANDARD_COMPANY,
       companies: requested,
-      executable: compared.executable,
+      executable,
       summary: compared.companies.map((r) => ({ company: r.company, ...r.summary })),
+      // FASE 26.2 — qué empresas autorizaron que AD_TRANS mande en descripciones.
+      descSync: compared.descSync,
+      // FASE 26.3 — cuántas filas se seleccionaron para migrar.
+      selected: opts?.items?.length ?? null,
     });
-    if (!compared.executable) {
+    if (!executable) {
       await this.audit(ctx, correlationId, 'CORPORATE_PLAN_BLOCKED', null, { companies: requested });
       return { ok: false, companies: requested, inserts: 0, updates: 0, perCompany: [], errorCode: 'CORPORATE_PLAN_BLOCKED', errorDetail: 'El plan contiene elementos bloqueados: requiere revisión.', rolledBack: false };
     }
@@ -599,14 +714,86 @@ export class CorporateHomologationService {
     try {
       const applied = await this.writeAdapter.runInGlobalTransaction(async (tx) => {
         const stdRows = await this.readAllCatalogsTx(tx, STANDARD_COMPANY);
-        return this.applyCatalogPlan(tx, stdRows, items, integrationUser);
+        return this.applyCatalogPlan(tx, stdRows, items, integrationUser, this.eq());
       });
       await this.audit(ctx, correlationId, 'CORPORATE_WRITE_SUCCEEDED', null, { companies: requested, ...applied });
+      // FASE 26 — deja constancia de "hasta cuándo está al día" cada empresa.
+      await this.recordSyncState(requested, items, correlationId, ctx.userId);
       return { ok: true, companies: requested, inserts: applied.inserts, updates: applied.updates, perCompany: applied.perCompany, rolledBack: false };
     } catch (e: any) {
       await this.audit(ctx, correlationId, 'CORPORATE_ROLLBACK', null, { companies: requested, error: this.safeDetail(e?.message) });
       return { ok: false, companies: requested, inserts: 0, updates: 0, perCompany: [], errorCode: 'CORPORATE_SYNC_FAILED', errorDetail: this.safeDetail(e?.message), rolledBack: true };
     }
+  }
+
+  // -------------------------------------- ESTADO DE SINCRONIZACIÓN (FASE 26)
+
+  /**
+   * Registra, por empresa y catálogo, la última homologación exitosa.
+   * Solo lectura posterior: permite mostrar "al día desde … / N cambios
+   * pendientes" sin volver a tocar Profit.
+   */
+  private async recordSyncState(
+    companies: string[],
+    items: Array<SyncPlanItem & { company: string }>,
+    runId: string,
+    userId: string,
+  ): Promise<void> {
+    try {
+      // Estado informativo: si la tabla/modelo no está disponible nunca debe
+      // romper una homologación ya confirmada.
+      if (typeof (this.prisma as { corporateSyncState?: { upsert?: unknown } }).corporateSyncState?.upsert !== 'function') return;
+      const byKey = new Map<string, { inserts: number; updates: number }>();
+      for (const item of items) {
+        if (item.operation !== 'INSERT' && item.operation !== 'UPDATE_DESCRIPTION') continue;
+        const key = CORPORATE_CATALOG_ORDER.find((k) => CORPORATE_CATALOGS[k].label === item.catalog);
+        if (!key) continue;
+        const mapKey = `${item.company}|${key}`;
+        const stat = byKey.get(mapKey) ?? { inserts: 0, updates: 0 };
+        if (item.operation === 'INSERT') stat.inserts++;
+        else stat.updates++;
+        byKey.set(mapKey, stat);
+      }
+      const now = new Date();
+      for (const company of companies) {
+        for (const key of CORPORATE_CATALOG_ORDER) {
+          const summary = JSON.stringify(byKey.get(`${company}|${key}`) ?? { inserts: 0, updates: 0 });
+          // eslint-disable-next-line no-await-in-loop
+          await this.prisma.corporateSyncState.upsert({
+            where: { companyCode_catalogKey: { companyCode: company, catalogKey: key } },
+            create: { companyCode: company, catalogKey: key, lastSyncAt: now, lastRunId: runId, summary, updatedBy: userId },
+            update: { lastSyncAt: now, lastRunId: runId, summary, updatedBy: userId },
+          });
+        }
+      }
+    } catch (e: any) {
+      // El estado informativo nunca debe romper la homologación ya confirmada.
+      this.logger.warn(`Sync state not recorded: ${e?.message}`);
+    }
+  }
+
+  /** Estado de sincronización (una empresa o todas). Solo lectura local. */
+  async syncState(company?: string): Promise<Array<{
+    company: string;
+    catalog: string;
+    catalogLabel: string;
+    lastSyncAt: Date;
+    lastRunId: string;
+    summary: unknown;
+  }>> {
+    const code = company ? String(company).trim().toUpperCase() : undefined;
+    const rows = await this.prisma.corporateSyncState.findMany({
+      where: code ? { companyCode: code } : undefined,
+      orderBy: [{ companyCode: 'asc' }, { catalogKey: 'asc' }],
+    });
+    return rows.map((r) => ({
+      company: r.companyCode,
+      catalog: r.catalogKey,
+      catalogLabel: CORPORATE_CATALOGS[r.catalogKey as CorporateCatalogKey]?.label ?? r.catalogKey,
+      lastSyncAt: r.lastSyncAt,
+      lastRunId: r.lastRunId,
+      summary: safeParse(r.summary),
+    }));
   }
 
   // -------------------------------- REGISTRAR ARTÍCULO MULTIEMPRESA (§22-§24)
@@ -631,14 +818,37 @@ export class CorporateHomologationService {
 
     const compared = await this.compare(requested);
     const items = compared.companies.flatMap((r) => r.items.map((i) => ({ ...i, company: r.company })));
-    if (!compared.executable) {
-      await this.audit(ctx, correlationId, 'CORPORATE_PLAN_BLOCKED', null, { companies });
-      return this.failRegister(companies, 'CORPORATE_PLAN_BLOCKED', 'Catálogos bloqueados: homologue primero o revise.');
-    }
+    // FASE 26.4 — el alta NO se condiciona a que los 8 catálogos estén limpios.
+    // Antes `!compared.executable` devolvía CORPORATE_PLAN_BLOCKED con un solo
+    // bloqueo —p. ej. una descripción en revisión en un catálogo que el artículo
+    // ni usa— e impedía registrar cualquier artículo. Lo único que el artículo
+    // exige es que SUS 9 claves existan en destino: eso ya lo garantiza el
+    // preflight (REQUIRED_CATALOGS + FK_DEPS). Un elemento bloqueado existe en
+    // destino (solo su descripción está en revisión) y `applyCatalogPlan` lo
+    // salta igual, así que no hay escritura derivada de un bloqueo.
     const preflight = await this.preflight(requested, {
       article,
       planItems: items,
-      planned: items.filter((i) => i.operation === 'INSERT').map((i) => ({ catalog: i.catalog, code: i.code, company: i.company })),
+      // FASE 26: el código planificado es el LOCAL si hay equivalencia; es lo
+      // que debe existir en destino para que el artículo pueda insertarse.
+      // El padre también: sub_lin es (co_lin, co_subl), así que hay que
+      // traducirlo antes de compararlo con el payload ya traducido.
+      planned: await Promise.all(
+        items
+          .filter((i) => i.operation === 'INSERT')
+          .map(async (i) => {
+            const key = CORPORATE_CATALOG_ORDER.find((k) => CORPORATE_CATALOGS[k].label === i.catalog);
+            const parentCatalog = key ? CORPORATE_CATALOGS[key].parentCatalog : undefined;
+            return {
+              catalog: i.catalog,
+              code: String(i.destCode ?? i.code).trim(),
+              company: i.company,
+              parent: i.parent && parentCatalog
+                ? await this.eq().resolveCode(i.company, parentCatalog, String(i.parent).trim())
+                : undefined,
+            };
+          }),
+      ),
     });
     if (!preflight.ok) {
       await this.audit(ctx, correlationId, 'CORPORATE_PREFLIGHT_FAILED', null, {
@@ -671,16 +881,25 @@ export class CorporateHomologationService {
         }
         // Homologar dependencias necesarias dentro de la misma transacción.
         const stdRows = await this.readAllCatalogsTx(tx, STANDARD_COMPANY);
-        const applied = await this.applyCatalogPlan(tx, stdRows, items, integrationUser);
-        // Registrar el mismo payload en todas.
-        const payload = buildProfitArticlePayload(candidate, { ...article, integrationUser });
+        const applied = await this.applyCatalogPlan(tx, stdRows, items, integrationUser, this.eq());
+        // Registrar en todas: mismo co_art, misma data de negocio y claves
+        // foráneas traducidas a los códigos locales (FASE 26). El resto de
+        // columnas es byte-idéntico en todas las empresas.
+        const basePayload = buildProfitArticlePayload(candidate, { ...article, integrationUser });
+        const payloads = new Map<string, ReturnType<typeof buildProfitArticlePayload>>();
         for (const company of companies) {
+          // eslint-disable-next-line no-await-in-loop
+          payloads.set(company, await this.eq().resolvePayload(company, basePayload));
+        }
+        for (const company of companies) {
+          const payload = payloads.get(company)!;
           const { sql, params } = buildInsertStatement(payload, companyTableRef(company, 'art'));
           await tx(sql, this.bindParams(params, mssql));
         }
         // Verificar valores relevantes en cada empresa ANTES del commit (§24).
         const perCompanyVerify: Array<{ company: string; verified: boolean; differences: string[] }> = [];
         for (const company of companies) {
+          const payload = payloads.get(company)!;
           const rows = await tx<Record<string, string>>(
             `SELECT TOP 1 LTRIM(RTRIM(co_art)) AS co_art, LTRIM(RTRIM(art_des)) AS art_des,
               LTRIM(RTRIM(tipo)) AS tipo, LTRIM(RTRIM(co_lin)) AS co_lin, LTRIM(RTRIM(co_subl)) AS co_subl,
@@ -749,16 +968,23 @@ export class CorporateHomologationService {
     stdRows: Record<CorporateCatalogKey, CatalogRow[]>,
     items: Array<SyncPlanItem & { company: string }>,
     integrationUser: string,
+    equivalences: EquivalenceLookup,
   ): Promise<{ inserts: number; updates: number; perCompany: Array<{ company: string; inserts: number; updates: number }> }> {
     const mssql = await this.types();
+    // FASE 26.4: en catálogos jerárquicos la identidad es (padre, código); si
+    // se indexa solo por código, un INSERT de sublínea toma la fila estándar
+    // equivocada (mismo co_subl bajo otra línea) y copia descripción/padre ajenos.
     const stdByCatalog = new Map<string, Map<string, CatalogRow>>();
     for (const key of CORPORATE_CATALOG_ORDER) {
+      const d = CORPORATE_CATALOGS[key];
       const map = new Map<string, CatalogRow>();
       for (const r of stdRows[key]) {
         const code = r.code.trim();
-        if (code && !map.has(code)) map.set(code, r);
+        if (!code) continue;
+        const k = d.parentColumn ? `${String(r.parent ?? '').trim()}|${code}` : code;
+        if (!map.has(k)) map.set(k, r);
       }
-      stdByCatalog.set(CORPORATE_CATALOGS[key].label, map);
+      stdByCatalog.set(d.label, map);
     }
     let inserts = 0;
     let updates = 0;
@@ -776,23 +1002,52 @@ export class CorporateHomologationService {
       if (!key) throw new Error(`CORPORATE_UNKNOWN_CATALOG:${item.catalog}`);
       const desc = CORPORATE_CATALOGS[key];
       if (item.operation === 'INSERT') {
-        const std = stdByCatalog.get(item.catalog)?.get(item.code.trim());
+        // FASE 26.4: clave compuesta — debe coincidir la fila estándar EXACTA
+        // (línea + sublínea), no la primera con ese co_subl.
+        const stdKey = desc.parentColumn
+          ? `${String(item.parent ?? '').trim()}|${item.code.trim()}`
+          : item.code.trim();
+        const std = stdByCatalog.get(item.catalog)?.get(stdKey);
         if (!std) throw new Error(`CORPORATE_STANDARD_ROW_MISSING:${item.catalog}:${item.code}`);
         const { sql } = catalogInsertForCompany(desc, item.company, { integrationUser });
+        // FASE 26: si hay equivalencia se crea YA con el código local para que
+        // no convivan dos códigos distintos para el mismo concepto.
+        const localCode = String(item.destCode ?? std.code).trim();
         const params: Record<string, { type: any; value: any }> = {
-          c0: { type: mssql.VarChar(60), value: std.code.trim() },
+          c0: { type: mssql.VarChar(60), value: localCode },
           c1: { type: mssql.VarChar(250), value: std.description.trim() },
         };
-        if (desc.parentColumn) params['c2'] = { type: mssql.VarChar(10), value: (std.parent ?? '').trim() };
+        if (desc.parentColumn && std.parent) {
+          // El padre también se traduce: sub_lin 'X' debe colgar de la LÍNEA
+          // local equivalente, no de la canónica (FASE 26).
+          const parentCatalog = desc.parentCatalog ?? 'lin_art';
+          // eslint-disable-next-line no-await-in-loop
+          const localParent = await equivalences.resolveCode(item.company, parentCatalog, std.parent.trim());
+          params['c2'] = { type: mssql.VarChar(10), value: localParent };
+        } else if (desc.parentColumn) {
+          params['c2'] = { type: mssql.VarChar(10), value: '' };
+        }
         if (desc.acceptsIntegrationUser) params['cu'] = { type: mssql.VarChar(10), value: integrationUser };
         await tx(sql, params);
         bump(item.company, 'inserts');
       } else {
         const sql = catalogUpdateDescForCompany(desc, item.company);
-        await tx(sql, {
-          c0: { type: mssql.VarChar(60), value: item.code.trim() },
+        const updParams: Record<string, { type: any; value: any }> = {
+          c0: { type: mssql.VarChar(60), value: String(item.destCode ?? item.code).trim() },
           c1: { type: mssql.VarChar(250), value: item.standardValue.trim() },
-        });
+        };
+        // FASE 26.4: el WHERE lleva el padre (PK compuesta) y éste se traduce
+        // al código local; sin esto el UPDATE afectaría TODAS las líneas que
+        // repitan el código.
+        if (desc.parentColumn && item.parent) {
+          const parentCatalog = desc.parentCatalog ?? 'lin_art';
+          // eslint-disable-next-line no-await-in-loop
+          const localParent = await equivalences.resolveCode(item.company, parentCatalog, String(item.parent).trim());
+          updParams['c2'] = { type: mssql.VarChar(10), value: localParent };
+        } else if (desc.parentColumn) {
+          updParams['c2'] = { type: mssql.VarChar(10), value: '' };
+        }
+        await tx(sql, updParams);
         bump(item.company, 'updates');
       }
     }

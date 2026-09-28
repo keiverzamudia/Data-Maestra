@@ -286,11 +286,24 @@ La solicitud puede haber pasado anteriormente por Almacén, por lo que ya puede 
 
 **Backend:**
 - `apps/api/src/modulos/almacen/almacen.controller.ts`
-- `apps/api/src/modulos/almacen/almacen.service.ts` — getPending, classify, approve, return, reject
+- `apps/api/src/modulos/almacen/almacen.service.ts` — getPending, classify, approve, return, reject, closeWithExisting
 
 **Frontend:**
 - `apps/web/src/modulos/almacen/AlmacenList.tsx` — Bandeja pendientes
 - `apps/web/src/modulos/almacen/AlmacenClassify.tsx` — Formulario clasificación
+
+**Cierre SAME (artículo existente):** cuando el Analizador vinculó la solicitud
+con `decision: SAME` ("Es este"), `POST /warehouse/:id/close-existing` cierra
+`PENDIENTE_ALMACEN → INSERTADO_PROFIT` reutilizando el código vinculado
+(`profitCode` = código existente, sin INSERT en Profit). Exige vínculo SAME
+vigente, **no exige clasificación previa** (si la solicitud nunca guardó
+borrador, la fila `request_data` se crea por upsert con el código
+reutilizado), registra auditoría `CLOSE_REUSED_EXISTING` y notifica al
+solicitante con el código reutilizado. `POST /warehouse/:id/approve` sigue
+bloqueado con `SAME_LINKED` mientras el vínculo siga vigente (el cierre es la
+única salida del flujo normal). UI: botón "Cerrar con código existente" +
+confirmación en `AlmacenClassify`. Lógica en
+`SolicitudesService.resolveWithExistingArticle`.
 
 **Nota:** AlmacenClassify importa `analyzerProposals` directamente de `mock/source-items.ts` (sin API real).
 
@@ -611,3 +624,110 @@ cd apps/web && npx vite build
 | `apps/web/src/contratos/index.ts` | Interfaces de servicios, afecta mock y API |
 | `apps/web/src/componentes/ui/` | UI genérica, cambios afectan toda la app |
 | `apps/web/vite.config.ts` | Proxy y configuración de dev |
+
+---
+
+## 35. Replicación Multiempresa (Fases 17 · 24.2 · 25 · 26)
+
+Un solo módulo lleva **AD_TRANS** (empresa estándar) a todas las empresas de
+`AD_GRUP.dbo.TEmpresas`. Pantalla: **Administración → Replicación multiempresa**
+(`/admin/replicacion`).
+
+| Pestaña | Qué hace | Permiso |
+|---|---|---|
+| Replicar catálogos | Compara AD_TRANS contra las empresas seleccionadas, muestra **solo las diferencias** y replica en una transacción global | `PROFIT.WRITE` (comparar es lectura) |
+| Equivalencias | Registra que `01 HERRAMIENTAS` (AD_TRANS) = `01A HERRAMIENTAS` (AD_DISAY) | `ADMIN.MANAGE` |
+| Empresas | Habilita/deshabilita la inserción por empresa, marca la estándar y autoriza que las descripciones de AD_TRANS manden | `ADMIN.MANAGE` |
+| Estado | Desde cuándo cada empresa está al día con el estándar | lectura |
+
+### 35.1 El interruptor "Las descripciones de AD_TRANS mandan" (FASE 26.2)
+
+El plan se **congela** si una empresa tiene el mismo código con otra descripción
+en un catálogo de namespace local (Líneas, Sublíneas, Categorías, Marcas,
+Procedencias, Proveedores). Para desbloquearlo, el administrador activa por
+empresa el flag `allow_desc_sync`:
+
+- **`false` (default):** fail-closed, igual que la Fase 17 → `BLOCKED`.
+- **`true`:** esas filas pasan a `UPDATE_DESCRIPTION` (seguro), auditado.
+
+Sin el flag, `Homologar` queda deshabilitado y **no se escribe en ninguna
+empresa**.
+
+### 35.2 La regla de equivalencias (lo nuevo de la FASE 26)
+
+Los códigos de catálogo son **namespaces locales por empresa** (evidencia Fase 17.2:
+`lin_art 01` = FLETES en AD_TRANS vs COMBUSTIBLE en AD_DIST). Para cada catálogo y
+cada empresa el motor resuelve **en este orden**:
+
+1. **Equivalencia registrada** → usa el código local (ej. `01A`).
+2. **Código estándar existente en esa empresa** → lo usa tal cual.
+3. **Ninguno** → replica el catálogo desde AD_TRANS y usa el código estándar.
+4. Si nada aplica → **falla cerrado**: cero escrituras, ni un duplicado.
+
+Consecuencia clave: el **`co_art` es idéntico en todas las bases**, lo que se
+traduce son las claves foráneas (`co_lin`, `co_subl`, `co_cat`, `co_color`,
+`co_prov`, `procedenci`, `uni_venta`, `suni_venta`, `tipo_imp`).
+
+### 35.3 Dónde vive el código
+
+| Pieza | Archivo |
+|---|---|
+| Reglas puras (validación, resolución, plan) | `apps/api/src/modulos/profit/corporate-equivalence.ts` |
+| Servicio (CRUD, caché, sugerencias) | `apps/api/src/modulos/profit/corporate-equivalence.service.ts` |
+| Estados/operaciones del plan | `apps/api/src/modulos/profit/corporate-compare.ts` (`EQUIVALENTE`, `destCode`) |
+| Orquestación de catálogos y artículo | `apps/api/src/modulos/profit/corporate-homologation.service.ts` |
+| Inserción por empresa seleccionada | `apps/api/src/modulos/profit/multi-company.service.ts` |
+| Endpoints | `GET/POST /api/v1/corporate/equivalences`, `/equivalences/suggest`, `/equivalences/deactivate`, `GET /api/v1/corporate/sync-state` |
+| Pantalla | `apps/web/src/modulos/administracion/ReplicacionMultiempresa.tsx` |
+
+### 35.4 Migración de la FASE 26
+
+```powershell
+cd apps/api
+node prisma/migrate-fase26-equivalencias.js   # idempotente (CREATE ... IF NOT EXISTS)
+pnpm db:generate
+.\scripts\api-restart.ps1                     # a cargo de la persona usuaria
+```
+
+> `prisma db push` **no** se debe usar: la base dev tiene tablas que el esquema
+> ya no declara y las borraría.
+
+Detalle completo: `docs/FASE_26_EQUIVALENCIAS_MULTIEMPRESA.md`.
+
+### 35.5 Selección de catálogos e ítems (FASE 26.3)
+
+La comparación admite dos filtros, y **la selección es la revisión**:
+
+| Qué se envía | Efecto |
+|---|---|
+| Sin `items` | Comportamiento previo: se migra todo lo no bloqueado. |
+| `items: []` | No se migra nada. |
+| `items: [...]` | Solo esas filas. Un bloqueado **tildado** se aprueba. |
+| `catalogs: []` o ausente | Sin filtro: todos los catálogos. |
+| `catalogs: ['sub_lin', …]` | Solo esos catálogos. |
+
+Dos salvaguardas: solo `DESCRIPCION_DIFERENTE` puede aprobarse tildándolo
+(`DATOS_DIFERENTES` sigue bloqueado), y la ejecutabilidad se calcula **después**
+de filtrar, de modo que un bloqueo sin tildar no frena al resto.
+
+En pantalla: checkboxes de catálogo, casilla por fila, **Seleccionar todo** y
+contador *"N de M filas tildadas"*. Lo no bloqueado viene preseleccionado.
+
+### 35.6 La identidad es (línea, código) — FASE 26.4
+
+`sub_lin` tiene por clave primaria **el par `(co_lin, co_subl)`**: el mismo
+`co_subl` se repite bajo líneas distintas (`ELE`×4, `CON`×5…). Toda la
+comparación, la selección y la escritura usan ese par:
+
+- comparar indexa el destino por `padre|código` (el padre se traduce antes por
+  equivalencia);
+- un par ausente es **`FALTA_EN_DESTINO`** (INSERT aditivo), no un bloqueo;
+  `DATOS_DIFERENTES` solo queda para una fila estándar **sin padre**;
+- el `UPDATE` de descripción filtra por `co_subl` **y** `co_lin` (antes podía
+  reescribir todas las líneas que repitieran el código);
+- `REQUIRED_CATALOGS`/`FK_DEPS` comprueban el par, aceptando que esté pendiente
+  de crearse en la misma transacción;
+- el alta de artículos ya no exige los 8 catálogos limpios: solo que las 9
+  claves del artículo existan en destino;
+- en pantalla hay columna **Línea** y la identidad de la selección incluye el
+  padre, para que dos sublíneas con el mismo código sean casillas distintas.

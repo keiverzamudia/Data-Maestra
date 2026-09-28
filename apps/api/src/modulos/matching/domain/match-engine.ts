@@ -1,5 +1,7 @@
 import { normalizeTextV2 } from './text-normalizer';
 import { UNIT_CANONICAL } from './feature-extractor';
+import { MATCH_TUNING } from './match-tuning';
+import { tokensOverlapTolerant } from './search-tokens';
 import type {
   ArticleMatchingInput,
   ArticleMatchEngine,
@@ -17,14 +19,20 @@ import type { ProfitArticleId } from './article-identity';
  * declara SAME: la clasificación máxima con evidencia perfecta es HIGH
  * (asistencia, no verdad). Sin IA, sin azar, sin servicios externos.
  *
- * Estrategia de importancia (documentada, no arbitraria):
+ * Estrategia de importancia (documentada, no arbitraria; los números viven
+ * en MATCH_TUNING, no como literales sueltos):
  * - identificadores técnicos (número de parte 40, modelo 25): deciden fuerte;
  * - características específicas (marca 15, categoría 8, subcategoría 6);
- * - texto (descripción Jaccard × 20, tope 20);
+ * - texto (cobertura tolerante de la descripción × 20, tope 20);
  * - contexto (unidad canónica 5, aplicación 5, propósito 5).
  * Score máximo nominal 100 (topeado). Umbrales: ≥65 HIGH, ≥35 MEDIUM,
  * ≥12 LOW, menor → REVIEW. El score NUNCA decide solo (§16): cualquier
  * conflicto presente limita la clasificación a REVIEW.
+ *
+ * La similitud textual usa `tolerantSimilarity`, LA MISMA función de
+ * "parecerse" que usa la preselección del servicio: una sola definición
+ * de coincidencia entre recall y scoring (el desajuste entre ambas era
+ * el bug que dejaba candidatos entrando solo para puntuar 0).
  */
 
 /** Versión del motor (trazabilidad v1 → v2 futura). */
@@ -80,18 +88,47 @@ function bothPresent(a: unknown, b: unknown): boolean {
   return clean(a) !== '' && clean(b) !== '';
 }
 
-function tokenSet(text: string): Set<string> {
-  const t = normalizeTextV2(text);
-  return new Set(t ? t.split(' ') : []);
+/** Tokens comparables de una descripción (normalización v2, sin vacíos). */
+export function descriptionTokens(text: string): Set<string> {
+  const t = normalizeTextV2(text ?? '');
+  return new Set(t ? t.split(' ').filter(Boolean) : []);
 }
 
-function jaccard(a: Set<string>, b: Set<string>): number {
-  if (a.size === 0 || b.size === 0) return 0;
-  let inter = 0;
-  for (const t of a) {
-    if (b.has(t)) inter += 1;
+/**
+ * Similitud textual tolerante: fracción de tokens de la CONSULTA que la
+ * descripción candidata cubre con igualdad o solape tolerante
+ * (`tokensOverlapTolerant`: subcadena, prefijo y fuzzy acotado).
+ *
+ * Una sola definición de "parecerse" para recall Y scoring: la
+ * preselección del servicio exige `tolerantSimilarity ≥ minSimilarity`
+ * y aquí exactamente lo mismo decide DESCRIPTION_SIMILARITY; lo que entra
+ * por una puerta, la otra lo reconoce.
+ *
+ * ¿Por qué cobertura de la consulta y no Jaccard de unión? Jaccard
+ * clásico |A∩B|/|A∪B| castiga a las descripciones largas y mataba el
+ * caso real: "vaso" vs "JUEGO DE VASOS" daba 1/3 = 0,33 < 0,5 → nunca
+ * había evidencia aunque el artículo fuera correcto. La cobertura
+ * |A∩B|/|A| es monótona respecto a Jaccard (siempre ≥ con el mismo
+ * intersección), así que todo lo que antes contaba sigue contando y lo
+ * que la consulta pide de verdad queda cubierto. Un matching 1:1 entre
+ * tokens evita que un solo token del perfil cubra varios de la consulta.
+ */
+export function tolerantSimilarity(queryTokens: Set<string>, profileTokens: Set<string>): number {
+  if (queryTokens.size === 0 || profileTokens.size === 0) return 0;
+  const profile = [...profileTokens];
+  const used = new Array<boolean>(profile.length).fill(false);
+  let covered = 0;
+  for (const q of queryTokens) {
+    for (let i = 0; i < profile.length; i += 1) {
+      if (used[i]) continue;
+      if (q === profile[i] || tokensOverlapTolerant(q, profile[i]!)) {
+        used[i] = true;
+        covered += 1;
+        break;
+      }
+    }
   }
-  return inter / (a.size + b.size - inter);
+  return covered / queryTokens.size;
 }
 
 function canonicalUnit(v: unknown): string {
@@ -106,12 +143,13 @@ function canonicalUnit(v: unknown): string {
 function compareSignals(input: ArticleMatchingInput, snap: ArticleSnapshot): SignalComparison {
   const evidence: MatchEvidenceKind[] = [];
   const conflicts: MatchConflictKind[] = [];
+  const w = MATCH_TUNING.weights;
   let score = 0;
 
   if (bothPresent(input.partNumber, snap.partNumber)) {
     if (equals(input.partNumber, snap.partNumber)) {
       evidence.push('PART_NUMBER_MATCH');
-      score += 40;
+      score += w.partNumber;
     } else {
       conflicts.push('PART_NUMBER_CONFLICT');
     }
@@ -119,7 +157,7 @@ function compareSignals(input: ArticleMatchingInput, snap: ArticleSnapshot): Sig
   if (bothPresent(input.model, snap.model)) {
     if (equals(input.model, snap.model)) {
       evidence.push('MODEL_MATCH');
-      score += 25;
+      score += w.model;
     } else {
       conflicts.push('MODEL_CONFLICT');
     }
@@ -127,7 +165,7 @@ function compareSignals(input: ArticleMatchingInput, snap: ArticleSnapshot): Sig
   if (bothPresent(input.brand, snap.brand)) {
     if (equals(input.brand, snap.brand)) {
       evidence.push('BRAND_MATCH');
-      score += 15;
+      score += w.brand;
     } else {
       conflicts.push('BRAND_CONFLICT');
     }
@@ -135,7 +173,7 @@ function compareSignals(input: ArticleMatchingInput, snap: ArticleSnapshot): Sig
   if (bothPresent(input.category, snap.category)) {
     if (equals(input.category, snap.category)) {
       evidence.push('CATEGORY_MATCH');
-      score += 8;
+      score += w.category;
     } else {
       conflicts.push('CATEGORY_CONFLICT');
     }
@@ -143,7 +181,7 @@ function compareSignals(input: ArticleMatchingInput, snap: ArticleSnapshot): Sig
   if (bothPresent(input.subCategory, snap.subCategory)) {
     if (equals(input.subCategory, snap.subCategory)) {
       evidence.push('SUBCATEGORY_MATCH');
-      score += 6;
+      score += w.subCategory;
     } else {
       // FASE P1 — paridad con categoría: un subgrupo distinto es un
       // conflicto explícito, no una ausencia de evidencia.
@@ -155,7 +193,7 @@ function compareSignals(input: ArticleMatchingInput, snap: ArticleSnapshot): Sig
     const b = canonicalUnit(snap.unit);
     if (a !== '' && a === b) {
       evidence.push('UNIT_MATCH');
-      score += 5;
+      score += w.unit;
     } else {
       conflicts.push('UNIT_CONFLICT');
     }
@@ -163,7 +201,7 @@ function compareSignals(input: ArticleMatchingInput, snap: ArticleSnapshot): Sig
   if (bothPresent(input.application, snap.application)) {
     if (equals(input.application, snap.application)) {
       evidence.push('APPLICATION_MATCH');
-      score += 5;
+      score += w.application;
     } else {
       conflicts.push('APPLICATION_CONFLICT');
     }
@@ -171,7 +209,7 @@ function compareSignals(input: ArticleMatchingInput, snap: ArticleSnapshot): Sig
   if (bothPresent(input.purpose, snap.purpose)) {
     if (equals(input.purpose, snap.purpose)) {
       evidence.push('PURPOSE_MATCH');
-      score += 5;
+      score += w.purpose;
     } else {
       // FASE P1 — el propósito era una señal "solo suma": ahora también
       // puede vetar, igual que el resto de señales bidireccionales.
@@ -179,10 +217,13 @@ function compareSignals(input: ArticleMatchingInput, snap: ArticleSnapshot): Sig
     }
   }
 
-  const sim = jaccard(tokenSet(input.description), tokenSet(snap.description));
-  if (sim >= 0.5) {
+  const sim = tolerantSimilarity(
+    descriptionTokens(input.description),
+    descriptionTokens(snap.description),
+  );
+  if (sim >= MATCH_TUNING.description.minSimilarity) {
     evidence.push('DESCRIPTION_SIMILARITY');
-    score += Math.round(sim * 20);
+    score += Math.round(sim * MATCH_TUNING.description.scale);
   }
 
   return { evidence, conflicts, score: Math.min(100, score) };
@@ -191,9 +232,10 @@ function compareSignals(input: ArticleMatchingInput, snap: ArticleSnapshot): Sig
 function classify(score: number, conflicts: MatchConflictKind[], hasDescription: boolean): MatchCandidateClassification {
   if (!hasDescription) return 'REVIEW';
   if (conflicts.length > 0) return 'REVIEW';
-  if (score >= 65) return 'HIGH';
-  if (score >= 35) return 'MEDIUM';
-  if (score >= 12) return 'LOW';
+  const t = MATCH_TUNING.classification;
+  if (score >= t.high) return 'HIGH';
+  if (score >= t.medium) return 'MEDIUM';
+  if (score >= t.low) return 'LOW';
   return 'REVIEW';
 }
 

@@ -36,9 +36,15 @@ export interface AnalyzerDraftInput {
   partNumber?: string;
   application?: string;
 }
-import { assessCoverage, buildFingerprint } from '../domain/historical-coverage';import { DeterministicMatchEngineV1 } from '../domain/match-engine';
-import type { ArticleSnapshot } from '../domain/match-engine';
-import { normalizeTextV2 } from '../domain/text-normalizer';
+import { assessCoverage, buildFingerprint } from '../domain/historical-coverage';
+import {
+  DeterministicMatchEngineV1,
+  comparePair,
+  descriptionTokens,
+  tolerantSimilarity,
+} from '../domain/match-engine';
+import type { ArticleSnapshot, EngineCandidate } from '../domain/match-engine';
+import { MATCH_TUNING } from '../domain/match-tuning';
 import { MatchingRepository } from '../infrastructure/matching.repository';
 import { HistoricalUniverseService } from './historical-universe.service';
 
@@ -49,6 +55,30 @@ import { HistoricalUniverseService } from './historical-universe.service';
  * cuando la clasificación ya está completa).
  */
 export type AnalyzerPhase = 'INICIAL' | 'COMPLETA';
+
+/**
+ * FASE P4 — Propuesta manual del usuario en el Analizador.
+ *
+ * Cuando la búsqueda manual encuentra un artículo que el usuario cree que
+ * puede ser, lo "agrega a sus coincidencias": ese hallazgo se persiste como
+ * decisión PROPUESTA por (solicitud, empresa, artículo). Es la nota del
+ * usuario, no una decisión SAME/DIFFERENT del motor ni del workflow.
+ *
+ * Por eso es un valor propio y no parte de MatchDecisionKind:
+ *  - `runAnalysis` solo lee SAME/DIFFERENT → PROPUESTA no filtra, no marca
+ *    ni contamina los candidatos del motor;
+ *  - "Es este" (`linkRequestToExisting`) hace upsert sobre la MISMA tripleta
+ *    y la propuesta se convierte en SAME sin duplicar filas;
+ *  - "Quitar propuesta" borra solo filas PROPUESTA, nunca decisiones.
+ */
+export const REQUEST_PROPOSAL_DECISION = 'PROPUESTA';
+
+/** FASE P4 — candidato del motor enriquecido con perfil + marca manual. */
+export type ManualProposalCandidate = EngineCandidate & {
+  description: string;
+  detail: Record<string, any>;
+  manual: true;
+};
 
 /** FASE P3 — origen de los resultados de la búsqueda manual. */
 export type ManualSearchSource = 'LOCAL' | 'PROFIT';
@@ -101,6 +131,25 @@ const UNIVERSE_ID_RE = /^[A-Z0-9_]{1,30}$/;
 export class MatchingService {
   private readonly normalizer = new DeterministicNormalizerV1();
   private readonly normalizerV2 = new DeterministicNormalizerV2();
+
+  /**
+   * Recall multicanal: el análisis ya no se limita a los primeros 500
+   * perfiles por código (ese corte arbitrario dejaba fuera coincidencias
+   * reales). El recall corre sobre el universo local completo y combina:
+   *  1) prefiltrado en memoria con solape tolerante (motor, no literal);
+   *  2) canal LIKE por palabras sobre el espejo local (literales);
+   *  3) respaldo en vivo a Profit solo cuando el local cubre poco.
+   * Caché TTL por (solicitud, fase, input): el auto-análisis con debounce
+   * y los re-renders no repiten el recall contra ninguna base.
+   */
+  private readonly recallCache = new Map<string, { expires: number; result: any }>();
+  private static readonly RECALL_TTL_MS = 60_000;
+  private static readonly RECALL_CACHE_MAX = 200;
+  private static readonly RECALL_LIKE_LIMIT = 100;
+  private static readonly RECALL_BACKFILL_MIN = 3;
+  private static readonly RECALL_BACKFILL_TOP = 50;
+  private static readonly RECALL_HYDRATE_MAX = 20;
+  private static readonly RECALL_SNAPSHOT_CAP = 300;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -447,8 +496,14 @@ export class MatchingService {
    *
    * FASE P1 — universo y trazabilidad:
    * - `actorId` se registra en la auditoría (antes quedaba `undefined`);
-   * - `poolTotal/poolLimit/poolTruncated` hacen visible el tope de 500
-   *   perfiles, que antes era un corte silencioso.
+   * - `poolTotal/poolScanned/poolTruncated` hacen visible el universo
+   *   evaluado: el recall corre sobre el espejo LOCAL completo (el tope
+   *   de 500 por código se eliminó; `poolTruncated` solo salta si la red
+   *   de seguridad de 20000 recortó);
+   * - `recallSource` dice de dónde salió el recall (LOCAL / LOCAL+PROFIT
+   *   / PROFIT) y la auditoría cuenta `filteredNoEvidence` (candidatos
+   *   descartados por no tener evidencia demostrable: sin evidencia no
+   *   hay coincidencia, no se lista relleno "0/100").
    * - model viaja desde el borrador (señal MODEL_MATCH/CONFLICT real).
    *
    * FASE P2 — `phase`:
@@ -471,12 +526,47 @@ export class MatchingService {
     const base = await this.buildInputFromRequest(requestId);
     const universe = await this.resolveUniverseCompany(opts.universeCompanyCode ?? base.companyCode);
     const phase: AnalyzerPhase = opts.phase ?? 'COMPLETA';
-    const input: ArticleMatchingInput = phase === 'INICIAL'
+    const input = this.mergeDraftInput(base, draft, phase);
+    return this.runAnalysis(requestId, input, {
+      universeCompanyCode: universe.code,
+      universeSource: universe.source,
+      limit: opts.limit,
+      actorId: opts.actorId,
+      phase,
+    });
+  }
+
+  /**
+   * FASE 23.2 — Mapeo honesto del borrador (motor congelado FASE 20, sin
+   * señales nuevas):
+   * - description, purpose, brandCode→brand, partNumber, groupCode→category,
+   *   subgroupCode→subCategory, unitCode→unit, application: señales reales.
+   * - categoryCode (co_cat Profit): los perfiles históricos no la conservan
+   *   (solo co_lin→category); no existe señal compatible → se ignora.
+   * - taxType: no es señal del motor (el impuesto no identifica artículos).
+   * - articleType (tipo C/S/V…): los perfiles no conservan tipo → sin señal.
+   * Nada se inventa: lo no mapeable se documenta aquí, no se fuerza.
+   *
+   * FASE P4 — UNA sola definición de "solicitud + borrador" para una fase:
+   * el análisis del motor, las propuestas manuales y su re-puntaje se
+   * miden con exactamente la misma regla. Si la fusión viviera en dos
+   * lugares, una propuesta y un candidato del motor podrían estar
+   * comparando cosas distintas.
+   *
+   * FASE P2 — fases:
+   * - INICIAL: únicamente texto libre. Se descartan deliberadamente los
+   *   campos guardados de la solicitud (marca, grupo, unidad, parte,
+   *   aplicación): si viajaran, la "búsqueda por descripción" seguiría
+   *   siendo una búsqueda por clasificación.
+   * - COMPLETA: todos los campos (comparación definitiva).
+   */
+  private mergeDraftInput(
+    base: ArticleMatchingInput,
+    draft: AnalyzerDraftInput,
+    phase: AnalyzerPhase,
+  ): ArticleMatchingInput {
+    return phase === 'INICIAL'
       ? {
-          // FASE P2 — primera pasada: únicamente texto libre. Se descartan
-          // deliberadamente los campos guardados de la solicitud (marca,
-          // grupo, unidad, parte, aplicación): si viajaran, la "búsqueda
-          // por descripción" seguiría siendo una búsqueda por clasificación.
           companyCode: base.companyCode,
           profitArticleCode: base.profitArticleCode,
           photoReference: base.photoReference,
@@ -495,13 +585,6 @@ export class MatchingService {
           unit: draft.unitCode ?? base.unit,
           application: draft.application ?? base.application,
         };
-    return this.runAnalysis(requestId, input, {
-      universeCompanyCode: universe.code,
-      universeSource: universe.source,
-      limit: opts.limit,
-      actorId: opts.actorId,
-      phase,
-    });
   }
 
   /**
@@ -612,33 +695,66 @@ export class MatchingService {
         phase: opts.phase ?? 'COMPLETA' as AnalyzerPhase,
       };
     }
-    const poolLimit = 500;
-    const profiles = await this.repository.listProfiles(poolLimit, opts.universeCompanyCode);
-    const poolTotal = await this.poolTotal(opts.universeCompanyCode);
-    const poolTruncated = typeof poolTotal === 'number' && poolTotal > profiles.length;
+    const company = (opts.universeCompanyCode ?? input.companyCode ?? '').trim().toUpperCase();
+    const cacheKey = this.recallCacheKey(requestId, opts, company, input);
+    const cached = this.readRecallCache(cacheKey);
+    if (cached) return cached;
+
+    // 1) Universo local COMPLETO (proyección lean): el recall ya no se
+    //    corta en los primeros 500 perfiles por código — ese corte era lo
+    //    que dejaba fuera coincidencias reales. No toca Profit.
+    const pool = await this.repository.listRecallPool(company);
+    const poolTotal = await this.poolTotal(company);
+    // 2) Canal LIKE por palabras sobre el espejo local (literales:
+    //    "vaso" → VASO/VASOS; misma tokenización que la búsqueda manual).
+    const likeKeys = await this.likeRecallKeys(company, input.description);
+    // 3) Prefiltrado con LA MISMA definición de similitud que el scoring
+    //    (tolerantSimilarity ≥ umbral) + puertas ortogonales: LIKE local,
+    //    campo fuerte y token técnico. Lo que entra aquí, el motor lo
+    //    puntúa con evidencia; lo que no se parece, ni entra.
+    let snapshots = this.preselect(input, v2, pool, likeKeys);
+    let recallSource: 'LOCAL' | 'LOCAL+PROFIT' | 'PROFIT' = 'LOCAL';
+    // 4) Respaldo en vivo SOLO cuando el local cubre poco: SELECT acotado
+    //    ya existente + hidratación puntual y acotada. Profit sigue
+    //    READ-ONLY; una fila que no hidrata no tumba el análisis.
+    const detailOverlay = new Map<string, { description: string; detail: Record<string, any> }>();
+    if (
+      snapshots.length < MatchingService.RECALL_BACKFILL_MIN &&
+      (input.description ?? '').trim() &&
+      this.universe
+    ) {
+      const backfill = await this.backfillFromProfit(company, input.description!.trim());
+      if (backfill.snapshots.length > 0) {
+        const seen = new Set(
+          snapshots.map((s) => `${s.article.companyCode}:${s.article.profitArticleCode}`),
+        );
+        for (const s of backfill.snapshots) {
+          const k = `${s.article.companyCode}:${s.article.profitArticleCode}`;
+          if (!seen.has(k)) {
+            seen.add(k);
+            snapshots.push(s);
+          }
+        }
+        for (const p of backfill.profiles) {
+          detailOverlay.set(`${p.companyCode}:${p.profitArticleCode}`, this.toDetailEntry(p));
+        }
+        recallSource = snapshots.length > backfill.snapshots.length ? 'LOCAL+PROFIT' : 'PROFIT';
+      }
+    }
+    // Red de seguridad: el tope ya NO recorta el universo antes de
+    // puntuar (antes cortaba alfabéticamente y podía esconder al mejor
+    // candidato tras la letra 300). Ahora se puntúa todo lo preseleccionado
+    // y solo se conservan los MEJORES 300 (orden del motor: score desc).
+    const poolScanned = pool.length;
+    const poolTruncated = typeof poolTotal === 'number' && poolTotal > poolScanned;
     const byKey = new Map(
-      profiles.map((p: Record<string, any>) => [
+      pool.map((p: Record<string, any>) => [
         `${p.companyCode}:${p.profitArticleCode}`,
-        {
-          description: String(p.originalDescription ?? p.normalizedDescription ?? ''),
-          detail: {
-            originalDescription: String(p.originalDescription ?? ''),
-            normalizedDescription: String(p.normalizedDescription ?? ''),
-            brand: p.brand ?? undefined,
-            model: p.model ?? undefined,
-            partNumber: p.partNumber ?? undefined,
-            category: p.category ?? undefined,
-            subCategory: p.subCategory ?? undefined,
-            unit: p.unit ?? undefined,
-            application: p.application ?? undefined,
-            // FASE 23.2 — referencia fotográfica del artículo existente
-            // (null cuando AD_TRANS no trae foto; la UI muestra aviso).
-            photo: (p.photoReference ?? '').trim() ? String(p.photoReference).trim() : undefined,
-          },
-        },
+        this.toDetailEntry(p),
       ]),
     );
-    const preselected = this.preselect(input, v2, profiles);
+    for (const [k, entry] of detailOverlay) byKey.set(k, entry);
+    const preselected = snapshots;
     const engine = new DeterministicMatchEngineV1({
       listCandidates: async () => preselected,
     });
@@ -705,6 +821,22 @@ export class MatchingService {
         ));
     }
 
+    // Honestidad: sin evidencia no hay coincidencia. Lo que el motor
+    // puntúa 0 y sin señales NO se lista — antes aparecía como relleno
+    // "0/100" (FARO para "vaso") y ensuciaba la bandeja; ahora la UI
+    // muestra su estado vacío: "No encontramos coincidencias relevantes".
+    // Exención: lo vinculado o decidido SAME nunca se oculta: es una
+    // relación humana ya registrada, aunque hoy puntúe 0.
+    const beforeNoEvidenceFilter = candidates.length;
+    candidates = candidates.filter((c) => {
+      if (c.score > 0 || c.evidence.length > 0) return true;
+      return sameKeys.has(`${c.article.companyCode}:${c.article.profitArticleCode}`);
+    });
+    const filteredNoEvidence = beforeNoEvidenceFilter - candidates.length;
+    // Red de seguridad post-scoring: los mejores (no los primeros por
+    // código) ante un caso patológico de miles de preseleccionados.
+    candidates = candidates.slice(0, MatchingService.RECALL_SNAPSHOT_CAP);
+
     const limited = opts.limit === undefined ? candidates : candidates.slice(0, Math.max(1, Math.min(opts.limit, 20)));
     await this.auditoria.logEvent({
       correlationId: randomUUID(),
@@ -715,23 +847,29 @@ export class MatchingService {
       action: 'MATCH_CANDIDATES_CONSULTED',
       afterData: JSON.stringify({
         count: limited.length,
+        filteredNoEvidence,
         engineVersion: 'v1',
         phase: opts.phase ?? 'COMPLETA',
         universeCompanyCode: opts.universeCompanyCode,
         universeSource: opts.universeSource,
+        recallSource,
+        poolScanned,
         poolTruncated,
       }),
     });
-    return {
+    const out = {
       input,
       candidates: limited,
       insufficient: false as const,
       engineVersion: 'v1' as const,
       phase: (opts.phase ?? 'COMPLETA') as AnalyzerPhase,
       poolTotal,
-      poolLimit,
+      poolScanned,
       poolTruncated,
+      recallSource,
     };
+    this.writeRecallCache(cacheKey, out);
+    return out;
   }
 
   /**
@@ -746,6 +884,133 @@ export class MatchingService {
     } catch {
       return null;
     }
+  }
+
+  /** Clave del caché de recall: mismo input + empresa + fase + límite. */
+  private recallCacheKey(
+    requestId: string,
+    opts: { limit?: number; actorId?: string; phase?: AnalyzerPhase },
+    company: string,
+    input: ArticleMatchingInput,
+  ): string {
+    return [
+      requestId,
+      opts.phase ?? 'COMPLETA',
+      company,
+      opts.limit ?? 'all',
+      opts.actorId ?? '-',
+      JSON.stringify(input),
+    ].join('|');
+  }
+
+  private readRecallCache(key: string): any | null {
+    const hit = this.recallCache.get(key);
+    if (!hit) return null;
+    if (hit.expires <= Date.now()) {
+      this.recallCache.delete(key);
+      return null;
+    }
+    return hit.result;
+  }
+
+  private writeRecallCache(key: string, result: any): void {
+    if (this.recallCache.size >= MatchingService.RECALL_CACHE_MAX) {
+      const oldest = this.recallCache.keys().next();
+      if (!oldest.done) this.recallCache.delete(oldest.value);
+    }
+    this.recallCache.set(key, { expires: Date.now() + MatchingService.RECALL_TTL_MS, result });
+  }
+
+  private invalidateRecallCache(requestId: string): void {
+    for (const key of this.recallCache.keys()) {
+      if (key === requestId || key.startsWith(`${requestId}|`)) this.recallCache.delete(key);
+    }
+  }
+
+  /**
+   * Canal LIKE por palabras sobre el espejo local: devuelve las claves
+   * `company:code` que contienen todos los tokens (subcadena, cualquier
+   * orden). Es el canal literal del recall multicanal; la misma
+   * tokenización que la búsqueda manual. Nunca tumba el análisis.
+   */
+  private async likeRecallKeys(company: string, description?: string): Promise<Set<string>> {
+    const q = (description ?? '').trim();
+    if (!company || !q || typeof this.repository.searchProfiles !== 'function') return new Set();
+    try {
+      const hits = await this.repository.searchProfiles(
+        company, q, MatchingService.RECALL_LIKE_LIMIT,
+      );
+      return new Set(hits.map((h: any) => `${h.companyCode}:${h.profitArticleCode}`));
+    } catch {
+      return new Set();
+    }
+  }
+
+  /**
+   * Respaldo en vivo a Profit cuando el espejo local cubre poco: usa el
+   * SELECT dirigido ya existente (`searchArticles`, TOP acotado,
+   * parametrizado) e hidrata cada fila a perfil local (idempotente).
+   * Acotado a RECALL_HYDRATE_MAX hidrataciones; una fila que no hidrata
+   * se salta sin tumbar el análisis. Profit sigue READ-ONLY.
+   */
+  private async backfillFromProfit(
+    company: string, description: string,
+  ): Promise<{ snapshots: ArticleSnapshot[]; profiles: any[] }> {
+    const empty = { snapshots: [] as ArticleSnapshot[], profiles: [] as any[] };
+    if (!this.universe) return empty;
+    let rows: Array<{ co_art: string; art_des: string }> = [];
+    try {
+      rows = await this.universe.searchArticles(
+        company, description, MatchingService.RECALL_BACKFILL_TOP,
+      );
+    } catch {
+      return empty;
+    }
+    const snapshots: ArticleSnapshot[] = [];
+    const profiles: any[] = [];
+    for (const row of rows.slice(0, MatchingService.RECALL_HYDRATE_MAX)) {
+      const code = (row.co_art ?? '').trim();
+      if (!code) continue;
+      try {
+        const p = await this.getOrCreateProfile(company, code);
+        profiles.push(p);
+        snapshots.push({
+          article: { companyCode: company, profitArticleCode: code },
+          description: String(p.normalizedDescription ?? p.originalDescription ?? ''),
+          brand: p.brand ?? undefined,
+          model: p.model ?? undefined,
+          partNumber: p.partNumber ?? undefined,
+          category: p.category ?? undefined,
+          subCategory: p.subCategory ?? undefined,
+          unit: p.unit ?? undefined,
+          application: p.application ?? undefined,
+        });
+      } catch {
+        continue;
+      }
+    }
+    return { snapshots, profiles };
+  }
+
+  /** Entrada de detalle para la UI a partir de una fila de perfil. */
+  private toDetailEntry(p: Record<string, any>): { description: string; detail: Record<string, any> } {
+    return {
+      description: String(p.originalDescription ?? p.normalizedDescription ?? ''),
+      detail: {
+        originalDescription: String(p.originalDescription ?? ''),
+        normalizedDescription: String(p.normalizedDescription ?? ''),
+        brand: p.brand ?? undefined,
+        model: p.model ?? undefined,
+        partNumber: p.partNumber ?? undefined,
+        category: p.category ?? undefined,
+        subCategory: p.subCategory ?? undefined,
+        unit: p.unit ?? undefined,
+        application: p.application ?? undefined,
+        // FASE 23.2 — referencia fotográfica del artículo existente
+        // (null cuando AD_TRANS no trae foto; la UI muestra aviso).
+        photo: (p.photoReference ?? '').trim() ? String(p.photoReference).trim() : undefined,
+      },
+    };
   }
 
   /** Normalización tolerante: null si no hay descripción que normalizar. */
@@ -810,6 +1075,9 @@ export class MatchingService {
       decision,
       decidedBy: actorId,
     });
+    // El vínculo cambia lo que un próximo análisis debe mostrar para esta
+    // solicitud: se invalida su caché de recall (TTL aparte, frescura ya).
+    this.invalidateRecallCache(requestId);
     // FASE 23.2 — historial por par (idempotente; no sobrescribe otras parejas).
     if (typeof this.repository.upsertRequestDecision === 'function') {
       await this.repository.upsertRequestDecision({
@@ -833,20 +1101,213 @@ export class MatchingService {
   }
 
   /**
-   * Preselección conservadora sobre perfiles locales: pasa si comparte
-   * ≥1 token técnico, marca/modelo/parte, o ≥2 tokens comunes. Sin señales
-   * utilizables en el input no se descarta nada (tope determinístico).
+   * FASE P4 — Snapshot del motor a partir de una fila de perfil (misma
+   * forma que usa preselect/backfill: comparación real, nada inventado).
+   */
+  private profileSnapshot(p: Record<string, any>): ArticleSnapshot {
+    return {
+      article: { companyCode: p.companyCode, profitArticleCode: p.profitArticleCode },
+      description: p.normalizedDescription ?? p.originalDescription ?? '',
+      brand: p.brand ?? undefined,
+      model: p.model ?? undefined,
+      partNumber: p.partNumber ?? undefined,
+      category: p.category ?? undefined,
+      subCategory: p.subCategory ?? undefined,
+      unit: p.unit ?? undefined,
+      application: p.application ?? undefined,
+    };
+  }
+
+  /**
+   * FASE P4 — "Agregar a coincidencias": promueve un hallazgo de la búsqueda
+   * manual a propuesta persistida del usuario para esta solicitud.
+   *
+   * No decide nada (ni SAME ni workflow) y no escribe en Profit:
+   *  1) valida el artículo contra el MISMO universo que usó la búsqueda;
+   *  2) asegura el perfil con el get-or-create idempotente (si el espejo no
+   *     lo tiene, un SELECT a Profit lo hidrata — Profit READ-ONLY — y si
+   *     Profit no lo conoce → 404);
+   *  3) puntúa con el MISMO motor del análisis (`comparePair`) contra la
+   *     solicitud + borrador en la fase indicada: score y evidencia reales;
+   *  4) persiste la tripleta como PROPUESTA (nunca pisa SAME/DIFFERENT ya
+   *     registrados: esas decisiones humanas no se degradan) y audita.
+   */
+  async proposeManualCandidate(
+    requestId: string,
+    companyCode: string,
+    profitArticleCode: string,
+    draft: AnalyzerDraftInput,
+    opts: { phase?: AnalyzerPhase; actorId?: string } = {},
+  ): Promise<ManualProposalCandidate> {
+    const company = (companyCode ?? '').trim().toUpperCase();
+    const code = (profitArticleCode ?? '').trim();
+    if (!company || !code) {
+      throw new BadRequestException('La empresa y el código del artículo son requeridos.');
+    }
+    const base = await this.buildInputFromRequest(requestId);
+    const universe = await this.resolveUniverseCompany(base.companyCode);
+    if (company !== universe.code) {
+      throw new BadRequestException(
+        `El artículo ${company}:${code} queda fuera del universo de esta solicitud (${universe.code}).`,
+      );
+    }
+    const profile = await this.getOrCreateProfile(company, code);
+    const history =
+      typeof this.repository.listRequestDecisions === 'function'
+        ? await this.repository.listRequestDecisions(requestId)
+        : [];
+    const existing = history.find(
+      (d) => d.companyCode === company && d.profitArticleCode === code,
+    );
+    if (existing && existing.decision !== REQUEST_PROPOSAL_DECISION) {
+      throw new BadRequestException('Este artículo ya tiene una decisión registrada para esta solicitud.');
+    }
+    const input = this.mergeDraftInput(base, draft, opts.phase ?? 'COMPLETA');
+    const candidate = comparePair(input, this.profileSnapshot(profile));
+    if (!candidate) {
+      throw new BadRequestException('No se puede proponer el propio artículo de la solicitud.');
+    }
+    const info = this.toDetailEntry(profile);
+    if (typeof this.repository.upsertRequestDecision === 'function') {
+      await this.repository.upsertRequestDecision({
+        requestId,
+        companyCode: company,
+        profitArticleCode: code,
+        decision: REQUEST_PROPOSAL_DECISION,
+        decidedBy: opts.actorId ?? null,
+      });
+    }
+    await this.auditoria.logEvent({
+      correlationId: randomUUID(),
+      requestId,
+      actorId: opts.actorId,
+      entityType: 'RequestArticleDecision',
+      entityId: `${requestId}:${company}:${code}`,
+      action: 'MATCH_MANUAL_PROPOSED',
+      afterData: JSON.stringify({
+        companyCode: company,
+        profitArticleCode: code,
+        score: candidate.score,
+        classification: candidate.classification,
+        phase: opts.phase ?? 'COMPLETA',
+      }),
+    });
+    return { ...candidate, description: info.description, detail: info.detail, manual: true };
+  }
+
+  /**
+   * FASE P4 — propuestas manuales guardadas de la solicitud, re-puntadas
+   * contra la solicitud + borrador ACTUALES con el mismo motor y la MISMA
+   * fase que el análisis: el número que ve el usuario para una propuesta se
+   * calcula con la misma regla que el de un candidato del motor.
+   *
+   * Sin auditoría por consulta: el evento quedó registrado al proponer
+   * (evita ruido en la auditoría en cada montaje del panel). Solo lectura.
+   */
+  async listManualProposals(
+    requestId: string,
+    draft: AnalyzerDraftInput,
+    opts: { phase?: AnalyzerPhase } = {},
+  ): Promise<{ candidates: ManualProposalCandidate[] }> {
+    const base = await this.buildInputFromRequest(requestId);
+    const history =
+      typeof this.repository.listRequestDecisions === 'function'
+        ? await this.repository.listRequestDecisions(requestId)
+        : [];
+    const proposals = history.filter((d) => d.decision === REQUEST_PROPOSAL_DECISION);
+    if (proposals.length === 0) return { candidates: [] };
+    const input = this.mergeDraftInput(base, draft, opts.phase ?? 'COMPLETA');
+    const candidates: ManualProposalCandidate[] = [];
+    for (const p of proposals) {
+      let profile = await this.repository.findProfile(p.companyCode, p.profitArticleCode);
+      if (!profile) {
+        // El espejo pudo reiniciarse entre propuesta y consulta: se rehidrata
+        // con el mismo get-or-create idempotente; si Profit ya no lo conoce,
+        // se omite sin tumbar la lista.
+        try {
+          profile = await this.getOrCreateProfile(p.companyCode, p.profitArticleCode);
+        } catch {
+          continue;
+        }
+      }
+      const compared = comparePair(input, this.profileSnapshot(profile));
+      if (!compared) continue;
+      const info = this.toDetailEntry(profile);
+      candidates.push({ ...compared, description: info.description, detail: info.detail, manual: true });
+    }
+    return { candidates };
+  }
+
+  /**
+   * FASE P4 — retira una propuesta manual. Borra SOLO la fila PROPUESTA de
+   * esa tripleta (nunca SAME/DIFFERENT registrados) y es idempotente:
+   * `removed: 0` significa que ya no estaba.
+   */
+  async unproposeManualCandidate(
+    requestId: string,
+    companyCode: string,
+    profitArticleCode: string,
+    actorId: string,
+  ): Promise<{ removed: number }> {
+    const company = (companyCode ?? '').trim().toUpperCase();
+    const code = (profitArticleCode ?? '').trim();
+    if (!company || !code) {
+      throw new BadRequestException('La empresa y el código del artículo son requeridos.');
+    }
+    const removed =
+      typeof this.repository.deleteRequestDecision === 'function'
+        ? (
+            await this.repository.deleteRequestDecision({
+              requestId,
+              companyCode: company,
+              profitArticleCode: code,
+              decision: REQUEST_PROPOSAL_DECISION,
+            })
+          ).count
+        : 0;
+    if (removed > 0) {
+      await this.auditoria.logEvent({
+        correlationId: randomUUID(),
+        requestId,
+        actorId,
+        entityType: 'RequestArticleDecision',
+        entityId: `${requestId}:${company}:${code}`,
+        action: 'MATCH_MANUAL_UNPROPOSED',
+        afterData: JSON.stringify({ companyCode: company, profitArticleCode: code }),
+      });
+    }
+    return { removed };
+  }
+
+  /**
+   * Preselección sobre el universo local: UNA sola definición de
+   * "parecerse", la misma que usa el scoring (`tolerantSimilarity ≥
+   * MATCH_TUNING.description.minSimilarity`). Si esta puerta deja pasar
+   * un artículo, `compareSignals` lo verá con los mismos ojos y le dará
+   * evidencia real (DESCRIPTION_SIMILARITY); si no se parece ni así, no
+   * entra (adiós al relleno "0/100"). Además de la similitud textual,
+   * abre tres puertas ortogonales que el motor también entiende:
+   *  - canal LIKE del espejo local (la consulta literal ya lo marcó);
+   *  - campo fuerte normalizado (marca/modelo/parte en común);
+   *  - token técnico compartido (featuresJson v2: número/modelo).
    *
    * FASE P1 — `v2.brandCandidate` es un NOMBRE normalizado (catálogo de
    * marcas) mientras `p.brand` guarda `art.co_color`, un CÓDIGO: compararlos
    * hacía que la preselección por marca nunca coincidiera. Ahora la marca se
    * compara con `input.brand` (código elegido en Almacén), mismo dominio.
    */
-  private preselect(input: ArticleMatchingInput, v2: NormalizedProfileV2, profiles: Array<Record<string, any>>): ArticleSnapshot[] {
+  private preselect(
+    input: ArticleMatchingInput,
+    v2: NormalizedProfileV2,
+    profiles: Array<Record<string, any>>,
+    likeKeys: Set<string> = new Set(),
+  ): ArticleSnapshot[] {
     const tech = new Set(v2.technicalTokens);
-    const toks = new Set(v2.tokens);
-    const hasSignals =
-      tech.size > 0 || v2.brandCandidate !== null || v2.modelCandidate !== null || v2.partNumberCandidate !== null;
+    // Mismos tokens que luego calcula el motor para la pareja: si el
+    // recall y el scoring no midieran con la misma regla, volveríamos al
+    // bug de puertas incoherentes (entraba por una puerta, puntuaba 0).
+    const queryTokens = descriptionTokens(input.description);
+    const minSimilarity = MATCH_TUNING.description.minSimilarity;
     const out: ArticleSnapshot[] = [];
     for (const p of profiles) {
       const snapshot: ArticleSnapshot = {
@@ -860,7 +1321,8 @@ export class MatchingService {
         unit: p.unit ?? undefined,
         application: p.application ?? undefined,
       };
-      if (!hasSignals) {
+      // Canal LIKE: el espejo local ya dijo que contiene todas las palabras.
+      if (likeKeys.has(`${p.companyCode}:${p.profitArticleCode}`)) {
         out.push(snapshot);
         continue;
       }
@@ -872,16 +1334,11 @@ export class MatchingService {
       }
       const pTech = new Set([
         ...features.technicalTokens,
-        ...normalizeTextV2(p.normalizedDescription ?? '').split(' ').filter(Boolean),
+        ...descriptionTokens(p.normalizedDescription ?? p.originalDescription ?? ''),
       ]);
       let sharedTech = 0;
       for (const t of tech) {
         if (pTech.has(t)) sharedTech += 1;
-      }
-      const pToks = new Set(normalizeTextV2(p.normalizedDescription ?? '').split(' ').filter(Boolean));
-      let shared = 0;
-      for (const t of toks) {
-        if (pToks.has(t)) shared += 1;
       }
       const normEq = (a: unknown, b: unknown): boolean => {
         const x = String(a ?? '').trim();
@@ -895,7 +1352,12 @@ export class MatchingService {
         (v2.modelCandidate && normEq(v2.modelCandidate, p.model)) ||
         (v2.partNumberCandidate && normEq(v2.partNumberCandidate, p.partNumber)) ||
         (v2.brandCandidate && normEq(v2.brandCandidate, p.brand));
-      if (sharedTech >= 1 || shared >= 2 || strongField) {
+      const profileTokens = descriptionTokens(snapshot.description);
+      if (
+        sharedTech >= 1 ||
+        strongField ||
+        tolerantSimilarity(queryTokens, profileTokens) >= minSimilarity
+      ) {
         out.push(snapshot);
       }
     }

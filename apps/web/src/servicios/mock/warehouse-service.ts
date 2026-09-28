@@ -37,6 +37,15 @@ export const mockWarehouseService: WarehouseService = {
     const r = requests.find(x => x.id === id);
     if (r) { r.status = 'RECHAZADO'; r.notes = comment; r.updatedAt = new Date().toISOString(); }
   },
+  async closeWithExisting(id) {
+    await delay();
+    const r = requests.find(x => x.id === id);
+    // Cierre SAME (A1): se resuelve con el código existente; sin INSERT en Profit.
+    if (r && r.status === 'PENDIENTE_ALMACEN' && r.articleLink?.decision === 'SAME') {
+      r.status = 'INSERTADO_PROFIT';
+      r.updatedAt = new Date().toISOString();
+    }
+  },
   /** Mock del dry-run: validación local aproximada, sin Profit real. */
   async validateArticle(id, data: ClassificationData): Promise<DryRunResult> {
     await delay();

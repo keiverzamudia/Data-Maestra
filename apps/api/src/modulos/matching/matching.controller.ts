@@ -5,7 +5,7 @@ import { RbacGuard } from '../autenticacion/rbac.guard';
 import { JwtGuard } from '../autenticacion/jwt.guard';
 import { CurrentUser, RequestUser } from '../autenticacion/current-user.decorator';
 import { RequirePermission } from '../autenticacion/require-permission.decorator';
-import { NormalizeArticleDto, UpsertProfileDto, RegisterDecisionDto, CandidatesForRequestDto, LinkRequestDto, AnalyzeDraftDto, SearchArticleDto } from './dto/matching.dto';
+import { NormalizeArticleDto, UpsertProfileDto, RegisterDecisionDto, CandidatesForRequestDto, LinkRequestDto, AnalyzeDraftDto, SearchArticleDto, ProposeManualHitDto, ListManualProposalsDto, UnproposeManualHitDto } from './dto/matching.dto';
 
 /**
  * FASE 18 — Endpoints base del dominio matching (controller delgado).
@@ -102,6 +102,47 @@ export class MatchingController {
       limit: dto.limit,
       actorId: user.id,
     });
+  }
+
+  /**
+   * FASE P4 — agrega un hallazgo de la búsqueda manual a las coincidencias
+   * de la solicitud (propuesta persistida del usuario). Se puntúa con el
+   * mismo motor; no decide SAME/DIFFERENT ni escribe en Profit.
+   */
+  @Post('proponer')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('REQUEST.VIEW')
+  @ApiOperation({ summary: 'Propone un hallazgo manual como coincidencia (lo puntúa el motor, no decide)' })
+  proponer(@CurrentUser() user: RequestUser, @Body() dto: ProposeManualHitDto) {
+    const { requestId, companyCode, profitArticleCode, phase, ...draft } = dto;
+    return this.matching.proposeManualCandidate(requestId, companyCode, profitArticleCode, draft, {
+      phase,
+      actorId: user.id,
+    });
+  }
+
+  /** FASE P4 — propuestas manuales guardadas, re-puntadas con el motor. */
+  @Post('proponer/listar')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('REQUEST.VIEW')
+  @ApiOperation({ summary: 'Propuestas manuales de la solicitud re-puntadas con el motor (solo lectura)' })
+  listarPropuestas(@Body() dto: ListManualProposalsDto) {
+    const { requestId, phase, ...draft } = dto;
+    return this.matching.listManualProposals(requestId, draft, { phase });
+  }
+
+  /** FASE P4 — retira la propuesta; nunca borra decisiones SAME/DIFFERENT. */
+  @Post('proponer/retirar')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('REQUEST.VIEW')
+  @ApiOperation({ summary: 'Retira una propuesta manual (solo la propuesta, no toca decisiones)' })
+  retirarPropuesta(@CurrentUser() user: RequestUser, @Body() dto: UnproposeManualHitDto) {
+    return this.matching.unproposeManualCandidate(
+      dto.requestId,
+      dto.companyCode,
+      dto.profitArticleCode,
+      user.id,
+    );
   }
 
   @Post('solicitudes/:id/vincular')

@@ -61,6 +61,39 @@ export class MatchingRepository {
   }
 
   /**
+   * Recall del motor: universo LOCAL completo de la empresa con proyección
+   * lean (solo lo que el prefiltrado necesita). Sin `take 500`: el tope
+   * arbitrario por código era lo que dejaba fuera coincidencias reales
+   * (p. ej. "vaso" → VASOS). La empresa filtra por prefijo del índice
+   * único (companyCode, profitArticleCode); el tope 20000 es solo red de
+   * seguridad, muy por encima del universo real (~11k).
+   */
+  listRecallPool(companyCode?: string) {
+    const code = (companyCode ?? '').trim().toUpperCase();
+    return this.prisma.articleNormalizationProfile.findMany({
+      where: code ? { companyCode: code } : {},
+      orderBy: [{ companyCode: 'asc' }, { profitArticleCode: 'asc' }],
+      take: 20000,
+      select: {
+        companyCode: true,
+        profitArticleCode: true,
+        originalDescription: true,
+        normalizedDescription: true,
+        tokensJson: true,
+        featuresJson: true,
+        brand: true,
+        model: true,
+        partNumber: true,
+        category: true,
+        subCategory: true,
+        unit: true,
+        application: true,
+        photoReference: true,
+      },
+    });
+  }
+
+  /**
    * FASE P3 — búsqueda manual de un artículo en el universo local.
    * FASE P5 — coincide POR PALABRAS (AND de tokens en cualquier orden) y no
    * por frase exacta: "SENSOR DE POSICIÓN HALL" encuentra
@@ -168,6 +201,21 @@ export class MatchingRepository {
       where: { requestId },
       orderBy: [{ decidedAt: 'asc' }, { companyCode: 'asc' }, { profitArticleCode: 'asc' }],
     });
+  }
+
+  /**
+   * FASE P4 — borra decisiones por tripleta restringidas a UN `decision`
+   * concreto. El servicio lo usa solo con PROPUESTA: así "quitar propuesta"
+   * nunca puede borrar una fila SAME/DIFFERENT registrada. Devuelve la
+   * cantidad de filas borradas (0 = ya no estaba; retiro idempotente).
+   */
+  deleteRequestDecision(data: {
+    requestId: string;
+    companyCode: string;
+    profitArticleCode: string;
+    decision: string;
+  }) {
+    return this.prisma.requestArticleDecision.deleteMany({ where: data });
   }
 
   createDecision(data: {

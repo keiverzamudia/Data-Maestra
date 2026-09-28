@@ -5,13 +5,14 @@ import type { CatalogRow, CorporateCatalogDescriptor } from './corporate-catalog
  * Todo puro: sin I/O, sin SQL, testeable con fixtures.
  */
 
-/** Estados conceptuales de comparación (§6). */
+/** Estados conceptuales de comparación (§6). FASE 26: + EQUIVALENTE. */
 export type CatalogDiffState =
   | 'IGUAL'
   | 'FALTA_EN_DESTINO'
   | 'DESCRIPCION_DIFERENTE'
   | 'DATOS_DIFERENTES'
   | 'NO_COMPATIBLE'
+  | 'EQUIVALENTE'
   | 'ERROR';
 
 /** Operaciones posibles del plan (§12). */
@@ -24,6 +25,11 @@ export interface CatalogDiff {
   standardValue: string;
   destValue: string | null;
   state: CatalogDiffState;
+  /**
+   * FASE 26 — código que se usará en el destino cuando difiere del canónico
+   * (equivalencia registrada). Ausente = mismo código que el estándar.
+   */
+  destCode?: string;
 }
 
 export interface SyncPlanItem extends CatalogDiff {
@@ -40,46 +46,99 @@ export interface SyncPlanSummary {
   descripcionesDiferentes: number;
   bloqueados: number;
   errores: number;
+  /** FASE 26 — cubiertos por una equivalencia registrada (sin INSERT). */
+  equivalentes: number;
   total: number;
 }
 
 const norm = (v: unknown): string => String(v ?? '').trim();
 
 /**
- * Compara filas del estándar contra las del destino, código por código.
- * - Solo descripción distinta → DESCRIPCION_DIFERENTE (homologable, §16 F16).
- * - Padre distinto (sub_lin.co_lin) → DATOS_DIFERENTES (requiere revisión).
+ * Compara filas del estándar contra las del destino.
+ *
+ * FASE 26.4 — IDENTIDAD REAL. En catálogos jerárquicos la PK de Profit es el
+ * PAR (padre, código): `sub_lin` repite el mismo `co_subl` bajo líneas
+ * distintas (evidencia: ad_disay tiene ELE×4, CON×5, VEH×4, GEN×4…). Indexar
+ * el destino SOLO por código emparejaba filas ajenas y disparaba un falso
+ * "padre distinto" sobre descripciones que coincidían al 100% (CAM/CAMISAS,
+ * LIMPIEZA/LIMPIEZA…). Ahora:
+ *   - par presente → se compara únicamente la descripción;
+ *   - par ausente  → FALTA_EN_DESTINO (no existe esa sublínea bajo esa línea;
+ *     es un INSERT aditivo, no una corrupción: el PK no choca);
+ *   - estándar sin padre → DATOS_DIFERENTES (no hay dónde colgarlo).
+ *
+ * El padre del estándar se traduce a código local vía `parentEquivalences`
+ * antes de buscar, de modo que una línea con equivalencia registrada empareja
+ * en lugar de proponer un duplicado.
+ *
  * - Códigos solo en destino se ignoran (nunca se borra nada).
  */
 export function compareCatalogRows(
   catalog: string,
   standard: CatalogRow[],
   dest: CatalogRow[],
-  opts?: { parentAware?: boolean },
+  opts?: {
+    parentAware?: boolean;
+    equivalences?: Map<string, string>;
+    /** Equivalencias del catálogo DUEÑO de la columna padre (sub_lin → lin_art). */
+    parentEquivalences?: Map<string, string>;
+  },
 ): CatalogDiff[] {
-  const destByCode = new Map<string, CatalogRow>();
+  const parentAware = !!opts?.parentAware;
+  // FASE 26: el padre declarado en el estándar se traduce a su código local
+  // antes de comparar (sub_lin colgará de la LÍNEA local equivalente).
+  const parentMap = opts?.parentEquivalences ?? opts?.equivalences;
+  const toLocal = (code: unknown): string => {
+    const c = norm(code);
+    if (!c) return c;
+    return norm(parentMap?.get(c)) || c;
+  };
+  /** Clave de identidad: (padre|código) en jerárquicos, código en el resto. */
+  const key = (parent: unknown, code: unknown): string =>
+    parentAware ? `${norm(parent)}|${norm(code)}` : norm(code);
+
+  const destByPair = new Map<string, CatalogRow>();
   for (const r of dest) {
-    const code = norm(r.code);
-    if (code && !destByCode.has(code)) destByCode.set(code, r);
+    if (!norm(r.code)) continue;
+    const k = key(r.parent, r.code);
+    if (!destByPair.has(k)) destByPair.set(k, r);
   }
+
   const out: CatalogDiff[] = [];
   for (const s of standard) {
     const code = norm(s.code);
     if (!code) continue;
-    const d = destByCode.get(code);
+    const sParent = norm(s.parent);
+    if (parentAware && !sParent) {
+      // Sin padre declarado no existe la fila: no se adivina dónde colgarla.
+      out.push({ catalog, code, standardValue: norm(s.description), destValue: null, state: 'DATOS_DIFERENTES' });
+      continue;
+    }
+    const local = norm(opts?.equivalences?.get(code));
+    const target = local && local !== code ? local : code;
+    const d = destByPair.get(key(parentAware ? toLocal(sParent) : '', target));
     if (!d) {
-      out.push({ catalog, code, parent: norm(s.parent) || undefined, standardValue: norm(s.description), destValue: null, state: 'FALTA_EN_DESTINO' });
+      out.push({
+        catalog, code, parent: sParent || undefined,
+        standardValue: norm(s.description), destValue: null,
+        state: 'FALTA_EN_DESTINO',
+        ...(target !== code ? { destCode: target } : {}),
+      });
       continue;
     }
-    if (opts?.parentAware && norm(s.parent) !== norm(d.parent)) {
-      out.push({ catalog, code, parent: norm(s.parent) || undefined, standardValue: norm(s.description), destValue: norm(d.description), state: 'DATOS_DIFERENTES' });
+    if (target !== code) {
+      out.push({
+        catalog, code, parent: sParent || undefined,
+        standardValue: norm(s.description), destValue: norm(d.description),
+        state: 'EQUIVALENTE', destCode: target,
+      });
       continue;
     }
-    if (norm(s.description) !== norm(d.description)) {
-      out.push({ catalog, code, parent: norm(s.parent) || undefined, standardValue: norm(s.description), destValue: norm(d.description), state: 'DESCRIPCION_DIFERENTE' });
-      continue;
-    }
-    out.push({ catalog, code, parent: norm(s.parent) || undefined, standardValue: norm(s.description), destValue: norm(d.description), state: 'IGUAL' });
+    out.push({
+      catalog, code, parent: sParent || undefined,
+      standardValue: norm(s.description), destValue: norm(d.description),
+      state: norm(s.description) !== norm(d.description) ? 'DESCRIPCION_DIFERENTE' : 'IGUAL',
+    });
   }
   return out;
 }
@@ -103,17 +162,41 @@ export const SAFE_DESC_CATALOGS: ReadonlyArray<string> = ['tabulado', 'unidades'
  * actualiza descripción SOLO en catálogos funcionalmente globales;
  * resto bloquea sin adivinar.
  */
-export function buildSyncPlanItem(diff: CatalogDiff, desc?: CorporateCatalogDescriptor): SyncPlanItem {
+/**
+ * FASE 26.2 — `allowDescSync`: decisión explícita del administrador de que las
+ * descripciones de AD_TRANS mandan en esa empresa. Sin el flag (default) el
+ * comportamiento es idéntico al de la Fase 17: BLOCKED, fail-closed.
+ */
+export interface SyncPlanOptions {
+  allowDescSync?: boolean;
+}
+
+export function buildSyncPlanItem(
+  diff: CatalogDiff,
+  desc?: CorporateCatalogDescriptor,
+  opts?: SyncPlanOptions,
+): SyncPlanItem {
   switch (diff.state) {
     case 'IGUAL':
       return { ...diff, operation: 'NO_ACTION', reason: 'Coincide con el estándar corporativo.', safe: true };
-    case 'FALTA_EN_DESTINO':
+    case 'EQUIVALENTE':
+      return {
+        ...diff,
+        operation: 'NO_ACTION',
+        reason: `Equivalencia registrada (FASE 26): ${diff.code} equivale a ${diff.destCode ?? diff.code} en destino. Sin inserción.`,
+        safe: true,
+      };
+    case 'FALTA_EN_DESTINO': {
+      const local = diff.destCode && diff.destCode !== diff.code;
       return {
         ...diff,
         operation: 'INSERT',
-        reason: `Crear con el mismo código del estándar (${desc?.label ?? diff.catalog}).`,
+        reason: local
+          ? `Crear con el código local equivalente ${diff.destCode} (${desc?.label ?? diff.catalog}).`
+          : `Crear con el mismo código del estándar (${desc?.label ?? diff.catalog}).`,
         safe: true,
       };
+    }
     case 'DESCRIPCION_DIFERENTE': {
       // Fail-closed: sin descriptor de catálogo no puede afirmarse seguridad.
       if (desc && SAFE_DESC_CATALOGS.includes(desc.key)) {
@@ -121,6 +204,14 @@ export function buildSyncPlanItem(diff: CatalogDiff, desc?: CorporateCatalogDesc
           ...diff,
           operation: 'UPDATE_DESCRIPTION',
           reason: 'Solo cambia la descripción en catálogo funcional; el código se conserva.',
+          safe: true,
+        };
+      }
+      if (opts?.allowDescSync) {
+        return {
+          ...diff,
+          operation: 'UPDATE_DESCRIPTION',
+          reason: 'Autorizado por la empresa (FASE 26.2): la descripción de AD_TRANS manda.',
           safe: true,
         };
       }
@@ -145,9 +236,10 @@ export function buildSyncPlanItem(diff: CatalogDiff, desc?: CorporateCatalogDesc
 }
 
 export function summarizePlan(items: SyncPlanItem[]): SyncPlanSummary {
-  const s: SyncPlanSummary = { iguales: 0, faltantes: 0, descripcionesDiferentes: 0, bloqueados: 0, errores: 0, total: items.length };
+  const s: SyncPlanSummary = { iguales: 0, faltantes: 0, descripcionesDiferentes: 0, bloqueados: 0, errores: 0, equivalentes: 0, total: items.length };
   for (const i of items) {
-    if (i.operation === 'NO_ACTION') s.iguales++;
+    if (i.state === 'EQUIVALENTE') s.equivalentes++;
+    else if (i.operation === 'NO_ACTION') s.iguales++;
     else if (i.operation === 'INSERT') s.faltantes++;
     else if (i.operation === 'UPDATE_DESCRIPTION') s.descripcionesDiferentes++;
     else if (i.state === 'ERROR') s.errores++;

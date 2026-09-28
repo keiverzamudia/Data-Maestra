@@ -808,6 +808,121 @@ export class SolicitudesService {
   }
 
   /**
+   * Cierre SAME (A1) — la solicitud queda resuelta reutilizando el artículo
+   * que Almacén ya confirmó con "Es este" (RequestArticleLink SAME):
+   * PENDIENTE_ALMACEN → INSERTADO_PROFIT directo, con profitCode = código
+   * existente. No INSERTA en Profit (READ-ONLY): simplemente no se crea nada
+   * nuevo, consumando el vínculo en lugar de dejar la solicitud estancada
+   * (antes, approve() la bloqueaba con SAME_LINKED sin salida posible).
+   *
+   * No exige clasificación completa (no se genera código nuevo que validar).
+   * Registra workflow + auditoría (CLOSE_REUSED_EXISTING) y notifica al
+   * solicitante (C1) con el código reutilizado. Transición atómica: solo un
+   * cierre gana entre llamadas concurrentes.
+   */
+  async resolveWithExistingArticle(id: string, userId: string, companyId: string) {
+    const request = await this.prisma.request.findUnique({
+      where: { id },
+      include: { workflowInstance: true, articleLink: true, requestData: true },
+    });
+    if (!request) {
+      throw new NotFoundException(`Request ${id} not found`);
+    }
+    if (request.status !== 'PENDIENTE_ALMACEN') {
+      throw new ConflictException(`Request ${id} ya no está en revisión de Almacén.`);
+    }
+    const link = request.articleLink;
+    if (!link || link.decision !== 'SAME') {
+      throw new BadRequestException('La solicitud no tiene un artículo existente confirmado (SAME) para reutilizar.');
+    }
+    // 23.3-fix — requestData puede NO existir (nunca se guardó borrador): el
+    // cierre SAME no exige clasificación porque no se crea código nuevo. La
+    // fila se asegura con upsert dentro de la transacción; el guard anterior
+    // ("sin datos de clasificación") dejaba sin salida a solicitudes como
+    // REQ-0067 (vínculo SAME + formulario vacío).
+    const requestData = request.requestData;
+    const nextStatus = 'INSERTADO_PROFIT';
+
+    const created = await this.prisma.$transaction(async (tx) => {
+      // Transición ATÓMICA: solo un ganador entre cierres concurrentes.
+      const claimed = await tx.request.updateMany({
+        where: { id, status: 'PENDIENTE_ALMACEN' },
+        data: { status: nextStatus },
+      });
+      if (claimed.count === 0) {
+        throw new ConflictException(`Request ${id} ya no está disponible para cierre (CLOSE_IN_PROGRESS).`);
+      }
+      // La fila requestData puede no existir (sin borrador guardado): upsert
+      // para fijar profitCode con el código reutilizado.
+      await tx.requestData.upsert({
+        where: { requestId: id },
+        create: { requestId: id, profitCode: link.profitArticleCode },
+        update: { profitCode: link.profitArticleCode },
+      });
+      if (request.workflowInstance) {
+        await tx.workflowHistory.create({
+          data: {
+            instanceId: request.workflowInstance.id,
+            fromStep: request.status,
+            toStep: nextStatus,
+            action: 'APPROVE',
+            actorId: userId,
+            comment: `Cierre por reutilización de artículo existente ${link.companyCode}:${link.profitArticleCode} (SAME).`,
+          },
+        });
+        await tx.workflowTask.updateMany({
+          where: { instanceId: request.workflowInstance.id, stepCode: request.status, status: 'PENDING' },
+          data: { status: 'COMPLETED', completedAt: new Date() },
+        });
+        await tx.workflowInstance.update({
+          where: { id: request.workflowInstance.id },
+          data: { currentStepCode: nextStatus },
+        });
+      }
+      await tx.approval.create({
+        data: {
+          requestId: id,
+          stepCode: request.status,
+          actorId: userId,
+          action: 'APPROVE',
+          fromStatus: request.status,
+          toStatus: nextStatus,
+          comment: `Cerrada reutilizando ${link.companyCode}:${link.profitArticleCode} (SAME): sin inserción en Profit.`,
+        },
+      });
+      await tx.auditEvent.create({
+        data: {
+          correlationId: request.id,
+          requestId: id,
+          actorId: userId,
+          actorCompanyId: companyId,
+          entityType: 'Request',
+          entityId: id,
+          action: 'CLOSE_REUSED_EXISTING',
+          beforeData: JSON.stringify({ status: request.status, profitCode: requestData?.profitCode ?? null }),
+          afterData: JSON.stringify({ status: nextStatus, profitCode: link.profitArticleCode, reusedCompany: link.companyCode }),
+        },
+      });
+      // C1 — el solicitante debe saber que su solicitud quedó resuelta con un
+      // código que YA existe: no se creó un artículo nuevo.
+      return this.notificaciones.notifyRequestStep(tx, {
+        requestId: id,
+        requestNumber: request.requestNumber,
+        companyId: request.companyId,
+        departmentId: request.departmentId,
+        stepCode: nextStatus,
+        actorId: userId,
+        extraUserIds: [request.requesterId],
+        title: `Tu solicitud ${request.requestNumber} quedó resuelta con un artículo existente.`,
+        body: `Se reutilizó el código ${link.companyCode}:${link.profitArticleCode} de Profit; no se creó un artículo nuevo.`,
+      });
+    });
+    // 12F — SSE post-commit: si falla, la DB ya es fuente de verdad.
+    this.sse.emitMany(created);
+    return { id, status: nextStatus, profitCode: link.profitArticleCode, notified: created.length };
+  }
+
+  /**
    * Guardar Borrador de clasificación (fase borrador): persiste el progreso
    * parcial SIN cambiar el estado (PENDIENTE_ALMACEN → PENDIENTE_ALMACEN), SIN
    * notificar y SIN tocar workflow. Finalizar es `approve()` (Almacén verifica
