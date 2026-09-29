@@ -58,34 +58,13 @@ export interface MultiInsertResult {
   errorCode?: string;
 }
 
-export interface ProfitCompanyConfigView {
-  code: string;
-  name: string;
-  isStandard: boolean;
-  enabled: boolean;
-  /** FASE 26.2 — "Las descripciones de AD_TRANS mandan" en esta empresa. */
-  allowDescSync: boolean;
-}
-
-/** FASE 25 — Analizador de compatibilidad e inserción multiempresa. */
+/** FASE 27 — Analizador e inserción multiempresa. */
 export const apiMultiCompanyService = {
-  async companies(): Promise<ProfitCompanyConfigView[]> {
-    return api.get<ProfitCompanyConfigView[]>('/api/v1/profit/multi-company/companies');
-  },
-
   async analyze(requestId: string): Promise<CompatibilityAnalysis> {
     return api.post<CompatibilityAnalysis>('/api/v1/profit/multi-company/analyze', { requestId });
   },
 
-  async insert(requestId: string, companies: string[]): Promise<MultiInsertResult> {
-    return api.post<MultiInsertResult>('/api/v1/profit/multi-company/insert', { requestId, companies });
-  },
-
-  async saveConfig(code: string, enabled: boolean, allowDescSync?: boolean): Promise<ProfitCompanyConfigView> {
-    return api.post<ProfitCompanyConfigView>('/api/v1/profit/multi-company/companies/config', { code, enabled, allowDescSync });
-  },
-
-  async setStandard(code: string): Promise<ProfitCompanyConfigView> {
-    return api.post<ProfitCompanyConfigView>('/api/v1/profit/multi-company/companies/standard', { code, confirm: true });
+  async insert(requestId: string, activeCompanies: string[]): Promise<MultiInsertResult> {
+    return api.post<MultiInsertResult>('/api/v1/profit/multi-company/insert', { requestId, activeCompanies });
   },
 };

@@ -24,7 +24,7 @@ import {
   Database,
   ScrollText,
   GitCompare,
-  Factory,
+  Network,
   Trash2,
 } from 'lucide-react';
 
@@ -69,6 +69,10 @@ export const NAV: NavEntry[] = [
   // 15A — cola del Encargado de Almacén (permiso propio, no duplica Almacén).
   { key: 'warehouse-approval', to: '/aprobacion-almacen', label: 'Aprobación Almacén', icon: PackageCheck, permission: 'WAREHOUSE_MANAGER.VIEW', group: 'trabajo' },
   { key: 'accounting', to: '/accounting', label: 'Contabilidad', icon: Calculator, permission: 'ACCOUNTING.VIEW', group: 'trabajo' },
+  // FASE 27 — MANEJO MULTIEMPRESA: integración de catálogos del maestro
+  // (AD_TRANS) hacia las demás empresas de TEmpresas, con confirmación humana
+  // de códigos nuevos (COM1…) cuando el código ya existe con otro significado.
+  { key: 'multiempresa', to: '/multiempresa', label: 'Manejo Multiempresa', icon: Network, permission: 'ADMIN.MANAGE', group: 'trabajo' },
   { key: 'imports', to: '/imports', label: 'Importaciones', icon: Import, permission: 'IMPORT.VIEW', group: 'administracion' },
   {
     key: 'admin', label: 'Administración', icon: Settings, group: 'administracion',
@@ -77,8 +81,6 @@ export const NAV: NavEntry[] = [
       { key: 'admin-organizacion', to: '/admin/organizacion', label: 'Organización', permission: 'ADMIN.MANAGE', icon: Building2 },
       { key: 'admin-roles', to: '/admin/roles', label: 'Roles y permisos', permission: 'ADMIN.MANAGE', icon: ShieldCheck },
       { key: 'admin-catalogos', to: '/admin/catalogos', label: 'Catálogos Profit', permission: 'ADMIN.MANAGE', icon: Database },
-      { key: 'admin-replicacion', to: '/admin/replicacion', label: 'Replicación multiempresa', permission: 'ADMIN.MANAGE', icon: GitCompare },
-      { key: 'admin-empresas', to: '/admin/empresas', label: 'Empresas Profit', permission: 'ADMIN.MANAGE', icon: Factory },
       { key: 'admin-mantenimiento', to: '/admin/mantenimiento', label: 'Mantenimiento', permission: 'ADMIN.MANAGE', icon: Trash2 },
       { key: 'admin-historico', to: '/admin/historico', label: 'Auditoría histórica', permission: 'ADMIN.MANAGE', icon: GitCompare },
       { key: 'audit', to: '/audit', label: 'Auditoría', permission: 'AUDIT.VIEW', icon: ScrollText },

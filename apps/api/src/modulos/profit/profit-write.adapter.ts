@@ -1,7 +1,7 @@
 import { ForbiddenException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { profitDriver, PROFIT_ODBC_DRIVER, PROFIT_SQL_PORT } from './profit-driver';
-import { buildInsertStatement } from './profit-article.payload';
+import { buildInsertStatement, bindProfitParams } from './profit-article.payload';
 import type { ProfitArticlePayload } from './profit-article.payload';
 
 /**
@@ -236,14 +236,7 @@ export class ProfitWriteAdapterService {
   async insertArticle(p: ProfitArticlePayload): Promise<void> {
     const mssql: any = await this.types();
     const { sql, params } = buildInsertStatement(p);
-    const bound: Record<string, { type: any; value: any }> = {};
-    for (const par of params) {
-      bound[par.name] = {
-        type: par.kind === 'char' ? mssql.Char(par.size) : mssql.VarChar(par.size),
-        value: par.value,
-      };
-    }
-    await this.exec(sql, bound);
+    await this.exec(sql, bindProfitParams(mssql, params));
   }
 
   /** Relectura post-INSERT para VERIFY/RECONCILE (§17). */

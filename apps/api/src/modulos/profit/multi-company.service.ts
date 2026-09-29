@@ -20,12 +20,13 @@ import { STANDARD_COMPANY, normalizeCompany } from './corporate-company';
 import { companyTableRef, CORPORATE_CATALOGS } from './corporate-catalogs';
 import { compareArticlePayload } from './corporate-compare';
 import type { CompanyPreflight } from './corporate-compare';
-import { CorporateEquivalenceService } from './corporate-equivalence.service';
 import { NO_EQUIVALENCES, type EquivalenceLookup } from './corporate-equivalence';
+import { CatalogSyncService } from './catalog-sync.service';
 import type { CorporateCatalogKey } from './corporate-catalogs';
 import {
   buildProfitArticlePayload,
   buildInsertStatement,
+  bindProfitParams,
   profitCandidate,
   profitCodePrefix,
   MAX_SEQUENCE_PER_PAIR,
@@ -113,16 +114,17 @@ export class MultiCompanyService {
     private readonly homologation: CorporateHomologationService,
     private readonly auditoria: AuditoriaService,
     private readonly config: ConfigService,
-    // FASE 26 — opcional para los tests; en Nest siempre se provee.
-    @Optional() private readonly equivalences?: CorporateEquivalenceService,
+    // FASE 27 — Manejo Multiempresa: traduce los códigos del maestro a los
+    // códigos locales confirmados (COM1…) de cada empresa.
+    @Optional() private readonly catalogSync?: CatalogSyncService,
   ) {}
 
   /**
-   * FASE 26 — Resolución de códigos por empresa (identidad si no hay
-   * equivalencias: comportamiento idéntico al de la Fase 25).
+   * Resolución de códigos por empresa. La reestructuración FASE 27 elimina
+   * las equivalencias: comportamiento identidad (fail-closed).
    */
   private eq(): EquivalenceLookup {
-    return this.equivalences ?? NO_EQUIVALENCES;
+    return NO_EQUIVALENCES;
   }
 
   private async types(): Promise<any> {
@@ -133,71 +135,16 @@ export class MultiCompanyService {
 
   // ---------------------------------------------------------- configuración
 
-  /** Empresas descubiertas + flags locales (sin hardcodear la lista). */
+  /** Empresas descubiertas en vivo (sin configuración local). */
   async listCompanies() {
     const discovered = await this.companies.listCompanies();
-    const configs = await this.prisma.profitCompanyConfig.findMany();
-    const byCode = new Map(configs.map((c) => [c.code, c]));
-    return discovered.map((d) => {
-      const cfg = byCode.get(d.code);
-      return {
-        code: d.code,
-        name: d.name,
-        isStandard: cfg ? cfg.isStandard : d.code === STANDARD_COMPANY,
-        enabled: cfg ? cfg.enabled : true,
-        // FASE 26.2 — "Las descripciones de AD_TRANS mandan" en esta empresa.
-        allowDescSync: cfg ? cfg.allowDescSync === true : false,
-      };
-    });
-  }
-
-  /**
-   * FASE 26.2 — `allowDescSync` es opcional: si no se envía se conserva el
-   * valor actual (no se resetea a false en cada cambio de `enabled`).
-   */
-  async saveCompanyConfig(code: string, enabled: boolean, actorId: string, allowDescSync?: boolean) {
-    const c = normalizeCompany(code);
-    if (!c) throw new BadRequestException('Código de empresa inválido.');
-    const listed = await this.companies.isListed(c).catch(() => null);
-    if (!listed) throw new NotFoundException(`Empresa Profit desconocida: ${c}.`);
-    const row = await this.prisma.profitCompanyConfig.upsert({
-      where: { code: c },
-      create: { code: c, enabled, allowDescSync: allowDescSync === true },
-      update: { enabled, ...(allowDescSync === undefined ? {} : { allowDescSync: allowDescSync === true }) },
-    });
-    await this.auditoria.logEvent({
-      correlationId: randomUUID(),
-      requestId: undefined,
-      actorId,
-      entityType: 'ProfitCompanyConfig',
-      entityId: c,
-      action: 'PROFIT_COMPANY_CONFIG_SAVED',
-      afterData: JSON.stringify({ code: c, enabled, allowDescSync: row.allowDescSync }),
-    }).catch((e: any) => this.logger.error(`Audit failed: ${e?.message}`));
-    return row;
-  }
-
-  async setStandardCompany(code: string, actorId: string) {
-    const c = normalizeCompany(code);
-    if (!c) throw new BadRequestException('Código de empresa inválido.');
-    const listed = await this.companies.isListed(c).catch(() => null);
-    if (!listed) throw new NotFoundException(`Empresa Profit desconocida: ${c}.`);
-    await this.prisma.profitCompanyConfig.updateMany({ data: { isStandard: false } });
-    const row = await this.prisma.profitCompanyConfig.upsert({
-      where: { code: c },
-      create: { code: c, enabled: true, isStandard: true },
-      update: { enabled: true, isStandard: true },
-    });
-    await this.auditoria.logEvent({
-      correlationId: randomUUID(),
-      requestId: undefined,
-      actorId,
-      entityType: 'ProfitCompanyConfig',
-      entityId: c,
-      action: 'PROFIT_STANDARD_COMPANY_SET',
-      afterData: JSON.stringify({ code: c }),
-    }).catch((e: any) => this.logger.error(`Audit failed: ${e?.message}`));
-    return row;
+    return discovered.map((d) => ({
+      code: d.code,
+      name: d.name,
+      // FASE 27 — la empresa estándar es siempre AD_TRANS (constante).
+      isStandard: d.code === STANDARD_COMPANY,
+      enabled: true,
+    }));
   }
 
   // ---------------------------------------------------------------- entrada
@@ -232,6 +179,12 @@ export class MultiCompanyService {
     } catch {
       disCen = '';
     }
+    // FASE 27 — Si la solicitud no trae cuentas, se usa la distribución
+    // contable del GRUPO en el maestro (AD_TRANS): es universal y se replica
+    // igual en todas las empresas.
+    if (!disCen) {
+      disCen = await this.masterGroupDisCen((group as any).code);
+    }
     const input: ProfitArticleInput = {
       description: (request as any).requestedDescription ?? '',
       articleType: rd.articleType,
@@ -246,6 +199,28 @@ export class MultiCompanyService {
       ref: (rd as any).ref?.trim() ? String((rd as any).ref).trim().slice(0, 20) : undefined,
     };
     return { input, requestNumber: (request as any).requestNumber };
+  }
+
+  /**
+   * FASE 27 — Distribución contable del grupo taken del maestro (AD_TRANS).
+   * Se normaliza quitando espacios para que coincida con el formato del
+   * parser (`<DIS>{c1:cuenta}</DIS>`).
+   */
+  private async masterGroupDisCen(groupCode: string): Promise<string> {
+    const code = String(groupCode ?? '').trim();
+    if (!code) return '';
+    try {
+      const mssql = await this.types();
+      const rows = await this.readAdapter.rawQuery<{ d: string }>(
+        `SELECT TOP 1 LTRIM(RTRIM(CAST(ISNULL(dis_cen,'') AS VARCHAR(MAX)))) AS d
+           FROM ${companyTableRef(STANDARD_COMPANY, 'lin_art')}
+          WHERE LTRIM(RTRIM(co_lin)) = LTRIM(RTRIM(@c))`,
+        { c: { type: mssql.VarChar(10), value: code } },
+      );
+      return String(rows[0]?.d ?? '').trim().replace(/\s+/g, '');
+    } catch {
+      return '';
+    }
   }
 
   private integrationUserCode(): string {
@@ -266,8 +241,10 @@ export class MultiCompanyService {
     const { input, requestNumber } = await this.buildInput(requestId);
     const companies = await this.listCompanies();
     const prefix = profitCodePrefix(input.groupCode, input.subgroupCode);
-    const stdMax = await this.maxSequence(STANDARD_COMPANY, prefix);
-    const candidate = stdMax + 1 <= MAX_SEQUENCE_PER_PAIR ? profitCandidate(prefix, stdMax + 1) : null;
+    // FASE 27 — correlativo universal: el máximo por prefijo entre TODAS las
+    // empresas; el mismo co_art se usará en todas. No depende de la estándar.
+    const uniMax = await this.universalSequence(prefix, companies.map((c) => c.code));
+    const candidate = uniMax + 1 <= MAX_SEQUENCE_PER_PAIR ? profitCandidate(prefix, uniMax + 1) : null;
     const stdDescs = await this.standardCatalogDescs(input);
     const out: CompanyCompatibility[] = [];
     for (const c of companies) {
@@ -381,22 +358,25 @@ export class MultiCompanyService {
   // --------------------------------------------------------------- inserción
 
   /**
-   * Inserta en las empresas seleccionadas (requiere flag + PROFIT.WRITE).
-   * Revalida cada empresa en fresco antes de su INSERT; éxitos parciales
-   * auditados por empresa (sin rollback falso).
+   * FASE 27 — Inserta el artículo en TODAS las empresas habilitadas.
+   * Las empresas MARCADAS quedan ACTIVAS (`anulado=0`); las demás se crean
+   * igual pero INACTIVAS (`anulado=1`). Requiere flag + PROFIT.WRITE.
+   * El correlativo es universal (máximo por prefijo entre empresas).
    */
   async insertSelected(
     requestId: string,
-    companiesRaw: unknown,
+    activeCompaniesRaw: unknown,
     user: { id: string; companyId: string },
   ): Promise<MultiInsertResult> {
     if (!this.writeAdapter.isWriteEnabled()) {
       throw new ForbiddenException('Profit write disabled by feature flag (PROFIT_WRITE_ENABLED=false)');
     }
-    const selected = Array.from(new Set(
-      (Array.isArray(companiesRaw) ? companiesRaw : []).map((c) => normalizeCompany(c)).filter(Boolean),
-    ));
-    if (selected.length === 0) throw new BadRequestException('Seleccione al menos una empresa.');
+    // Empresas marcadas = ACTIVAS. El artículo se crea en todas de todos modos.
+    const active = new Set(
+      (Array.isArray(activeCompaniesRaw) ? activeCompaniesRaw : [])
+        .map((c) => normalizeCompany(c))
+        .filter(Boolean) as string[],
+    );
     const request = await this.prisma.request.findUnique({ where: { id: requestId } });
     if (!request) throw new NotFoundException(`Request ${requestId} not found`);
     if ((request as any).status !== 'CONTABILIDAD_APROBADA') {
@@ -420,19 +400,20 @@ export class MultiCompanyService {
       const { input } = await this.buildInput(requestId);
       const integrationUser = this.integrationUserCode();
       const prefix = profitCodePrefix(input.groupCode, input.subgroupCode);
-      const seq = (await this.maxSequence(STANDARD_COMPANY, prefix)) + 1;
-      if (seq > MAX_SEQUENCE_PER_PAIR) throw new BadRequestException('Sin correlativo disponible.');
-      const coArt = profitCandidate(prefix, seq);
-      const payload = buildProfitArticlePayload(coArt, { ...input, integrationUser });
+      const allCompanies = (await this.listCompanies()).filter((c) => c.enabled);
+      if (allCompanies.length === 0) throw new BadRequestException('No hay empresas habilitadas para registrar.');
+      // Correlativo universal: máximo por prefijo entre todas las empresas.
+      const uniMax = await this.universalSequence(prefix, allCompanies.map((c) => c.code));
+      if (uniMax + 1 > MAX_SEQUENCE_PER_PAIR) throw new BadRequestException('Sin correlativo disponible.');
+      const coArt = profitCandidate(prefix, uniMax + 1);
       const results: CompanyInsertResult[] = [];
-      for (const company of selected) {
+      for (const c of allCompanies) {
+        const isActive = active.has(c.code);
         // eslint-disable-next-line no-await-in-loop
-        results.push(await this.insertOneCompany(company, payload, requestId, user.id));
+        results.push(await this.insertOneCompany(c.code, coArt, input, integrationUser, isActive, requestId, user.id));
       }
       const failed = results.filter((r) => r.outcome === 'ERROR');
-      // Éxito solo si cada empresa seleccionada terminó INSERTADA o YA_EXISTE.
-      // Una omisión (incompatible/deshabilitada) no es éxito: debe auditarse
-      // como parcial y nunca afirmarse "todo registrado".
+      // Éxito solo si cada empresa terminó INSERTADA o YA_EXISTE.
       const done = results.filter((r) => r.outcome === 'INSERTADO' || r.outcome === 'YA_EXISTE');
       const ok = failed.length === 0 && done.length === results.length;
       await this.prisma.request.update({
@@ -450,7 +431,10 @@ export class MultiCompanyService {
         entityId: requestId,
         action: ok ? 'PROFIT_MULTI_INSERT_SUCCEEDED' : 'PROFIT_MULTI_INSERT_PARTIAL',
         afterData: JSON.stringify({
-          coArt, companies: selected, results, durationMs: Date.now() - t0,
+          coArt,
+          activeCompanies: [...active],
+          results,
+          durationMs: Date.now() - t0,
         }),
       }).catch((e: any) => this.logger.error(`Audit failed: ${e?.message}`));
       return {
@@ -472,33 +456,31 @@ export class MultiCompanyService {
   /** Inserción en UNA empresa con revalidación fresca (sin asumir el análisis). */
   private async insertOneCompany(
     company: string,
-    basePayload: ReturnType<typeof buildProfitArticlePayload>,
+    coArt: string,
+    input: ProfitArticleInput,
+    integrationUser: string,
+    active: boolean,
     requestId: string,
     actorId: string,
   ): Promise<CompanyInsertResult> {
-    // FASE 26: mismo co_art en todas; solo las claves foráneas se traducen a
-    // los códigos locales de esta empresa.
+    // FASE 27: mismo co_art en todas; `anulado` según el check; las claves
+    // foráneas se traducen a los códigos locales confirmados de esta empresa
+    // (por ejemplo COM1 en AD_DIST = 01 en AD_TRANS).
+    const localized = this.catalogSync
+      ? await this.catalogSync.resolveArticleInput(company, input)
+      : input;
+    const basePayload = buildProfitArticlePayload(coArt, { ...localized, integrationUser, active });
     const payload = await this.eq().resolvePayload(company, basePayload);
-    const coArt = payload.co_art;
     const done = (outcome: CompanyInsertOutcome, detail: string, differences: string[] = []): CompanyInsertResult => {
       void this.auditoria.logEvent({
         correlationId: randomUUID(), requestId, actorId,
         entityType: 'ProfitMultiInsert', entityId: `${requestId}:${company}`,
         action: 'PROFIT_COMPANY_INSERT_RESULT',
-        afterData: JSON.stringify({ company, outcome, coArt, detail }),
+        afterData: JSON.stringify({ company, outcome, coArt, active, detail }),
       }).catch((e: any) => this.logger.error(`Audit failed: ${e?.message}`));
       return { company, outcome, coArt, detail, differences };
     };
-    // 1. Config local.
-    const cfg = await this.prisma.profitCompanyConfig.findUnique({ where: { code: company } }).catch(() => null);
-    if (cfg && !cfg.enabled) return done('OMITIDA_DESHABILITADA', 'Deshabilitada en Administración.');
-    // 2. Revalidación fresca de dependencias críticas.
-    let input: ProfitArticleInput;
-    try {
-      input = (await this.buildInput(requestId)).input;
-    } catch (e: any) {
-      return done('ERROR', `Revalidación: ${String(e?.message ?? e).slice(0, 200)}`);
-    }
+    // 1. Revalidación fresca de dependencias críticas.
     try {
       const global = await this.homologation.preflight([company], { article: input });
       const pf = global.companies.find((c) => c.company === company);
@@ -521,10 +503,7 @@ export class MultiCompanyService {
     try {
       const mssql = await this.types();
       const { sql, params } = buildInsertStatement(payload, companyTableRef(company, 'art'));
-      const bound: Record<string, { type: any; value: any }> = {};
-      for (const par of params) {
-        bound[par.name] = { type: par.kind === 'char' ? mssql.Char(par.size) : mssql.VarChar(par.size), value: par.value };
-      }
+      const bound = bindProfitParams(mssql, params);
       await this.writeAdapter.runInGlobalTransaction(async (tx) => {
         await tx(sql, bound);
       });
@@ -542,7 +521,8 @@ export class MultiCompanyService {
           LTRIM(RTRIM(procedenci)) AS procedenci, LTRIM(RTRIM(co_prov)) AS co_prov,
           LTRIM(RTRIM(tipo_cos)) AS tipo_cos, LTRIM(RTRIM(CAST(ISNULL(dis_cen,'') AS VARCHAR(MAX)))) AS dis_cen,
           LTRIM(RTRIM(co_us_in)) AS co_us_in, LTRIM(RTRIM(co_sucu)) AS co_sucu,
-          LTRIM(RTRIM(uni_compra)) AS uni_compra, LTRIM(RTRIM(modelo)) AS modelo, LTRIM(RTRIM(ref)) AS ref
+          LTRIM(RTRIM(uni_compra)) AS uni_compra, LTRIM(RTRIM(modelo)) AS modelo, LTRIM(RTRIM(ref)) AS ref,
+          CONVERT(varchar(1), anulado) AS anulado
          FROM ${companyTableRef(company, 'art')} WHERE co_art = @c`,
         { c: { type: (await this.types()).Char(30), value: coArt.trim() } },
       );
@@ -551,13 +531,27 @@ export class MultiCompanyService {
       if (differences.length > 0) {
         return done('ERROR', `Verificación con diferencias: ${differences.join(', ')}.`);
       }
-      return done('INSERTADO', 'Insertado y verificado correctamente.');
+      return done('INSERTADO', active ? 'Insertado y verificado como ACTIVO.' : 'Insertado y verificado como INACTIVO.');
     } catch (e: any) {
       return done('ERROR', `Verificación no disponible: ${String(e?.message ?? e).slice(0, 200)}`);
     }
   }
 
   // ---------------------------------------------------------------- apoyo
+
+  /**
+   * FASE 27 — Correlativo universal: el máximo sufijo del prefijo entre TODAS
+   * las empresas. El mismo `co_art` se usa en todas.
+   */
+  private async universalSequence(prefix: string, companies: string[]): Promise<number> {
+    let max = 0;
+    for (const db of companies) {
+      // eslint-disable-next-line no-await-in-loop
+      const m = await this.maxSequence(db, prefix);
+      if (m > max) max = m;
+    }
+    return max;
+  }
 
   private async maxSequence(db: string, prefix: string): Promise<number> {
     const mssql = await this.types();

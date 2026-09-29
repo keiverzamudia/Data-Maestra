@@ -14,6 +14,19 @@ $RepoRoot = Split-Path $PSScriptRoot -Parent
 $WorktreeEnvFile = Join-Path $RepoRoot ".env.local"
 $WorktreeApiMain = Join-Path (Join-Path (Join-Path $RepoRoot "apps") "api") "dist\main.js"
 
+# --- Guard ComSpec -----------------------------------------------------------
+# pnpm lanza procesos hijos con los interruptores de cmd.exe (/d /s /c) y usa
+# %ComSpec% para interpretarlos. Si ComSpec apunta a PowerShell (por ejemplo,
+# una variable de usuario mal puesta o una terminal abierta antes de
+# corregirla), pnpm falla con:
+#   /d : El termino '/d' no se reconoce como nombre de un cmdlet...
+# Se normaliza solo, para esta sesion, antes de invocar cualquier herramienta.
+# No modifica el registro: solo el entorno del proceso actual y sus hijos.
+if (-not $env:ComSpec -or ($env:ComSpec -notmatch 'cmd(\.exe)?$')) {
+    $cmdExe = Join-Path $env:SystemRoot "System32\cmd.exe"
+    if (Test-Path -LiteralPath $cmdExe) { $env:ComSpec = $cmdExe }
+}
+
 $ApiPort = 3001
 $WebPort = 5173
 $WorktreeEnvSource = "(sin .env.local: defaults API_PORT=3001 WEB_PORT=5173)"

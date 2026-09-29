@@ -97,13 +97,15 @@ function build(opts: {
     }),
   };
   const inserts: string[] = [];
+  const boundByInsert: Array<Record<string, any>> = [];
   const writeAdapter: any = {
     isWriteEnabled: () => opts.writeEnabled ?? true,
     runInGlobalTransaction: vi.fn(async (work: any) => {
-      const tx = vi.fn(async (sqlText: string) => {
+      const tx = vi.fn(async (sqlText: string, bound?: any) => {
         if (/^INSERT INTO/i.test(sqlText)) {
           const m = /\[([A-Z0-9_]+)\]\.dbo/.exec(sqlText);
           inserts.push(m ? m[1]! : 'dbo');
+          boundByInsert.push(bound ?? {});
         }
         return [];
       });
@@ -125,19 +127,16 @@ function build(opts: {
     { logEvent: vi.fn(async (e: any) => { audit.push(e); return e; }) } as any,
     { get: (k: string) => (k === 'PROFIT_INTEGRATION_USER_CODE' ? 'DM' : undefined) } as any,
   );
-  return { service, prisma, audit, inserts, homologation, writeAdapter };
+  return { service, prisma, audit, inserts, boundByInsert, homologation, writeAdapter };
 }
 
-describe('multiempresa: descubrimiento + configuración', () => {
-  it('fusiona TEmpresas con flags locales sin hardcodear', async () => {
-    const { service } = build({
-      configs: [{ code: 'AD_ROMA', enabled: false, isStandard: false }],
-    });
+describe('multiempresa: descubrimiento', () => {
+  it('lista las empresas de TEmpresas con AD_TRANS como estándar', async () => {
+    const { service } = build();
     const list = await service.listCompanies();
     expect(list.map((c) => c.code)).toEqual(['AD_TRANS', 'AD_LUBSL', 'AD_ROMA']);
     expect(list.find((c) => c.code === 'AD_TRANS')!.isStandard).toBe(true);
-    expect(list.find((c) => c.code === 'AD_ROMA')!.enabled).toBe(false);
-    expect(list.find((c) => c.code === 'AD_LUBSL')!.enabled).toBe(true);
+    expect(list.every((c) => c.enabled)).toBe(true);
   });
 });
 
@@ -157,14 +156,6 @@ describe('multiempresa: compatibilidad', () => {
     expect(r.incompatibleCount).toBe(1);
   });
 
-  it('deshabilitada no es elegible y no cuenta como incompatible', async () => {
-    const { service } = build({
-      configs: [{ code: 'AD_ROMA', enabled: false, isStandard: false }],
-    });
-    const r = await service.analyze('req-1', 'u1');
-    expect(r.companies.find((c) => c.company === 'AD_ROMA')!.status).toBe('DESHABILITADA');
-  });
-
   it('código ocupado genera advertencia, no bloqueo', async () => {
     const { service } = build({ preflight: (c) => pfChecks(c, [], true) });
     const r = await service.analyze('req-1', 'u1');
@@ -182,9 +173,24 @@ describe('multiempresa: inserción', () => {
     expect(writeAdapter.runInGlobalTransaction).not.toHaveBeenCalled();
   });
 
-  it('sin empresas o estado inválido se rechaza', async () => {
-    const { service } = build();
-    await expect(service.insertSelected('req-1', [], { id: 'u', companyId: 'c' })).rejects.toThrow('al menos una empresa');
+  it('FASE 27: sin empresas marcadas se crea en todas pero INACTIVAS', async () => {
+    const { service, inserts, boundByInsert } = build();
+    const r = await service.insertSelected('req-1', [], { id: 'u', companyId: 'c' });
+    expect(r.coArt).toBe('FERMIS0010');
+    expect(inserts).toEqual(['AD_TRANS', 'AD_LUBSL', 'AD_ROMA']);
+    expect(boundByInsert.every((b) => b.anulado?.value === true)).toBe(true);
+    expect(r.results.every((x) => x.outcome === 'INSERTADO')).toBe(true);
+  });
+
+  it('FASE 27: marcadas ACTIVAS, el resto INACTIVAS; mismo co_art', async () => {
+    const { service, inserts, boundByInsert } = build();
+    const r = await service.insertSelected('req-1', ['AD_TRANS'], { id: 'u', companyId: 'c' });
+    expect(inserts).toEqual(['AD_TRANS', 'AD_LUBSL', 'AD_ROMA']);
+    const byCompany = Object.fromEntries(inserts.map((c, i) => [c, boundByInsert[i]!.anulado?.value]));
+    expect(byCompany['AD_TRANS']).toBe(false); // anulado=false → ACTIVO
+    expect(byCompany['AD_LUBSL']).toBe(true); // anulado=true  → INACTIVO
+    expect(byCompany['AD_ROMA']).toBe(true);
+    expect(r.results.every((x) => x.coArt === r.coArt)).toBe(true);
   });
 
   it('SAME vinculado bloquea la inserción', async () => {

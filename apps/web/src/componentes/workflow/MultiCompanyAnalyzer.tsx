@@ -107,8 +107,8 @@ export const MultiCompanyAnalyzer: React.FC<{ request: Request; onChanged?: () =
 
   return (
     <SectionCard
-      title="Analizador de inserción multiempresa"
-      desc="Determina en qué empresas Profit puede crearse este artículo antes de insertar. Solo lectura hasta su confirmación."
+      title="Subir a Profit (multiempresa)"
+      desc="El artículo se crea en TODAS las empresas con el mismo código. Marque las empresas donde quedará ACTIVO; las demás se crean INACTIVAS. Solo lectura hasta su confirmación."
     >
       {fase === 'idle' && (
         <div className="stack-sm">
@@ -145,7 +145,7 @@ export const MultiCompanyAnalyzer: React.FC<{ request: Request; onChanged?: () =
                       checked={selected.has(c.company)}
                       disabled={!selectable(c) || !canWrite || fase !== 'results'}
                       onChange={() => toggle(c.company)}
-                      aria-label={selectable(c) ? `Seleccionar ${c.company}` : `${c.company} bloqueada`}
+                      aria-label={selectable(c) ? `Marcar ${c.company} como activa` : `${c.company} bloqueada`}
                     />
                     <span>
                       <strong className="mono">{c.company}</strong>
@@ -211,7 +211,7 @@ export const MultiCompanyAnalyzer: React.FC<{ request: Request; onChanged?: () =
               <div className="action-bar">
                 <Button variant="secondary" onClick={runAnalyze}>Reanalizar</Button>
                 <Button
-                  disabled={selected.size === 0 || !canWrite}
+                  disabled={!canWrite}
                   onClick={() => setConfirmOpen(true)}
                 >
                   Continuar
@@ -252,8 +252,8 @@ export const MultiCompanyAnalyzer: React.FC<{ request: Request; onChanged?: () =
       <ConfirmDialog
         open={confirmOpen}
         title="Confirmar inserción multiempresa"
-        desc={analysis ? `Artículo ${analysis.coArt ?? ''} en ${selected.size} empresa(s): ${[...selected].join(', ')}. Se creará un registro por empresa con el mismo código. Esta operación no puede deshacerse automáticamente.` : undefined}
-        confirmLabel={`Insertar en ${selected.size} empresa(s)`}
+        desc={analysis ? `Artículo ${analysis.coArt ?? ''}. Se creará en todas las empresas con el mismo código: ACTIVO en ${selected.size} (${[...selected].join(', ') || 'ninguna'}) e INACTIVO en el resto. Esta operación no puede deshacerse automáticamente.` : undefined}
+        confirmLabel="Sí, subir a Profit"
         busy={fase === 'inserting'}
         onCancel={() => setConfirmOpen(false)}
         onConfirm={runInsert}

@@ -36,7 +36,7 @@ function buildPrisma() {
   // Tablas que NUNCA deben tocarse: presentes con espías.
   for (const t of ['company', 'department', 'user', 'role', 'permission', 'userRole', 'rolePermission',
     'catalogGroup', 'catalogSubgroup', 'catalogCategory', 'brand', 'unitOfMeasure',
-    'catalogVisibilityMode', 'catalogVisibilityItem', 'profitCompanyConfig',
+    'catalogVisibilityMode', 'catalogVisibilityItem',
     'masterItem', 'articleNormalizationProfile', 'articleMatchDecision',
     'historicalMatchRelation', 'historicalMatchGroup', 'historicalMatchGroupMember',
     'importRun', 'sourceItem']) {
@@ -97,7 +97,7 @@ describe('MantenimientoService (modo pruebas)', () => {
 
   it('nunca toca el set conservado', async () => {
     const kept = ['company', 'user', 'role', 'catalogGroup', 'brand',
-      'catalogVisibilityItem', 'profitCompanyConfig', 'masterItem',
+      'catalogVisibilityItem', 'masterItem',
       'articleNormalizationProfile', 'historicalMatchGroup', 'importRun', 'sourceItem'];
     await service().resetTestData(RESET_CONFIRM_TOKEN, 'admin-1');
     for (const t of kept) {

@@ -40,14 +40,6 @@ describe('FASE 18 — autorización Profit en backend', () => {
       expect(perms).toContain('PROFIT.WRITE');
     }
   });
-
-  it('corporate homologate/register-article exigen PROFIT.WRITE', async () => {
-    const mod = await import('../src/modulos/profit/corporate.controller');
-    for (const m of ['homologate', 'registerArticle'] as const) {
-      const perms: string[] = Reflect.getMetadata(REQUIRE_PERMISSION_KEY, mod.CorporateController.prototype[m]) ?? [];
-      expect(perms).toContain('PROFIT.WRITE');
-    }
-  });
 });
 
 describe('FASE 18 — Mis solicitudes por propietario', () => {

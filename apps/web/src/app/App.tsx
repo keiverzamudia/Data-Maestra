@@ -9,6 +9,7 @@ import { SolicitudesList, SolicitudCreate, SolicitudDetailPage, MisSolicitudesPa
 import { AlmacenList, AlmacenClassify } from '../modulos/almacen';
 import { AprobacionAlmacenPage } from '../modulos/aprobacion-almacen';
 import { ContabilidadList } from '../modulos/contabilidad';
+import { ManejoMultiempresa } from '../modulos/multiempresa/ManejoMultiempresa';
 import { AprobacionesPage } from '../modulos/aprobaciones';
 import { ImportacionesPage } from '../modulos/importaciones';
 import { AuditoriaPage } from '../modulos/auditoria';
@@ -91,6 +92,8 @@ function Gate() {
 
               {/* Contabilidad (16A: última aprobación humana + pestaña Profit) */}
               <Route path="/accounting" element={<RequirePermission permission="ACCOUNTING.VIEW"><ContabilidadList /></RequirePermission>} />
+              {/* FASE 27 — Manejo Multiempresa: integración de catálogos hacia las empresas. */}
+              <Route path="/multiempresa" element={<RequirePermission permission="ADMIN.MANAGE"><ManejoMultiempresa /></RequirePermission>} />
 
               {/* Importaciones */}
               <Route path="/imports" element={<RequirePermission permission="IMPORT.VIEW"><ImportacionesPage /></RequirePermission>} />
@@ -103,8 +106,6 @@ function Gate() {
               <Route path="/admin/organizacion" element={<RequirePermission permission="ADMIN.MANAGE"><AdministracionPage section="organizacion" /></RequirePermission>} />
               <Route path="/admin/roles" element={<RequirePermission permission="ADMIN.MANAGE"><AdministracionPage section="roles" /></RequirePermission>} />
               <Route path="/admin/catalogos" element={<RequirePermission permission="ADMIN.MANAGE"><AdministracionPage section="catalogos" /></RequirePermission>} />
-              <Route path="/admin/replicacion" element={<RequirePermission permission="ADMIN.MANAGE"><AdministracionPage section="replicacion" /></RequirePermission>} />
-              <Route path="/admin/empresas" element={<RequirePermission permission="ADMIN.MANAGE"><AdministracionPage section="empresas" /></RequirePermission>} />
               <Route path="/admin/mantenimiento" element={<RequirePermission permission="ADMIN.MANAGE"><AdministracionPage section="mantenimiento" /></RequirePermission>} />
               <Route path="/admin/historico" element={<RequirePermission permission="ADMIN.MANAGE"><AdministracionPage section="historico" /></RequirePermission>} />
 

@@ -312,11 +312,11 @@ Para determinar cómo funciona actualmente el sistema, utilizar este orden:
 2. Schema Prisma actual
 3. Configuración actual
 4. Tests actuales
-5. Documentación vigente (`docs/MANUAL_DESARROLLADOR.md`, `docs/MAPA_PROYECTO.md`)
-6. Documentación histórica (`docs/historial/fases/`) solamente como referencia
+5. Guía vigente (`docs/GUIA_MULTIEMPRESA_PROFIT.md`)
 
-Los documentos en `docs/historial/fases/` NO representan necesariamente el comportamiento actual del sistema.
-OpenCode no debe usar documentación histórica para implementar cambios actuales salvo que el usuario lo solicite explícitamente.
+No existen documentos históricos ni manuales paralelos. Si un `.md` distinto de la
+guía vigente contradice el código, prevalece el código. No usar archivos `.md`
+sueltos para implementar cambios salvo que el usuario lo solicite explícitamente.
 
 ## 16. PRECEDENCIA DE SKILLS
 
@@ -328,8 +328,7 @@ Orden de autoridad ante conflicto:
 4. AGENTS.md
 5. Skills específicas de Data-Maestra (`master-data`, `matching-engine`, `profit-integration`, `workflow-approval`, `backend-nestjs`, `frontend-react`, `postgresql`, `database-migrations`, `security`, `ui-ux`, `code-review`, `testing`)
 6. Skills genéricas externas (`improve-codebase-architecture`, `agent-browser`, `create-agent-tests`, `diagnose`)
-7. Documentación actual (`docs/MANUAL_DESARROLLADOR.md`, `docs/MAPA_PROYECTO.md`)
-8. Documentación histórica (`docs/historial/fases/`)
+7. Guía vigente (`docs/GUIA_MULTIEMPRESA_PROFIT.md`)
 
 Una skill externa **nunca** puede contradecir una regla específica de AGENTS.md o de las skills de dominio. Prevalece la regla específica del proyecto.
 

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, Optional } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../comun/prisma/prisma.service';
 import { ProfitAdapterService } from './profit-adapter.service';
@@ -47,7 +47,6 @@ import {
 } from './profit-article.payload';
 import { deserializarDis } from '../contabilidad/dis.utils';
 import { profitDriver } from './profit-driver';
-import { CorporateEquivalenceService } from './corporate-equivalence.service';
 import { NO_EQUIVALENCES, type EquivalenceLookup } from './corporate-equivalence';
 
 /** Contexto de auditoría corporativa (sin secretos jamás). */
@@ -99,16 +98,6 @@ const ART_TRIGGERS = ['TrigI_art', 'TrigU_art', 'TrigD_art', 'TrigD_artMce'];
 
 const norm = (v: unknown): string => String(v ?? '').trim().toUpperCase();
 
-/** Resumen guardado como texto → objeto (JSON inválido ⇒ null). Puro. */
-function safeParse(value: string | null): unknown {
-  if (!value) return null;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return null;
-  }
-}
-
 function check(key: PreflightCheckKey, ok: boolean, detail: string): PreflightCheck {
   return { key, ok, detail };
 }
@@ -131,17 +120,15 @@ export class CorporateHomologationService {
     private readonly companiesService: CorporateCompaniesService,
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
-    // FASE 26 — opcional: sin él el comportamiento es idéntico al previo
-    // (identidad NO_EQUIVALENCES). En Nest siempre se provee.
-    @Optional() private readonly equivalences?: CorporateEquivalenceService,
   ) {}
 
   /**
-   * FASE 26 — Resolución de códigos por empresa. Objetos identidad cuando no
-   * hay servicio: cero equivalencias ⇒ mismas reglas de la Fase 17.
+   * FASE 27 — Resolución de códigos por empresa. Tras eliminar las
+   * equivalencias, es identidad (fail-closed, igual que el comportamiento
+   * previo sin registros).
    */
   private eq(): EquivalenceLookup {
-    return this.equivalences ?? NO_EQUIVALENCES;
+    return NO_EQUIVALENCES;
   }
 
   private async types(): Promise<any> {
@@ -177,10 +164,8 @@ export class CorporateHomologationService {
       ? opts.catalogs.filter((k) => CORPORATE_CATALOGS[k as CorporateCatalogKey])
       : undefined;
     const standardRows = await this.readAllCatalogs(STANDARD_COMPANY);
-    // FASE 26.2 — "Las descripciones de AD_TRANS mandan" por empresa. Sin fila
-    // o con false: fail-closed (BLOCKED), igual que en la Fase 17.
-    const configs = await this.prisma.profitCompanyConfig.findMany();
-    const descSyncByCompany = new Map(configs.map((c) => [c.code, c.allowDescSync === true]));
+    // FASE 27 — sin configuración de descripciones: fail-closed (BLOCKED).
+    const descSyncByCompany = new Map<string, boolean>();
     const results: CompanyPlanResult[] = [];
     for (const company of companies) {
       const allowDescSync = descSyncByCompany.get(company) === true;
@@ -211,7 +196,7 @@ export class CorporateHomologationService {
       standard: STANDARD_COMPANY,
       companies: results,
       executable: isPlanExecutable(all),
-      descSync: [...descSyncByCompany.entries()].filter(([, v]) => v).map(([k]) => k),
+      descSync: [],
     };
   }
 
@@ -717,83 +702,11 @@ export class CorporateHomologationService {
         return this.applyCatalogPlan(tx, stdRows, items, integrationUser, this.eq());
       });
       await this.audit(ctx, correlationId, 'CORPORATE_WRITE_SUCCEEDED', null, { companies: requested, ...applied });
-      // FASE 26 — deja constancia de "hasta cuándo está al día" cada empresa.
-      await this.recordSyncState(requested, items, correlationId, ctx.userId);
       return { ok: true, companies: requested, inserts: applied.inserts, updates: applied.updates, perCompany: applied.perCompany, rolledBack: false };
     } catch (e: any) {
       await this.audit(ctx, correlationId, 'CORPORATE_ROLLBACK', null, { companies: requested, error: this.safeDetail(e?.message) });
       return { ok: false, companies: requested, inserts: 0, updates: 0, perCompany: [], errorCode: 'CORPORATE_SYNC_FAILED', errorDetail: this.safeDetail(e?.message), rolledBack: true };
     }
-  }
-
-  // -------------------------------------- ESTADO DE SINCRONIZACIÓN (FASE 26)
-
-  /**
-   * Registra, por empresa y catálogo, la última homologación exitosa.
-   * Solo lectura posterior: permite mostrar "al día desde … / N cambios
-   * pendientes" sin volver a tocar Profit.
-   */
-  private async recordSyncState(
-    companies: string[],
-    items: Array<SyncPlanItem & { company: string }>,
-    runId: string,
-    userId: string,
-  ): Promise<void> {
-    try {
-      // Estado informativo: si la tabla/modelo no está disponible nunca debe
-      // romper una homologación ya confirmada.
-      if (typeof (this.prisma as { corporateSyncState?: { upsert?: unknown } }).corporateSyncState?.upsert !== 'function') return;
-      const byKey = new Map<string, { inserts: number; updates: number }>();
-      for (const item of items) {
-        if (item.operation !== 'INSERT' && item.operation !== 'UPDATE_DESCRIPTION') continue;
-        const key = CORPORATE_CATALOG_ORDER.find((k) => CORPORATE_CATALOGS[k].label === item.catalog);
-        if (!key) continue;
-        const mapKey = `${item.company}|${key}`;
-        const stat = byKey.get(mapKey) ?? { inserts: 0, updates: 0 };
-        if (item.operation === 'INSERT') stat.inserts++;
-        else stat.updates++;
-        byKey.set(mapKey, stat);
-      }
-      const now = new Date();
-      for (const company of companies) {
-        for (const key of CORPORATE_CATALOG_ORDER) {
-          const summary = JSON.stringify(byKey.get(`${company}|${key}`) ?? { inserts: 0, updates: 0 });
-          // eslint-disable-next-line no-await-in-loop
-          await this.prisma.corporateSyncState.upsert({
-            where: { companyCode_catalogKey: { companyCode: company, catalogKey: key } },
-            create: { companyCode: company, catalogKey: key, lastSyncAt: now, lastRunId: runId, summary, updatedBy: userId },
-            update: { lastSyncAt: now, lastRunId: runId, summary, updatedBy: userId },
-          });
-        }
-      }
-    } catch (e: any) {
-      // El estado informativo nunca debe romper la homologación ya confirmada.
-      this.logger.warn(`Sync state not recorded: ${e?.message}`);
-    }
-  }
-
-  /** Estado de sincronización (una empresa o todas). Solo lectura local. */
-  async syncState(company?: string): Promise<Array<{
-    company: string;
-    catalog: string;
-    catalogLabel: string;
-    lastSyncAt: Date;
-    lastRunId: string;
-    summary: unknown;
-  }>> {
-    const code = company ? String(company).trim().toUpperCase() : undefined;
-    const rows = await this.prisma.corporateSyncState.findMany({
-      where: code ? { companyCode: code } : undefined,
-      orderBy: [{ companyCode: 'asc' }, { catalogKey: 'asc' }],
-    });
-    return rows.map((r) => ({
-      company: r.companyCode,
-      catalog: r.catalogKey,
-      catalogLabel: CORPORATE_CATALOGS[r.catalogKey as CorporateCatalogKey]?.label ?? r.catalogKey,
-      lastSyncAt: r.lastSyncAt,
-      lastRunId: r.lastRunId,
-      summary: safeParse(r.summary),
-    }));
   }
 
   // -------------------------------- REGISTRAR ARTÍCULO MULTIEMPRESA (§22-§24)

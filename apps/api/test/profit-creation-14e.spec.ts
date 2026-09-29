@@ -109,21 +109,28 @@ describe('14E helpers puros', () => {
     expect(profitSequenceOf('ACTEQTCAT', 'ACTEQT')).toBeNull();
   });
 
-  it('14K.5: buildInsertStatement con 19 columnas y dis_cen VARCHAR(8000)', () => {
+  it('14K.5/FASE27: buildInsertStatement con 20 columnas (incluye anulado) y dis_cen VARCHAR(8000)', () => {
     const p = buildProfitArticlePayload('ACTEQT0001', INPUT);
     const st = buildInsertStatement(p);
     expect(st.sql).toContain('INSERT INTO dbo.art');
-    expect(st.params).toHaveLength(19);
+    expect(st.params).toHaveLength(20);
     const names = st.params.map((x) => x.name);
-    expect(names).toEqual(['co_art', 'art_des', 'tipo', 'co_lin', 'co_subl', 'uni_venta', 'suni_venta', 'tipo_imp', 'co_cat', 'co_color', 'procedenci', 'co_prov', 'tipo_cos', 'dis_cen', 'co_us_in', 'co_sucu', 'uni_compra', 'modelo', 'ref']);
+    expect(names).toEqual(['co_art', 'art_des', 'tipo', 'co_lin', 'co_subl', 'uni_venta', 'suni_venta', 'tipo_imp', 'co_cat', 'co_color', 'procedenci', 'co_prov', 'tipo_cos', 'dis_cen', 'co_us_in', 'co_sucu', 'uni_compra', 'modelo', 'ref', 'anulado']);
     for (const n of names) {
       expect(st.sql).toContain('@' + n);
     }
+    const anulado = st.params.find((x) => x.name === 'anulado')!;
+    expect(anulado.kind).toBe('bit');
+    expect(anulado.value).toBe('0');
+    const activo = buildProfitArticlePayload('ACTEQT0001', { ...INPUT, active: true });
+    expect(buildInsertStatement(activo).params.find((x) => x.name === 'anulado')!.value).toBe('0');
+    const inactivo = buildProfitArticlePayload('ACTEQT0001', { ...INPUT, active: false });
+    expect(buildInsertStatement(inactivo).params.find((x) => x.name === 'anulado')!.value).toBe('1');
     const dis = st.params.find((x) => x.name === 'dis_cen')!;
     expect(dis.kind).toBe('varchar');
     expect(dis.size).toBe(8000);
     expect(dis.value).toBe('');
-    expect(st.params.some((x) => x.kind === 'text')).toBe(false);
+    expect(st.params.some((x) => x.kind === ('text' as any))).toBe(false);
     const us = st.params.find((x) => x.name === 'co_us_in')!;
     expect(us.kind).toBe('char');
     expect(us.size).toBe(6);

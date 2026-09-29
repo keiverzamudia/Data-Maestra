@@ -64,8 +64,8 @@ describe('MultiCompanyAnalyzer', () => {
     renderAnalyzer();
     fireEvent.click(screen.getByText('Analizar compatibilidad'));
     expect(await screen.findByText(/empresas compatibles/)).toBeTruthy();
-    expect((screen.getByLabelText('Seleccionar AD_TRANS') as HTMLInputElement).checked).toBe(true);
-    expect((screen.getByLabelText('Seleccionar AD_ROMA') as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByLabelText('Marcar AD_TRANS como activa') as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByLabelText('Marcar AD_ROMA como activa') as HTMLInputElement).checked).toBe(true);
     const lub = screen.getByLabelText('AD_LUBSL bloqueada') as HTMLInputElement;
     expect(lub.disabled).toBe(true);
     expect(lub.checked).toBe(false);
@@ -100,10 +100,10 @@ describe('MultiCompanyAnalyzer', () => {
     renderAnalyzer();
     fireEvent.click(screen.getByText('Analizar compatibilidad'));
     await screen.findByText(/empresas compatibles/);
-    fireEvent.click(screen.getByLabelText('Seleccionar AD_ROMA'));
+    fireEvent.click(screen.getByLabelText('Marcar AD_ROMA como activa'));
     fireEvent.click(screen.getByText('Continuar'));
     expect(screen.getAllByText(/AD_TRANS/).length).toBeGreaterThanOrEqual(1);
-    fireEvent.click(screen.getByText('Insertar en 1 empresa(s)'));
+    fireEvent.click(screen.getByText('Sí, subir a Profit'));
     await waitFor(() => expect(insertMock).toHaveBeenCalledWith('req-9', ['AD_TRANS']));
     expect(await screen.findByText('✓ Insertado correctamente')).toBeTruthy();
   });
@@ -121,7 +121,7 @@ describe('MultiCompanyAnalyzer', () => {
     fireEvent.click(screen.getByText('Analizar compatibilidad'));
     await screen.findByText(/empresas compatibles/);
     fireEvent.click(screen.getByText('Continuar'));
-    fireEvent.click(screen.getByText(/Insertar en/));
+    fireEvent.click(screen.getByText('Sí, subir a Profit'));
     expect(await screen.findByText('Resultado parcial.')).toBeTruthy();
     expect(screen.getByText(/Error de conexión/)).toBeTruthy();
   });

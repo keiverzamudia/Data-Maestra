@@ -36,6 +36,12 @@ export interface ProfitArticleInput {
    * (ClassifyRequestDto no tiene este campo) ni de la solicitud.
    */
   integrationUser?: string;
+  /**
+   * Activo/Inactivo por empresa (FASE 27). `true` (default) ⇒
+   * `art.anulado = 0` (ACTIVO). `false` ⇒ `art.anulado = 1` (INACTIVO).
+   * En el flujo de una sola empresa siempre es activo.
+   */
+  active?: boolean;
 }
 
 /** Fila a insertar en dbo.art. Todos char/varchar con trim aplicado. */
@@ -64,6 +70,8 @@ export interface ProfitArticlePayload {
   modelo: string;
   /** Referencia (char(20), opcional; FASE 24.2). */
   ref: string;
+  /** Activo/Inactivo (bit; FASE 27). 0 = ACTIVO, 1 = INACTIVO. */
+  anulado: 0 | 1;
 }
 
 /** Límites del contrato 14D §5/§8. */
@@ -102,6 +110,7 @@ export function buildProfitArticlePayload(coArt: string, input: ProfitArticleInp
     uni_compra: unit,
     modelo: clean(input.model).slice(0, 20),
     ref: clean(input.ref).slice(0, 20),
+    anulado: input.active === false ? 1 : 0,
   };
 }
 
@@ -125,13 +134,15 @@ export function profitSequenceOf(coArt: string, prefix: string): number | null {
 }
 
 /** Kinds de parámetro soportados (14K.5: NUNCA text: ODBC lo rechaza). */
-export type ProfitParamKind = 'char' | 'varchar';
+export type ProfitParamKind = 'char' | 'varchar' | 'bit';
 
 export interface ProfitParam {
   name: string;
   kind: ProfitParamKind;
   size: number;
   value: string;
+  /** Valor entero para columnas bit (anulado). Ignorado en char/varchar. */
+  bool?: boolean;
 }
 
 export interface ProfitInsertStatement {
@@ -156,7 +167,7 @@ export function buildInsertStatement(p: ProfitArticlePayload, tableRef = 'dbo.ar
   const cols = [
     'co_art', 'art_des', 'tipo', 'co_lin', 'co_subl', 'uni_venta', 'suni_venta',
     'tipo_imp', 'co_cat', 'co_color', 'procedenci', 'co_prov', 'tipo_cos', 'dis_cen',
-    'co_us_in', 'co_sucu', 'uni_compra', 'modelo', 'ref',
+    'co_us_in', 'co_sucu', 'uni_compra', 'modelo', 'ref', 'anulado',
   ];
   const P = (name: string, kind: ProfitParamKind, size: number, value: string): ProfitParam =>
     ({ name, kind, size, value });
@@ -181,8 +192,33 @@ export function buildInsertStatement(p: ProfitArticlePayload, tableRef = 'dbo.ar
     P('modelo', 'char', 20, p.modelo),
     P('ref', 'char', 20, p.ref),
   ];
+  const anulado = P('anulado', 'bit', 1, p.anulado ? '1' : '0');
+  anulado.bool = p.anulado === 1;
+  params.push(anulado);
   return {
     sql: `INSERT INTO ${tableRef} (${cols.join(', ')}) VALUES (${cols.map((c) => '@' + c).join(', ')})`,
     params,
   };
+}
+
+/**
+ * Mapea los parámetros puros a tipos del driver (FASE 27). `bit` se enlaza
+ * como booleano real (anulado); char/varchar como hoy. Puro respecto al driver.
+ */
+export function bindProfitParams(
+  mssql: any,
+  params: ProfitParam[],
+): Record<string, { type: any; value: any }> {
+  const bound: Record<string, { type: any; value: any }> = {};
+  for (const par of params) {
+    if (par.kind === 'bit') {
+      bound[par.name] = { type: mssql.Bit(), value: par.value === '1' };
+    } else {
+      bound[par.name] = {
+        type: par.kind === 'char' ? mssql.Char(par.size) : mssql.VarChar(par.size),
+        value: par.value,
+      };
+    }
+  }
+  return bound;
 }

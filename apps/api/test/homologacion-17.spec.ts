@@ -27,7 +27,6 @@ import { buildInsertStatement } from '../src/modulos/profit/profit-article.paylo
 import { CorporateCompaniesService } from '../src/modulos/profit/corporate-companies.service';
 import { CorporateHomologationService } from '../src/modulos/profit/corporate-homologation.service';
 import type { EquivalenceLookup } from '../src/modulos/profit/corporate-equivalence';
-import { fakeEquivalences } from './helpers/equivalences';
 
 // ---------------------------------------------------------------------------
 // FASE 17 §28 — Tests con mocks/fixtures. Cero escrituras reales en Profit:
@@ -725,11 +724,11 @@ describe('FASE 17.1 — compatibilidad funcional de triggers', () => {
     }
   });
 
-  it('6: el INSERT de artículo existente continúa sin cambios (19 columnas FASE 24.2)', () => {
-    const p: any = { co_art: 'X', art_des: 'Y', tipo: 'C', co_lin: 'A', co_subl: 'B', uni_venta: 'U', suni_venta: 'U', tipo_imp: '1', co_cat: '01', co_color: '01', procedenci: '01', co_prov: 'GEN', tipo_cos: 'ULCO', dis_cen: '', co_us_in: 'DM', co_sucu: '01', uni_compra: 'U', modelo: '', ref: '' };
+  it('6: el INSERT incluye anulado y continúa el contrato FASE 24.2 (20 columnas FASE 27)', () => {
+    const p: any = { co_art: 'X', art_des: 'Y', tipo: 'C', co_lin: 'A', co_subl: 'B', uni_venta: 'U', suni_venta: 'U', tipo_imp: '1', co_cat: '01', co_color: '01', procedenci: '01', co_prov: 'GEN', tipo_cos: 'ULCO', dis_cen: '', co_us_in: 'DM', co_sucu: '01', uni_compra: 'U', modelo: '', ref: '', anulado: 0 };
     const st = buildInsertStatement(p);
-    expect(st.sql).toBe('INSERT INTO dbo.art (co_art, art_des, tipo, co_lin, co_subl, uni_venta, suni_venta, tipo_imp, co_cat, co_color, procedenci, co_prov, tipo_cos, dis_cen, co_us_in, co_sucu, uni_compra, modelo, ref) VALUES (@co_art, @art_des, @tipo, @co_lin, @co_subl, @uni_venta, @suni_venta, @tipo_imp, @co_cat, @co_color, @procedenci, @co_prov, @tipo_cos, @dis_cen, @co_us_in, @co_sucu, @uni_compra, @modelo, @ref)');
-    expect(st.params.length).toBe(19);
+    expect(st.sql).toBe('INSERT INTO dbo.art (co_art, art_des, tipo, co_lin, co_subl, uni_venta, suni_venta, tipo_imp, co_cat, co_color, procedenci, co_prov, tipo_cos, dis_cen, co_us_in, co_sucu, uni_compra, modelo, ref, anulado) VALUES (@co_art, @art_des, @tipo, @co_lin, @co_subl, @uni_venta, @suni_venta, @tipo_imp, @co_cat, @co_color, @procedenci, @co_prov, @tipo_cos, @dis_cen, @co_us_in, @co_sucu, @uni_compra, @modelo, @ref, @anulado)');
+    expect(st.params.length).toBe(20);
   });
 
   it('7-8: AD_TRANS estándar; LUBSL/ROMA idénticas; COR_A3 equivalente funcional', () => {
@@ -793,100 +792,6 @@ describe('FASE 17.2 — plan y preflight con divergencia real', () => {
     expect(r.errorCode).toBe('CORPORATE_PREFLIGHT_FAILED');
     expect(h.txCalls()).toBe(0);
     expect(h.committed()['AD_DIST']!.art.filter((a) => a['co_art'] === 'FERMIS0664')[0]!['art_des']).toBe('AJENO');
-  });
-});
-
-describe('FASE 26 — equivalencias de catálogo entre empresas', () => {
-  /** AD_DIST con la línea "Ferretería" nombrada FERRO (y su sublínea colgando de ella). */
-  function dbsConLineaLocal(): Record<string, MemDb> {
-    const dbs = twoDbs();
-    dbs['AD_DIST']!.catalogs['lin_art'] = [{ code: 'FERRO', description: 'Ferretería' }];
-    dbs['AD_DIST']!.catalogs['sub_lin'] = [{ code: 'MIS', description: 'Misceláneo', parent: 'FERRO' }];
-    return dbs;
-  }
-
-  it('equivalencia registrada → EQUIVALENTE, cero INSERT duplicado', async () => {
-    const h = makeHarness({ dbs: dbsConLineaLocal(), equivalences: fakeEquivalences({ lin_art: { FER: 'FERRO' } }) });
-    const c = await h.svc.compare(['AD_DIST']);
-    const lin = c.companies[0]!.items.find((i) => i.catalog === 'Líneas' && i.code === 'FER')!;
-    expect(lin.state).toBe('EQUIVALENTE');
-    expect(lin.destCode).toBe('FERRO');
-    expect(lin.operation).toBe('NO_ACTION');
-    expect(lin.safe).toBe(true);
-    expect(c.companies[0]!.summary.equivalentes).toBe(1);
-    expect(c.companies[0]!.summary.faltantes).toBe(0);
-    expect(c.executable).toBe(true);
-    const r = await h.svc.homologate(['AD_DIST'], CTX);
-    expect(r.ok).toBe(true);
-    expect(r.inserts).toBe(0);
-    expect(h.committed()['AD_DIST']!.catalogs['lin_art']).toEqual([
-      { code: 'FERRO', description: 'Ferretería', parent: undefined },
-    ]);
-  });
-
-  it('equivalencia a código local inexistente → crea el LOCAL, no el canónico', async () => {
-    const dbs = twoDbs();
-    dbs['AD_DIST']!.catalogs['sub_lin'] = [{ code: 'MIS', description: 'Misceláneo', parent: 'FERRO' }];
-    const h = makeHarness({ dbs, equivalences: fakeEquivalences({ lin_art: { FER: 'FERRO' } }) });
-    const c = await h.svc.compare(['AD_DIST']);
-    const lin = c.companies[0]!.items.find((i) => i.catalog === 'Líneas' && i.code === 'FER')!;
-    expect(lin.state).toBe('FALTA_EN_DESTINO');
-    expect(lin.destCode).toBe('FERRO');
-    expect(lin.operation).toBe('INSERT');
-    const r = await h.svc.homologate(['AD_DIST'], CTX);
-    expect(r.ok).toBe(true);
-    expect(r.inserts).toBe(1);
-    expect(h.committed()['AD_DIST']!.catalogs['lin_art'].map((x) => x.code)).toEqual(['FERRO']);
-  });
-
-  it('mismo co_art en todas; solo las claves foráneas se traducen', async () => {
-    const h = makeHarness({ dbs: dbsConLineaLocal(), equivalences: fakeEquivalences({ lin_art: { FER: 'FERRO' } }) });
-    const r = await h.svc.registerArticle(['AD_DIST'], ARTICLE, CTX);
-    expect(r.errorCode).toBeUndefined();
-    expect(r.ok).toBe(true);
-    const trans = h.committed()['AD_TRANS']!.art.find((a) => a['co_art'] === r.coArt)!;
-    const dist = h.committed()['AD_DIST']!.art.find((a) => a['co_art'] === r.coArt)!;
-    expect(dist['co_art']).toBe(trans['co_art']);
-    expect(trans['co_lin']).toBe('FER');
-    expect(dist['co_lin']).toBe('FERRO');
-    expect(dist['art_des']).toBe(trans['art_des']);
-    expect(r.perCompanyVerify.every((v) => v.verified)).toBe(true);
-  });
-
-  it('sin equivalencia registrada el código canónico se replica tal cual', async () => {
-    const h = makeHarness({ dbs: dbsConLineaLocal() });
-    const c = await h.svc.compare(['AD_DIST']);
-    const lin = c.companies[0]!.items.find((i) => i.catalog === 'Líneas' && i.code === 'FER')!;
-    expect(lin.state).toBe('FALTA_EN_DESTINO');
-    expect(lin.destCode).toBeUndefined();
-  });
-
-  it('sublínea colgada de otra línea → se crea el PAR faltante (FASE 26.4)', async () => {
-    const dbs = dbsConLineaLocal();
-    dbs['AD_DIST']!.catalogs['sub_lin'] = [{ code: 'MIS', description: 'Misceláneo', parent: 'SOF' }];
-    const h = makeHarness({ dbs, equivalences: fakeEquivalences({ lin_art: { FER: 'FERRO' } }) });
-    const c = await h.svc.compare(['AD_DIST']);
-    const sub = c.companies[0]!.items.find((i) => i.catalog === 'Sublíneas' && i.code === 'MIS')!;
-    expect(sub.state).toBe('FALTA_EN_DESTINO');
-    expect(sub.operation).toBe('INSERT');
-    expect(c.executable).toBe(true);
-    const r = await h.svc.homologate(['AD_DIST'], CTX);
-    expect(r.ok).toBe(true);
-    expect(h.txCalls()).toBe(1);
-    // Crea (FERRO, MIS) —bajo la línea local equivalente— y respeta (SOF, MIS).
-    expect(h.committed()['AD_DIST']!.catalogs['sub_lin']).toEqual([
-      { code: 'MIS', description: 'Misceláneo', parent: 'SOF' },
-      { code: 'MIS', description: 'Misceláneo', parent: 'FERRO' },
-    ]);
-  });
-
-  it('la última sincronización queda registrada por empresa y catálogo', async () => {
-    const h = makeHarness({ dbs: twoDbs() });
-    await h.svc.homologate(['AD_DIST'], CTX);
-    const state = await h.svc.syncState('AD_DIST');
-    expect(state).toHaveLength(8);
-    expect(state.every((s) => s.company === 'AD_DIST')).toBe(true);
-    expect(state.find((s) => s.catalog === 'lin_art')!.summary).toEqual({ inserts: 1, updates: 0 });
   });
 });
 
