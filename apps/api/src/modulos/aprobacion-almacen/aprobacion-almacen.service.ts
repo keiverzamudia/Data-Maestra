@@ -96,11 +96,14 @@ export class AprobacionAlmacenService {
     if (!requestData || !requestData.groupId || !requestData.subgroupId || !requestData.masterCode) {
       throw new BadRequestException('No se puede aprobar: la clasificación de Almacén está incompleta. Faltan grupo, subgrupo o código master.');
     }
-    const rd = requestData as { articleType?: string | null; unitCode?: string | null; taxType?: string | null };
+    // Mismo requisito que Almacén (14C-FORM §23): tipo y unidad Profit.
+    // El impuesto (tipo_imp) NO se exige aquí: lo define Contabilidad al
+    // aprobar, igual que en almacen.service.ts. Exigirlo en Almacén
+    // bloqueaba la aprobación con un dato que Almacén nunca captura.
+    const rd = requestData as { articleType?: string | null; unitCode?: string | null };
     const missing: string[] = [];
     if (!rd.articleType) missing.push('tipo de artículo');
     if (!rd.unitCode) missing.push('unidad Profit');
-    if (!rd.taxType) missing.push('impuesto (tipo_imp)');
     if (missing.length > 0) {
       throw new BadRequestException(`No se puede aprobar: faltan datos para Profit: ${missing.join(', ')}.`);
     }

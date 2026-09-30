@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import fs from 'fs';
 import path from 'path';
+import { Pause } from 'lucide-react';
 
 /**
  * Puertos por worktree: se leen de `<repoRoot>/.env.local` (no versionado).
@@ -46,6 +47,7 @@ export default defineConfig(() => {
     server: {
       // Escucha en todas las interfaces: necesario para que cloudflared y la
       // red local alcancen el dev server (el túnel sondea [::1], IPv6).
+
       host: true,
       port: webPort,
       // Falla explícitamente si el puerto está ocupado en vez de saltar a otro

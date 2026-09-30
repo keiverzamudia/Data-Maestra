@@ -448,25 +448,31 @@ escrituras fuera del adapter de escritura.
 
 ### Módulo MANEJO MULTIEMPRESA (implementado)
 
-- **Pantalla** `/multiempresa` (menú *Trabajo*), 3 pasos: sincronizar maestro →
-  analizar empresas → confirmar propuestas. Cada propuesta trae el código
-  **editable** y botones Confirmar / Rechazar / Confirmar todas.
-- **Modelos**: `master_catalog_entry`, `company_catalog_code`,
-  `company_catalog_proposal` (migración `prisma/migrate-fase27-multiempresa.js`).
-- **Servicio** `catalog-sync.service.ts`:
-  - `syncMaster()` — copia el catálogo de AD_TRANS (solo lectura en Profit).
-  - `analyze()` — por empresa y catálogo: `IGUAL` / `FALTA` / `CONFLICTO` /
-    `RESUELTO`. En CONFLICTO propone el siguiente código libre (`COM1`, `COM2`…)
-    y **nunca** toca la fila existente.
-  - `confirm()` — crea el elemento en la empresa (transacción global, flag +
-    `PROFIT.WRITE`) y registra el vínculo; auditado.
-  - `reject()` — no escribe nada en Profit; queda registrado.
-  - `resolveArticleInput()` — al subir el artículo, traduce cada clave a su
-    código local confirmado (`co_lin = COM1` en AD_DIST).
+- **Pantalla** `/multiempresa` (menú *Trabajo*), navegada en niveles para que
+  nada quede desbordado:
+  1. Maestro (AD_TRANS) → sincronizar.
+  2. **Empresas** → solo contadores; se elige una.
+  3. **Catálogos de esa empresa** → se elige uno.
+  4. **Detalle** → una página de 20 diferencias (IGUALES ocultos), buscador y
+     paginación.
+  5. **Conflictos por decidir** → casillas, código editable, *Confirmar
+     seleccionadas* y *Aceptar todas* de ese catálogo.
+- **Catálogos por defecto**: `lin_art`, `sub_lin`, `cat_art`, `colores`,
+  `unidades`, `tabulado`. `prov` (1.873 filas) y `proceden` quedan **fuera**
+  salvo "incluir proveedores": el artículo siempre usa GEN / 01.
+- **Faltantes → se crean solos** con `autoCreate` (interruptor visible): inserta
+  lo que no existe, **sin tocar ni borrar ninguna fila existente**, en
+  transacción global y auditado.
+- **Conflictos → decisión humana**: mismo código con otra descripción nunca se
+  renombra; se propone el siguiente libre (`COM` → `COM1`, `01` → `011`).
+- **Endpoints** `/api/v1/profit/multiempresa`: `GET status|master|proposals`,
+  `POST master/sync|analyze|proposals/confirm|proposals/confirm-bulk|`
+  `proposals/confirm-all|proposals/reject`. `analyze` acepta
+  `{ company?, catalog?, catalogs?, includeProviders?, autoCreate?, limit?,
+  offset? }` y devuelve contadores por empresa **y por catálogo** más **una
+  sola página** de problemas.
 - **Contabilidad**: si la solicitud no trae cuentas, se usa `lin_art.dis_cen`
   del maestro (universal, idéntico en todas las empresas).
-- **Endpoints** bajo `/api/v1/profit/multiempresa`: `GET status|master|proposals`,
-  `POST master/sync|analyze|proposals/confirm|proposals/confirm-all|proposals/reject`.
 
 ### Pendiente
 
@@ -475,7 +481,6 @@ escrituras fuera del adapter de escritura.
 
 ### Verificación
 
-- API: `typecheck` OK · `vitest` **812 passed / 3 skipped**.
+- API: `typecheck` OK · `vitest` **818 passed / 3 skipped** (14 del módulo).
 - Web: `typecheck` OK · `vitest` **308 passed**.
-- `pnpm build` (API + Web) OK.
-- Migraciones aplicadas en la base local.
+- `pnpm build` (API + Web) OK · API `GET /api/v1/health` = 200.

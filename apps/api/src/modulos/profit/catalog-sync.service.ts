@@ -27,39 +27,82 @@ import type { ProfitArticleInput } from './profit-article.payload';
 
 export type ProposalStatus = 'PENDING' | 'CONFIRMED' | 'REJECTED';
 export type ProposalReason = 'FALTA' | 'CONFLICTO';
+export type LineState = 'IGUAL' | 'FALTA' | 'CONFLICTO' | 'RESUELTO' | 'CREADO';
 
 /** Ancho máximo de los códigos de catálogo en Profit (char(6) en AD_TRANS). */
 const MAX_CODE_LEN = 6;
+
+/**
+ * Catálogos que un artículo realmente necesita. `prov` y `proceden` quedan
+ * fuera porque son voluminosos y el artículo siempre usa los códigos fijos
+ * GEN / 01: incluirlos solo genera ruido.
+ */
+export const DEFAULT_CATALOGS: CorporateCatalogKey[] = [
+  'tabulado',
+  'unidades',
+  'lin_art',
+  'sub_lin',
+  'cat_art',
+  'colores',
+];
+export const PROVIDER_CATALOGS: CorporateCatalogKey[] = ['prov', 'proceden'];
 
 export interface CatalogDiffLine {
   catalogKey: CorporateCatalogKey;
   catalogLabel: string;
   masterCode: string;
   masterDescription: string;
-  /** Estado en la empresa destino. */
-  state: 'IGUAL' | 'FALTA' | 'CONFLICTO' | 'RESUELTO';
-  /** Código que existe hoy en destino con otro significado. */
+  state: LineState;
   localExistingCode: string | null;
   localExistingDescription: string | null;
-  /** Código propuesto (para FALTA = el del maestro; para CONFLICTO = COM1…). */
   proposedCode: string | null;
   detail: string;
+}
+
+export interface CatalogCount {
+  key: CorporateCatalogKey;
+  label: string;
+  iguales: number;
+  faltantes: number;
+  conflictos: number;
+  resueltos: number;
+  creados: number;
+  total: number;
+  /** Pendientes de decisión humana (solo conflictos). */
+  pending: number;
 }
 
 export interface CompanyCatalogReport {
   company: string;
   name: string;
   isStandard: boolean;
-  counts: { iguales: number; faltantes: number; conflictos: number; resueltos: number };
+  counts: { iguales: number; faltantes: number; conflictos: number; resueltos: number; creados: number };
+  catalogs: CatalogCount[];
+  /** Solo la página de problemas pedida (IGUALES no se envían). */
   lines: CatalogDiffLine[];
+  totalProblems: number;
+  offset: number;
+  limit: number;
 }
 
 export interface CatalogAnalysisResult {
   standard: string;
   masterTotal: number;
+  catalogs: CorporateCatalogKey[];
   companies: CompanyCatalogReport[];
   pendingProposals: number;
+  autoCreated: number;
   analyzedAt: string;
+}
+
+export interface AnalyzeOptions {
+  company?: string;
+  catalogs?: string[];
+  includeProviders?: boolean;
+  autoCreate?: boolean;
+  limit?: number;
+  offset?: number;
+  catalog?: string;
 }
 
 export interface ProposalView {
@@ -80,6 +123,7 @@ export interface ProposalView {
 
 const up = (v: unknown): string => String(v ?? '').trim().toUpperCase();
 const normDesc = (v: unknown): string => String(v ?? '').trim().replace(/\s+/g, ' ').toUpperCase();
+const emptyCounts = () => ({ iguales: 0, faltantes: 0, conflictos: 0, resueltos: 0, creados: 0 });
 
 /**
  * FASE 27 — MANEJO MULTIEMPRESA.
@@ -88,7 +132,8 @@ const normDesc = (v: unknown): string => String(v ?? '').trim().replace(/\s+/g, 
  * `TEmpresas` siguiendo reglas estrictas:
  *
  *  1. Si ya existe un vínculo confirmado → el elemento está resuelto.
- *  2. Si el código del maestro existe libre en destino → se puede replicar tal cual.
+ *  2. Si el código del maestro NO existe en destino → es un faltante: se crea
+ *     solo (INSERT de una fila que no existía; nunca se toca nada existente).
  *  3. Si el código del maestro existe con OTRO significado → NUNCA se borra ni
  *     se renombra: se propone un código nuevo (COM1, COM2…) y **una persona lo
  *     confirma**. Nada se aplica solo.
@@ -124,6 +169,24 @@ export class CatalogSyncService {
     return code;
   }
 
+  /** Catálogos efectivos según los filtros recibidos. */
+  private selectedCatalogs(opts: AnalyzeOptions): CorporateCatalogKey[] {
+    const valid = CORPORATE_CATALOG_ORDER;
+    if (opts.catalog) {
+      if (!valid.includes(opts.catalog as CorporateCatalogKey)) {
+        throw new BadRequestException(`Catálogo indicado no es válido: ${opts.catalog}`);
+      }
+      return [opts.catalog as CorporateCatalogKey];
+    }
+    if (opts.catalogs?.length) {
+      const picked = opts.catalogs.filter((k) => valid.includes(k as CorporateCatalogKey)) as CorporateCatalogKey[];
+      if (!picked.length) throw new BadRequestException('Catálogo indicado no es válido.');
+      return CORPORATE_CATALOG_ORDER.filter((k) => picked.includes(k));
+    }
+    const base = opts.includeProviders ? [...DEFAULT_CATALOGS, ...PROVIDER_CATALOGS] : [...DEFAULT_CATALOGS];
+    return CORPORATE_CATALOG_ORDER.filter((k) => base.includes(k));
+  }
+
   // ------------------------------------------------------------- lectura
 
   /** Lee un catálogo de una empresa (solo lectura). */
@@ -135,15 +198,6 @@ export class CatalogSyncService {
       description: String(r['description'] ?? '').trim(),
       parent: r['parent'] !== undefined ? String(r['parent'] ?? '').trim() : undefined,
     }));
-  }
-
-  private async readCatalogsOf(company: string): Promise<Record<CorporateCatalogKey, CatalogRow[]>> {
-    const out = {} as Record<CorporateCatalogKey, CatalogRow[]>;
-    for (const key of CORPORATE_CATALOG_ORDER) {
-      // eslint-disable-next-line no-await-in-loop
-      out[key] = await this.readCatalog(company, key);
-    }
-    return out;
   }
 
   // ------------------------------------------------- 1. catálogo maestro
@@ -163,12 +217,7 @@ export class CatalogSyncService {
         // eslint-disable-next-line no-await-in-loop
         await this.prisma.masterCatalogEntry.upsert({
           where: { catalogKey_code: { catalogKey: key, code: r.code } },
-          create: {
-            catalogKey: key,
-            code: r.code,
-            description: r.description,
-            parentCode: r.parent ? r.parent : null,
-          },
+          create: { catalogKey: key, code: r.code, description: r.description, parentCode: r.parent ? r.parent : null },
           update: { description: r.description, parentCode: r.parent ? r.parent : null, active: true },
         });
       }
@@ -196,8 +245,6 @@ export class CatalogSyncService {
     return rows.map((r) => ({ catalogKey: r.catalogKey, code: r.code, description: r.description, parentCode: r.parentCode }));
   }
 
-  // -------------------------------------------- 2. analizar y proponer
-
   /** Genera el siguiente código libre: base + 1, 2, 3… (COM → COM1). */
   private nextFreeCode(base: string, taken: Set<string>): string {
     const b = String(base ?? '').trim();
@@ -212,113 +259,194 @@ export class CatalogSyncService {
   }
 
   /**
-   * Compara el maestro contra cada empresa, registra las propuestas PENDING y
-   * devuelve el reporte. Solo lectura en Profit + escritura local.
+   * Crea UN elemento de catálogo en la empresa destino. Solo inserta: el
+   * llamador ya verificó que el código no existe. Transacción global.
    */
-  async analyze(actorId?: string): Promise<CatalogAnalysisResult> {
+  private async createElement(
+    company: string,
+    key: CorporateCatalogKey,
+    code: string,
+    description: string,
+    parent: string | undefined,
+  ): Promise<void> {
+    const desc = CORPORATE_CATALOGS[key];
+    const mssql = await this.types();
+    const integrationUser = this.integrationUser();
+    const { sql, params } = catalogInsertForCompany(desc, company, {
+      ...(desc.acceptsIntegrationUser ? { integrationUser } : {}),
+    });
+    const size: Record<string, number> = { c0: 30, c1: 120, c2: 6, cu: 6 };
+    const values: Record<string, string> = { c0: code, c1: description, c2: parent ?? '', cu: integrationUser };
+    const boundParams: ProfitParam[] = params.map((name) => ({ name, kind: 'char', size: size[name] ?? 30, value: values[name] ?? '' }));
+    await this.writeAdapter.runInGlobalTransaction(async (tx) => {
+      await tx(sql, bindProfitParams(mssql, boundParams));
+    });
+  }
+
+  /** Registra el vínculo maestro ↔ empresa. */
+  private async saveLink(
+    key: CorporateCatalogKey,
+    company: string,
+    masterCode: string,
+    localCode: string,
+    note: string | undefined,
+    actorId: string,
+  ): Promise<void> {
+    await this.prisma.companyCatalogCode.upsert({
+      where: { catalogKey_companyCode_masterCode: { catalogKey: key, companyCode: company, masterCode } },
+      create: { catalogKey: key, companyCode: company, masterCode, localCode, origin: localCode === masterCode ? 'MASTER' : 'LOCAL_NEW', note, createdBy: actorId },
+      update: { localCode, active: true, note, createdBy: actorId },
+    });
+  }
+
+  // -------------------------------------------- 2. analizar y proponer
+
+  /**
+   * Compara el maestro contra las empresas. Por defecto procesa SOLO los
+   * catálogos que usa un artículo y devuelve contadores por empresa y por
+   * catálogo, más UNA página de problemas (nunca la lista completa).
+   *
+   * - Faltantes: si `autoCreate` y la escritura está habilitada, se crean
+   *   solos (INSERT de filas que no existían).
+   * - Conflictos: generan propuesta PENDING; requieren confirmación humana.
+   */
+  async analyze(actorId?: string, opts: AnalyzeOptions = {}): Promise<CatalogAnalysisResult> {
+    const catalogs = this.selectedCatalogs(opts);
     const masterTotal = await this.masterCount();
     if (masterTotal === 0) {
       throw new BadRequestException('Sincronice primero el catálogo maestro (AD_TRANS).');
     }
-    const masterRows = await this.prisma.masterCatalogEntry.findMany({ where: { active: true } });
-    const masterByKey = new Map<CorporateCatalogKey, Map<string, { description: string; parent: string | null }>>();
-    for (const key of CORPORATE_CATALOG_ORDER) masterByKey.set(key, new Map());
-    for (const m of masterRows) {
-      if (!masterByKey.has(m.catalogKey as CorporateCatalogKey)) continue;
-      masterByKey.get(m.catalogKey as CorporateCatalogKey)!.set(up(m.code), {
-        description: m.description,
-        parent: m.parentCode ? up(m.parentCode) : null,
-      });
+    const autoCreate = opts.autoCreate === true && this.writeAdapter.isWriteEnabled();
+    const limit = Math.min(Math.max(Number(opts.limit ?? 20) || 20, 1), 200);
+    const offset = Math.max(Number(opts.offset ?? 0) || 0, 0);
+
+    const masterRows = await this.prisma.masterCatalogEntry.findMany({
+      where: { active: true, catalogKey: { in: catalogs as string[] } },
+    });
+    const mapped = await this.prisma.companyCatalogCode.findMany({ where: { active: true } });
+    const pendingAll = await this.prisma.companyCatalogProposal.count({ where: { status: 'PENDING' } });
+    const pendingByKey = new Map<string, number>();
+    const pendingRows = await this.prisma.companyCatalogProposal.findMany({ where: { status: 'PENDING' }, select: { companyCode: true, catalogKey: true } });
+    for (const p of pendingRows) {
+      const k = `${p.companyCode}|${p.catalogKey}`;
+      pendingByKey.set(k, (pendingByKey.get(k) ?? 0) + 1);
     }
 
-    const list = await this.companies.listCompanies();
-    const mapped = await this.prisma.companyCatalogCode.findMany({ where: { active: true } });
-    const mappedKey = (catalogKey: string, company: string, master: string) =>
-      mapped.some((r) => r.catalogKey === catalogKey && r.companyCode === company && up(r.masterCode) === master);
+    const list = (await this.companies.listCompanies())
+      .filter((c) => (opts.company ? c.code === up(opts.company) : true));
 
     const reports: CompanyCatalogReport[] = [];
-    let created = 0;
+    let autoCreated = 0;
 
     for (const c of list) {
       if (c.code === STANDARD_COMPANY) {
         reports.push({
           company: c.code, name: c.name, isStandard: true,
-          counts: { iguales: 0, faltantes: 0, conflictos: 0, resueltos: 0 }, lines: [],
+          counts: emptyCounts(), catalogs: [], lines: [], totalProblems: 0, offset: 0, limit,
         });
         continue;
       }
-      // eslint-disable-next-line no-await-in-loop
-      const dest = await this.readCatalogsOf(c.code);
-      const lines: CatalogDiffLine[] = [];
-      const counts = { iguales: 0, faltantes: 0, conflictos: 0, resueltos: 0 };
+      const company = c.code;
+      const companyLines: CatalogDiffLine[] = [];
+      const counts = emptyCounts();
+      const catalogCounts: CatalogCount[] = [];
 
-      for (const key of CORPORATE_CATALOG_ORDER) {
-        const master = masterByKey.get(key)!;
+      for (const key of catalogs) {
         const desc = CORPORATE_CATALOGS[key];
-        // Índice del destino: código normalizado (y par código|padre si es jerárquico).
+        // eslint-disable-next-line no-await-in-loop
+        const master = masterRows.filter((m) => m.catalogKey === key);
+        if (!master.length) continue;
+        // eslint-disable-next-line no-await-in-loop
+        const dest = await this.readCatalog(company, key);
+        const cc = { key, label: desc.label, ...emptyCounts(), total: master.length, pending: 0 };
         const index = new Map<string, CatalogRow>();
         const used = new Set<string>();
-        for (const r of dest[key]) {
-          const k = desc.parentColumn ? `${up(r.parent ?? '')}|${up(r.code)}` : up(r.code);
-          index.set(k, r);
+        for (const r of dest) {
+          index.set(desc.parentColumn ? `${up(r.parent ?? '')}|${up(r.code)}` : up(r.code), r);
           used.add(up(r.code));
         }
-        // El padre se traduce con el vínculo ya confirmado.
-        const parentLocal = (parentMaster: string | null): string | null => {
+        const parentLocal = (parentMaster: string | null | undefined): string | null => {
           if (!parentMaster || !desc.parentCatalog) return null;
           const hit = mapped.find(
-            (r) => r.catalogKey === desc.parentCatalog && r.companyCode === c.code && up(r.masterCode) === parentMaster,
+            (r) => r.catalogKey === desc.parentCatalog && r.companyCode === company && up(r.masterCode) === up(parentMaster!),
           );
-          return hit ? hit.localCode : parentMaster;
+          return hit ? hit.localCode : up(parentMaster!);
         };
 
-        for (const [mcode, mval] of master) {
-          const pLocal = parentLocal(mval.parent);
-          const k = desc.parentColumn ? `${pLocal ?? ''}|${mcode}` : mcode;
-          const found = index.get(k);
-          const base: Omit<CatalogDiffLine, 'state' | 'localExistingCode' | 'localExistingDescription' | 'proposedCode' | 'detail'> = {
-            catalogKey: key, catalogLabel: desc.label, masterCode: mcode, masterDescription: mval.description,
-          };
-          if (mappedKey(key, c.code, mcode)) {
-            counts.resueltos += 1;
-            lines.push({ ...base, state: 'RESUELTO', localExistingCode: null, localExistingDescription: null, proposedCode: null, detail: 'Vínculo confirmado: ya existe con su código local.' });
+        for (const m of master) {
+          const mcode = up(m.code);
+          const pLocal = parentLocal(m.parentCode);
+          const found = index.get(desc.parentColumn ? `${pLocal ?? ''}|${mcode}` : mcode);
+          const hasLink = mapped.some((r) => r.catalogKey === key && r.companyCode === company && up(r.masterCode) === mcode);
+          const base = { catalogKey: key, catalogLabel: desc.label, masterCode: mcode, masterDescription: m.description };
+
+          if (hasLink) {
+            cc.resueltos += 1; counts.resueltos += 1;
             continue;
           }
           if (!found) {
-            counts.faltantes += 1;
-            lines.push({ ...base, state: 'FALTA', localExistingCode: null, localExistingDescription: null, proposedCode: mcode, detail: 'No existe en esta empresa. Se creará con el código del maestro.' });
+            const free = !used.has(mcode);
+            if (autoCreate && free) {
+              // Faltante: se crea solo. Nunca se toca una fila existente.
+              // eslint-disable-next-line no-await-in-loop
+              await this.createElement(company, key, mcode, m.description, pLocal ?? undefined);
+              // eslint-disable-next-line no-await-in-loop
+              await this.saveLink(key, company, mcode, mcode, 'Creado automáticamente por Manejo Multiempresa', actorId ?? 'SYSTEM');
+              used.add(mcode);
+              cc.creados += 1; counts.creados += 1; autoCreated += 1;
+              companyLines.push({
+                ...base, state: 'CREADO', localExistingCode: null, localExistingDescription: null,
+                proposedCode: mcode, detail: 'No existía en esta empresa: se creó con el código del maestro.',
+              });
+              continue;
+            }
+            cc.faltantes += 1; counts.faltantes += 1;
+            companyLines.push({
+              ...base, state: 'FALTA', localExistingCode: null, localExistingDescription: null,
+              proposedCode: mcode, detail: 'No existe en esta empresa. Se creará con el código del maestro.',
+            });
             // eslint-disable-next-line no-await-in-loop
-            created += await this.ensureProposal(key, c.code, mcode, mval.description, mcode, 'FALTA', 'No existe en esta empresa; se creará con el código del maestro.');
+            await this.ensureProposal(key, company, mcode, m.description, mcode, 'FALTA', 'No existe en esta empresa; se creará con el código del maestro.');
             continue;
           }
-          if (normDesc(found.description) === normDesc(mval.description)) {
-            counts.iguales += 1;
-            lines.push({ ...base, state: 'IGUAL', localExistingCode: found.code, localExistingDescription: found.description, proposedCode: null, detail: 'Ya coincide con el maestro.' });
+          if (normDesc(found.description) === normDesc(m.description)) {
+            cc.iguales += 1; counts.iguales += 1;
             continue;
           }
           // CONFLICTO: mismo código, otro significado. No se toca lo existente.
-          counts.conflictos += 1;
           const proposal = this.nextFreeCode(mcode, used);
           used.add(up(proposal));
-          lines.push({
-            ...base, state: 'CONFLICTO',
-            localExistingCode: found.code, localExistingDescription: found.description,
+          cc.conflictos += 1; counts.conflictos += 1;
+          companyLines.push({
+            ...base, state: 'CONFLICTO', localExistingCode: found.code, localExistingDescription: found.description,
             proposedCode: proposal,
             detail: `El código ${found.code} ya existe con otra descripción ("${found.description}"). Se propone crear ${proposal} sin tocar la fila existente.`,
           });
           // eslint-disable-next-line no-await-in-loop
-          created += await this.ensureProposal(key, c.code, mcode, mval.description, proposal, 'CONFLICTO', `El código ${found.code} ya existe con otra descripción ("${found.description}").`);
+          await this.ensureProposal(
+            key, company, mcode, m.description, proposal, 'CONFLICTO',
+            `El código ${found.code} ya existe con otra descripción ("${found.description}").`,
+          );
         }
+        cc.pending = pendingByKey.get(`${company}|${key}`) ?? 0;
+        catalogCounts.push(cc);
       }
-      reports.push({ company: c.code, name: c.name, isStandard: false, counts, lines });
+
+      const page = companyLines.slice(offset, offset + limit);
+      reports.push({
+        company, name: c.name, isStandard: false, counts,
+        catalogs: catalogCounts, lines: page, totalProblems: companyLines.length, offset, limit,
+      });
     }
 
     const pending = await this.prisma.companyCatalogProposal.count({ where: { status: 'PENDING' } });
     const result: CatalogAnalysisResult = {
       standard: STANDARD_COMPANY,
       masterTotal,
+      catalogs,
       companies: reports,
-      pendingProposals: pending,
+      pendingProposals: pending || pendingAll,
+      autoCreated,
       analyzedAt: new Date().toISOString(),
     };
     await this.auditoria.logEvent({
@@ -327,8 +455,22 @@ export class CatalogSyncService {
       entityType: 'CatalogAnalysis',
       entityId: 'ANALISIS',
       action: 'MULTIEMPRESA_CATALOG_ANALYZED',
-      afterData: JSON.stringify({ companies: reports.map((r) => ({ company: r.company, ...r.counts })), pending, created }),
+      afterData: JSON.stringify({
+        catalogs, autoCreate, autoCreated,
+        companies: reports.map((r) => ({ company: r.company, ...r.counts, problems: r.totalProblems })),
+        pending,
+      }),
     }).catch((e: any) => this.logger.error(`Audit failed: ${e?.message}`));
+    if (autoCreated > 0) {
+      await this.auditoria.logEvent({
+        correlationId: randomUUID(),
+        actorId,
+        entityType: 'MasterCatalogEntry',
+        entityId: 'AUTO_CREATE',
+        action: 'MULTIEMPRESA_CATALOG_AUTO_CREATED',
+        afterData: JSON.stringify({ autoCreated, catalogs }),
+      }).catch((e: any) => this.logger.error(`Audit failed: ${e?.message}`));
+    }
     return result;
   }
 
@@ -360,12 +502,43 @@ export class CatalogSyncService {
 
   // ------------------------------------------- 3. confirmación humana
 
-  async proposals(company?: string): Promise<ProposalView[]> {
+  async proposals(company?: string, catalog?: string): Promise<ProposalView[]> {
     const rows = await this.prisma.companyCatalogProposal.findMany({
-      where: company ? { companyCode: company } : undefined,
+      where: {
+        ...(company ? { companyCode: up(company) } : {}),
+        ...(catalog ? { catalogKey: catalog } : {}),
+      },
       orderBy: [{ status: 'asc' }, { companyCode: 'asc' }, { catalogKey: 'asc' }, { masterCode: 'asc' }],
     });
-    return rows.map((r) => ({
+    return rows.map((r) => this.toView(r));
+  }
+
+  /** Pendientes agrupados por empresa y catálogo (alimenta las pestañas). */
+  async proposalCounts(): Promise<Array<{ companyCode: string; catalogKey: string; catalogLabel: string; pending: number; conflicts: number; missing: number }>> {
+    const rows = await this.prisma.companyCatalogProposal.groupBy({
+      by: ['companyCode', 'catalogKey', 'reason'],
+      where: { status: 'PENDING' },
+      _count: { _all: true },
+    });
+    const map = new Map<string, { companyCode: string; catalogKey: string; catalogLabel: string; pending: number; conflicts: number; missing: number }>();
+    for (const r of rows) {
+      const k = `${r.companyCode}|${r.catalogKey}`;
+      const cur = map.get(k) ?? {
+        companyCode: r.companyCode,
+        catalogKey: r.catalogKey,
+        catalogLabel: CORPORATE_CATALOGS[r.catalogKey as CorporateCatalogKey]?.label ?? r.catalogKey,
+        pending: 0, conflicts: 0, missing: 0,
+      };
+      cur.pending += r._count._all;
+      if (r.reason === 'CONFLICTO') cur.conflicts += r._count._all;
+      else cur.missing += r._count._all;
+      map.set(k, cur);
+    }
+    return [...map.values()].sort((a, b) => a.companyCode.localeCompare(b.companyCode) || a.catalogKey.localeCompare(b.catalogKey));
+  }
+
+  private toView(r: any): ProposalView {
+    return {
       id: r.id,
       catalogKey: r.catalogKey,
       catalogLabel: CORPORATE_CATALOGS[r.catalogKey as CorporateCatalogKey]?.label ?? r.catalogKey,
@@ -376,10 +549,10 @@ export class CatalogSyncService {
       reason: r.reason as ProposalReason,
       detail: r.detail,
       status: r.status as ProposalStatus,
-      createdAt: r.createdAt.toISOString(),
+      createdAt: r.createdAt ? r.createdAt.toISOString() : new Date().toISOString(),
       decidedAt: r.decidedAt ? r.decidedAt.toISOString() : null,
       decidedBy: r.decidedBy,
-    }));
+    };
   }
 
   /**
@@ -400,14 +573,9 @@ export class CatalogSyncService {
     if (!code) throw new BadRequestException('Indique el código local a crear.');
     if (code.length > MAX_CODE_LEN) throw new BadRequestException(`El código no puede superar ${MAX_CODE_LEN} caracteres.`);
 
-    // Verificación fresca: el código debe seguir libre en destino.
-    const rows = await this.readCatalog(p.companyCode, key);
-    const clash = rows.find((r) => up(r.code) === code);
-    if (clash) {
-      throw new ConflictException(`El código ${code} ya existe en ${p.companyCode} con la descripción "${clash.description}".`);
-    }
-
     // Padre traducido con los vínculos ya confirmados (sub_lin → lin_art).
+    // Se resuelve ANTES del chequeo de ocupación: en catálogos jerárquicos la
+    // identidad real es el PAR (co_subl, co_lin) — es la PK de Profit.
     let parent: string | undefined;
     if (desc.parentCatalog) {
       const masterParent = await this.prisma.masterCatalogEntry.findUnique({
@@ -418,49 +586,29 @@ export class CatalogSyncService {
         const link = await this.prisma.companyCatalogCode.findFirst({
           where: { catalogKey: desc.parentCatalog, companyCode: p.companyCode, masterCode: up(parentMaster), active: true },
         });
-        parent = link ? link.localCode : parentMaster;
+        parent = link ? link.localCode : up(parentMaster);
       }
     }
 
-    const mssql = await this.types();
-    const integrationUser = this.integrationUser();
-    const { sql, params } = catalogInsertForCompany(desc, p.companyCode, {
-      ...(desc.acceptsIntegrationUser ? { integrationUser } : {}),
-    });
-    // catalogInsertForCompany devuelve nombres sueltos (c0, c1, c2, cu): se
-    // convierten en parámetros tipados con el valor real de cada columna.
-    const size: Record<string, number> = { c0: 30, c1: 120, c2: 6, cu: 6 };
-    const values: Record<string, string> = {
-      c0: code,
-      c1: p.masterDescription,
-      c2: parent ?? '',
-      cu: integrationUser,
-    };
-    const boundParams: ProfitParam[] = params.map((name) => ({
-      name,
-      kind: 'char',
-      size: size[name] ?? 30,
-      value: values[name] ?? '',
-    }));
-    const bound = bindProfitParams(mssql, boundParams);
+    // Verificación fresca: el código debe seguir libre en destino, con la MISMA
+    // identidad que usó analyze(). En catálogos jerárquicos se compara el par
+    // (código + padre), porque Profit admite el mismo código de sublínea bajo
+    // líneas distintas; si no, un código libre se reportaría como ocupado.
+    const rows = await this.readCatalog(p.companyCode, key);
+    const clash = rows.find((r) => (desc.parentColumn
+      ? up(r.code) === code && up(r.parent ?? '') === up(parent ?? '')
+      : up(r.code) === code));
+    if (clash) {
+      throw new ConflictException(
+        desc.parentColumn
+          ? `El par (${parent ?? '—'}, ${code}) ya existe en ${p.companyCode} con la descripción "${clash.description}".`
+          : `El código ${code} ya existe en ${p.companyCode} con la descripción "${clash.description}".`,
+      );
+    }
 
-    await this.writeAdapter.runInGlobalTransaction(async (tx) => {
-      await tx(sql, bound);
-    });
+    await this.createElement(p.companyCode, key, code, p.masterDescription, parent);
+    await this.saveLink(key, p.companyCode, p.masterCode, code, p.detail, actorId);
 
-    await this.prisma.companyCatalogCode.upsert({
-      where: { catalogKey_companyCode_masterCode: { catalogKey: key, companyCode: p.companyCode, masterCode: p.masterCode } },
-      create: {
-        catalogKey: key,
-        companyCode: p.companyCode,
-        masterCode: p.masterCode,
-        localCode: code,
-        origin: code === p.masterCode ? 'MASTER' : 'LOCAL_NEW',
-        note: p.detail,
-        createdBy: actorId,
-      },
-      update: { localCode: code, active: true, createdBy: actorId, note: p.detail },
-    });
     const decided = await this.prisma.companyCatalogProposal.update({
       where: { id },
       data: { status: 'CONFIRMED', localCode: code, decidedAt: new Date(), decidedBy: actorId },
@@ -473,40 +621,66 @@ export class CatalogSyncService {
       action: 'MULTIEMPRESA_CATALOG_CONFIRMED',
       afterData: JSON.stringify({ company: p.companyCode, catalogKey: key, masterCode: p.masterCode, localCode: code, reason: p.reason }),
     }).catch((e: any) => this.logger.error(`Audit failed: ${e?.message}`));
-    return {
-      id: decided.id,
-      catalogKey: decided.catalogKey,
-      catalogLabel: desc.label,
-      companyCode: decided.companyCode,
-      masterCode: decided.masterCode,
-      masterDescription: decided.masterDescription,
-      localCode: decided.localCode,
-      reason: decided.reason as ProposalReason,
-      detail: decided.detail,
-      status: decided.status as ProposalStatus,
-      createdAt: decided.createdAt.toISOString(),
-      decidedAt: decided.decidedAt ? decided.decidedAt.toISOString() : null,
-      decidedBy: decided.decidedBy,
-    };
+    return this.toView(decided);
   }
 
-  async confirmAll(company: string, actorId: string): Promise<{ confirmed: number; errors: string[] }> {
-    const pending = await this.prisma.companyCatalogProposal.findMany({
-      where: { companyCode: company, status: 'PENDING' },
-      orderBy: [{ catalogKey: 'asc' }, { masterCode: 'asc' }],
-    });
+  /** Confirma varias propuestas de una vez (acepta las que no quieras tocar). */
+  async confirmBulk(ids: string[], overrides: Record<string, string>, actorId: string): Promise<{ confirmed: number; errors: string[] }> {
     const errors: string[] = [];
     let confirmed = 0;
-    for (const p of pending) {
+    for (const id of ids ?? []) {
       try {
         // eslint-disable-next-line no-await-in-loop
-        await this.confirm(p.id, undefined, actorId);
+        await this.confirm(id, overrides?.[id], actorId);
         confirmed += 1;
       } catch (e: any) {
-        errors.push(`${p.catalogKey}/${p.masterCode}: ${String(e?.message ?? e).slice(0, 140)}`);
+        const detail = String(e?.message ?? e).slice(0, 140);
+        errors.push(`${id}: ${detail}`);
+        // Sin esto el fallo quedaba invisible: se devolvía a la UI pero no se
+        // registraba en el log del servidor.
+        this.logger.warn(`Confirmación rechazada ${id}: ${detail}`);
       }
     }
     return { confirmed, errors };
+  }
+
+  async confirmAll(company: string, catalog: string | undefined, actorId: string): Promise<{ confirmed: number; errors: string[] }> {
+    const pending = await this.prisma.companyCatalogProposal.findMany({
+      where: { companyCode: up(company), status: 'PENDING', ...(catalog ? { catalogKey: catalog } : {}) },
+      orderBy: [{ catalogKey: 'asc' }, { masterCode: 'asc' }],
+      select: { id: true },
+    });
+    return this.confirmBulk(pending.map((p) => p.id), {}, actorId);
+  }
+
+  /**
+   * Descarta (REJECTED) las propuestas PENDING de los catálogos indicados.
+   * Por defecto, los que quedan fuera del alcance por defecto: proveedores y
+   * procedencias. NO toca Profit: solo ordena el backlog local. Devuelve
+   * cuántas se descartaron para que la UI descuente el contador.
+   */
+  async discardCatalogs(
+    catalogs: string[] | undefined,
+    actorId: string,
+  ): Promise<{ rejected: number; catalogs: string[] }> {
+    const keys = (catalogs?.length ? catalogs : PROVIDER_CATALOGS)
+      .map((k) => String(k ?? '').trim())
+      .filter(Boolean);
+    if (!keys.length) throw new BadRequestException('Indique al menos un catálogo a descartar.');
+    const res = await this.prisma.companyCatalogProposal.updateMany({
+      where: { status: 'PENDING', catalogKey: { in: keys } },
+      data: { status: 'REJECTED', decidedAt: new Date(), decidedBy: actorId },
+    });
+    const rejected = res?.count ?? 0;
+    await this.auditoria.logEvent({
+      correlationId: randomUUID(),
+      actorId,
+      entityType: 'CompanyCatalogProposal',
+      entityId: 'DESCARTE',
+      action: 'MULTIEMPRESA_CATALOG_DISCARDED',
+      afterData: JSON.stringify({ catalogs: keys, rejected, note: 'Propuestas fuera del alcance por defecto; nada se escribió en Profit.' }),
+    }).catch((e: any) => this.logger.error(`Audit failed: ${e?.message}`));
+    return { rejected, catalogs: keys };
   }
 
   async reject(id: string, actorId: string, note?: string): Promise<ProposalView> {
@@ -525,21 +699,7 @@ export class CatalogSyncService {
       action: 'MULTIEMPRESA_CATALOG_REJECTED',
       afterData: JSON.stringify({ company: p.companyCode, catalogKey: p.catalogKey, masterCode: p.masterCode, localCode: p.localCode, note: note ?? null }),
     }).catch((e: any) => this.logger.error(`Audit failed: ${e?.message}`));
-    return {
-      id: decided.id,
-      catalogKey: decided.catalogKey,
-      catalogLabel: CORPORATE_CATALOGS[decided.catalogKey as CorporateCatalogKey]?.label ?? decided.catalogKey,
-      companyCode: decided.companyCode,
-      masterCode: decided.masterCode,
-      masterDescription: decided.masterDescription,
-      localCode: decided.localCode,
-      reason: decided.reason as ProposalReason,
-      detail: decided.detail,
-      status: decided.status as ProposalStatus,
-      createdAt: decided.createdAt.toISOString(),
-      decidedAt: decided.decidedAt ? decided.decidedAt.toISOString() : null,
-      decidedBy: decided.decidedBy,
-    };
+    return this.toView(decided);
   }
 
   // -------------------------------- 4. resolución de códigos del artículo
@@ -547,7 +707,6 @@ export class CatalogSyncService {
   /**
    * Traduce el payload del artículo a los códigos locales de la empresa usando
    * los vínculos CONFIRMADOS. Sin vínculo usa el código del maestro.
-   * Nunca inventa: lo no confirmado queda igual (y el preflight lo bloquea).
    */
   async resolveArticleInput(company: string, input: ProfitArticleInput): Promise<ProfitArticleInput> {
     const links = await this.prisma.companyCatalogCode.findMany({ where: { companyCode: company, active: true } });
@@ -569,23 +728,5 @@ export class CatalogSyncService {
       originCode: local('proceden', input.originCode),
       providerCode: local('prov', input.providerCode),
     };
-  }
-
-  /** Empresas con catálogos pendientes de decisión (para el panel). */
-  async pendingSummary(): Promise<Array<{ companyCode: string; pending: number; conflicts: number; missing: number }>> {
-    const rows = await this.prisma.companyCatalogProposal.groupBy({
-      by: ['companyCode', 'reason'],
-      where: { status: 'PENDING' },
-      _count: { _all: true },
-    });
-    const out = new Map<string, { companyCode: string; pending: number; conflicts: number; missing: number }>();
-    for (const r of rows) {
-      const cur = out.get(r.companyCode) ?? { companyCode: r.companyCode, pending: 0, conflicts: 0, missing: 0 };
-      cur.pending += r._count._all;
-      if (r.reason === 'CONFLICTO') cur.conflicts += r._count._all;
-      else cur.missing += r._count._all;
-      out.set(r.companyCode, cur);
-    }
-    return [...out.values()].sort((a, b) => a.companyCode.localeCompare(b.companyCode));
   }
 }

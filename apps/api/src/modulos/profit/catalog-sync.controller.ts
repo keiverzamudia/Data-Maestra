@@ -5,15 +5,23 @@ import { RbacGuard } from '../autenticacion/rbac.guard';
 import { JwtGuard } from '../autenticacion/jwt.guard';
 import { CurrentUser, RequestUser } from '../autenticacion/current-user.decorator';
 import { RequirePermission } from '../autenticacion/require-permission.decorator';
-import { ConfirmAllDto, ConfirmProposalDto, RejectProposalDto } from './dto/catalog-sync.dto';
+import {
+  AnalyzeCatalogsDto,
+  ConfirmAllDto,
+  ConfirmBulkDto,
+  ConfirmProposalDto,
+  DiscardProposalsDto,
+  RejectProposalDto,
+} from './dto/catalog-sync.dto';
 
 /**
  * FASE 27 — MANEJO MULTIEMPRESA.
  *
  * Integra los catálogos del maestro (AD_TRANS) hacia las demás empresas de
- * `TEmpresas`. Los conflictos de código (mismo código, otro significado) NUNCA
- * se resuelven solos: se proponen códigos nuevos (COM1…) y los confirma una
- * persona. Confirmar escribe en Profit (flag + PROFIT.WRITE) y queda auditado.
+ * `TEmpresas`, catálogo por catálogo para que nada quede desbordado.
+ * Los conflictos de código (mismo código, otro significado) NUNCA se resuelven
+ * solos: se proponen códigos nuevos (COM1…) y los confirma una persona.
+ * Confirmar escribe en Profit (flag + PROFIT.WRITE) y queda auditado.
  */
 @ApiTags('ManejoMultiempresa')
 @Controller('profit/multiempresa')
@@ -23,9 +31,12 @@ export class CatalogSyncController {
 
   @Get('status')
   @RequirePermission('DASHBOARD.VIEW')
-  @ApiOperation({ summary: 'Estado del maestro y propuestas pendientes por empresa (solo lectura)' })
+  @ApiOperation({ summary: 'Maestro + pendientes por empresa y catálogo (solo lectura)' })
   async status() {
-    return { masterTotal: await this.sync.masterCount(), pending: await this.sync.pendingSummary() };
+    return {
+      masterTotal: await this.sync.masterCount(),
+      pending: await this.sync.proposalCounts(),
+    };
   }
 
   @Get('master')
@@ -46,16 +57,24 @@ export class CatalogSyncController {
   @Post('analyze')
   @HttpCode(HttpStatus.OK)
   @RequirePermission('ADMIN.MANAGE')
-  @ApiOperation({ summary: 'Compara el maestro contra cada empresa y genera propuestas pendientes' })
-  analyze(@CurrentUser() user: RequestUser) {
-    return this.sync.analyze(user.id);
+  @ApiOperation({ summary: 'Analiza por empresa y catálogo; devuelve contadores + una página de problemas' })
+  analyze(@CurrentUser() user: RequestUser, @Body() dto: AnalyzeCatalogsDto) {
+    return this.sync.analyze(user.id, {
+      company: dto.company,
+      catalog: dto.catalog,
+      catalogs: dto.catalogs,
+      includeProviders: dto.includeProviders,
+      autoCreate: dto.autoCreate,
+      limit: dto.limit,
+      offset: dto.offset,
+    });
   }
 
   @Get('proposals')
   @RequirePermission('DASHBOARD.VIEW')
-  @ApiOperation({ summary: 'Propuestas de código por empresa (solo lectura)' })
-  proposals(@Query('company') company?: string) {
-    return this.sync.proposals(company);
+  @ApiOperation({ summary: 'Propuestas de código por empresa y catálogo (solo lectura)' })
+  proposals(@Query('company') company?: string, @Query('catalog') catalog?: string) {
+    return this.sync.proposals(company, catalog);
   }
 
   @Post('proposals/confirm')
@@ -66,12 +85,20 @@ export class CatalogSyncController {
     return this.sync.confirm(dto.id, dto.localCode, user.id);
   }
 
+  @Post('proposals/confirm-bulk')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('PROFIT.WRITE')
+  @ApiOperation({ summary: 'Confirma varias propuestas en bloque' })
+  confirmBulk(@CurrentUser() user: RequestUser, @Body() dto: ConfirmBulkDto) {
+    return this.sync.confirmBulk(dto.ids, dto.overrides ?? {}, user.id);
+  }
+
   @Post('proposals/confirm-all')
   @HttpCode(HttpStatus.OK)
   @RequirePermission('PROFIT.WRITE')
-  @ApiOperation({ summary: 'Confirma todas las propuestas pendientes de una empresa' })
+  @ApiOperation({ summary: 'Confirma las pendientes de una empresa (opcionalmente de un catálogo)' })
   confirmAll(@CurrentUser() user: RequestUser, @Body() dto: ConfirmAllDto) {
-    return this.sync.confirmAll(dto.company.toUpperCase().trim(), user.id);
+    return this.sync.confirmAll(dto.company.toUpperCase().trim(), dto.catalog, user.id);
   }
 
   @Post('proposals/reject')
@@ -80,5 +107,13 @@ export class CatalogSyncController {
   @ApiOperation({ summary: 'Rechaza una propuesta (queda registrada; no se crea nada en Profit)' })
   reject(@CurrentUser() user: RequestUser, @Body() dto: RejectProposalDto) {
     return this.sync.reject(dto.id, user.id, dto.note);
+  }
+
+  @Post('proposals/discard-catalogs')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('ADMIN.MANAGE')
+  @ApiOperation({ summary: 'Descarta las pendientes de catálogos fuera de alcance (por defecto proveedores y procedencias)' })
+  discardCatalogs(@CurrentUser() user: RequestUser, @Body() dto: DiscardProposalsDto) {
+    return this.sync.discardCatalogs(dto.catalogs, user.id);
   }
 }
